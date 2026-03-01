@@ -19,10 +19,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.unit.dp
 import dev.egograph.shared.core.domain.model.ThreadMessage
 import dev.egograph.shared.core.ui.common.ListStateContent
 import dev.egograph.shared.core.ui.common.testTagResourceId
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filter
 
@@ -47,6 +47,7 @@ fun MessageList(
     streamingMessageId: String? = null,
     activeAssistantTask: String? = null,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
     val listState = rememberLazyListState()
     val reversedMessages = remember(messages) { messages.asReversed() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -92,7 +93,7 @@ fun MessageList(
                 modifier =
                     containerModifier
                         .testTagResourceId("message_list"),
-                contentPadding = PaddingValues(vertical = 16.dp),
+                contentPadding = PaddingValues(vertical = dimens.space16),
             ) {
                 if (isLoading) {
                     item {
@@ -100,12 +101,12 @@ fun MessageList(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
+                                    .padding(dimens.space16),
                             contentAlignment = Alignment.Center,
                         ) {
                             CircularProgressIndicator(
                                 color = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.padding(8.dp),
+                                modifier = Modifier.padding(dimens.space8),
                             )
                         }
                     }
@@ -133,11 +134,13 @@ fun MessageList(
  */
 @Composable
 fun MessageListEmpty(modifier: Modifier = Modifier) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(32.dp),
+                .padding(dimens.space32),
         contentAlignment = Alignment.Center,
     ) {
         Text(

@@ -20,12 +20,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import dev.egograph.shared.core.platform.isValidUrl
 import dev.egograph.shared.core.ui.components.SecretTextField
 import dev.egograph.shared.core.ui.components.SettingsTopBar
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 import kotlinx.coroutines.launch
 
 /**
@@ -87,16 +87,18 @@ private fun GatewaySettingsContent(
     onSave: () -> Unit,
     isSaving: Boolean,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Column(
         modifier =
             Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(dimens.space16),
     ) {
         Text(
             text = "Gateway API Configuration",
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 8.dp),
+            modifier = Modifier.padding(bottom = dimens.space8),
         )
 
         OutlinedTextField(
@@ -116,7 +118,7 @@ private fun GatewaySettingsContent(
             },
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(dimens.space16))
 
         SecretTextField(
             value = apiKey,
@@ -128,7 +130,7 @@ private fun GatewaySettingsContent(
             hideContentDescription = "Hide token",
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(dimens.space16))
 
         Button(
             onClick = onSave,

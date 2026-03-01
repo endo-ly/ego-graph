@@ -14,8 +14,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import dev.egograph.shared.core.ui.common.CompactActionButton
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 /**
  * サイドバーのヘッダーコンポーネント
@@ -32,11 +32,13 @@ fun SidebarHeader(
     onSettingsClick: () -> Unit = {},
     onTerminalClick: () -> Unit = {},
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(dimens.space16),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -53,7 +55,7 @@ fun SidebarHeader(
             testTag = "settings_button",
         )
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(dimens.space8))
 
         CompactActionButton(
             onClick = onTerminalClick,
@@ -62,7 +64,7 @@ fun SidebarHeader(
             testTag = "terminal_button",
         )
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(dimens.space8))
 
         CompactActionButton(
             onClick = onNewChatClick,

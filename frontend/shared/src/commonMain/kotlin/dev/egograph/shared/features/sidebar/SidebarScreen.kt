@@ -25,13 +25,13 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import dev.egograph.shared.core.platform.PlatformPreferences
 import dev.egograph.shared.core.platform.PlatformPrefsDefaults
 import dev.egograph.shared.core.platform.PlatformPrefsKeys
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 import dev.egograph.shared.features.chat.ChatScreen
 import dev.egograph.shared.features.chat.ChatScreenModel
 import dev.egograph.shared.features.chat.ChatState
@@ -54,6 +54,7 @@ import org.koin.compose.koinInject
 class SidebarScreen : Screen {
     @Composable
     override fun Content() {
+        val dimens = EgoGraphThemeTokens.dimens
         val navigator = requireNotNull(LocalNavigator.current)
         val screenModel = koinScreenModel<ChatScreenModel>()
         val state: ChatState by screenModel.state.collectAsState()
@@ -116,7 +117,7 @@ class SidebarScreen : Screen {
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                .padding(horizontal = dimens.space16, vertical = dimens.space12),
                     ) {
                         Text(
                             text = "History",
@@ -150,7 +151,7 @@ class SidebarScreen : Screen {
 
                     HorizontalDivider()
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(dimens.space8))
 
                     SidebarFooter(
                         onNewChatClick = {
@@ -172,7 +173,7 @@ class SidebarScreen : Screen {
                         },
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(dimens.space12))
                 }
             },
             gesturesEnabled = activeView == MainView.Chat || activeView == MainView.TerminalSession,

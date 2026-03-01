@@ -27,12 +27,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import co.touchlab.kermit.Logger
 import dev.egograph.shared.core.ui.common.CompactActionButton
 import dev.egograph.shared.core.ui.common.testTagResourceId
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 import dev.egograph.shared.features.chat.components.ChatComposer
 import dev.egograph.shared.features.chat.components.ErrorBanner
 import dev.egograph.shared.features.chat.components.MessageList
@@ -50,6 +50,7 @@ class ChatScreen(
 ) : Screen {
     @Composable
     override fun Content() {
+        val dimens = EgoGraphThemeTokens.dimens
         val screenModel = koinScreenModel<ChatScreenModel>()
         val state by screenModel.state.collectAsState()
         val snackbarHostState = remember { SnackbarHostState() }
@@ -109,7 +110,7 @@ class ChatScreen(
                         Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                            .padding(horizontal = dimens.space8, vertical = dimens.space2),
                 )
 
                 // エラーバナー（エラーがある場合のみ表示）
@@ -144,6 +145,8 @@ private fun ChatTopActions(
     onNewChat: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -166,7 +169,7 @@ private fun ChatTopActions(
             contentDescription = "Terminal",
             testTag = "chat_terminal_button",
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(dimens.space8))
         CompactActionButton(
             onClick = onNewChat,
             icon = Icons.Default.Add,
@@ -174,6 +177,6 @@ private fun ChatTopActions(
             text = "New",
             testTag = "chat_new_chat_button",
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(dimens.space8))
     }
 }

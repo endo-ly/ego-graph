@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Computer
@@ -25,8 +23,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import dev.egograph.shared.core.ui.common.testTagResourceId
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 @Composable
 fun SidebarFooter(
@@ -35,12 +33,14 @@ fun SidebarFooter(
     onTerminalClick: () -> Unit,
     onSystemPromptClick: () -> Unit,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = dimens.space16, vertical = dimens.space8),
+        horizontalArrangement = Arrangement.spacedBy(dimens.space8),
     ) {
         FooterIconButton(
             icon = Icons.Outlined.Settings,
@@ -84,26 +84,29 @@ private fun FooterIconButton(
     testTag: String,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+    val shapes = EgoGraphThemeTokens.shapes
+
     Surface(
         onClick = onClick,
-        shape = CircleShape,
+        shape = shapes.statusCircle,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+        border = BorderStroke(dimens.borderWidthThin, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        tonalElevation = dimens.zero,
+        shadowElevation = dimens.zero,
         modifier =
             modifier
-                .height(36.dp)
+                .height(dimens.space36)
                 .testTagResourceId(testTag),
     ) {
         Box(
-            modifier = Modifier.size(36.dp),
+            modifier = Modifier.size(dimens.space36),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(dimens.iconSize18),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -118,30 +121,33 @@ private fun FooterIconWithLabelButton(
     testTag: String,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+    val shapes = EgoGraphThemeTokens.shapes
+
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
+        shape = shapes.radiusLg,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+        border = BorderStroke(dimens.borderWidthThin, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        tonalElevation = dimens.zero,
+        shadowElevation = dimens.zero,
         modifier =
             modifier
-                .height(36.dp)
+                .height(dimens.space36)
                 .testTagResourceId(testTag),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
+            modifier = Modifier.padding(horizontal = dimens.space12),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(dimens.iconSizeSmall),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(dimens.space4))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,

@@ -20,10 +20,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import dev.egograph.shared.core.ui.common.testTagResourceId
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 /**
  * システムプロンプトエディタ画面
@@ -37,6 +37,7 @@ class SystemPromptEditorScreen(
 ) : Screen {
     @Composable
     override fun Content() {
+        val dimens = EgoGraphThemeTokens.dimens
         val screenModel = koinScreenModel<SystemPromptEditorScreenModel>()
         val state by screenModel.state.collectAsState()
         val snackbarHostState = remember { SnackbarHostState() }
@@ -58,7 +59,7 @@ class SystemPromptEditorScreen(
                         onTabSelected = screenModel::onTabSelected,
                     )
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(dimens.space16),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Spacer(Modifier.weight(1f))
@@ -71,7 +72,7 @@ class SystemPromptEditorScreen(
                         ) {
                             Text("Cancel")
                         }
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(dimens.space8))
                         Button(
                             onClick = screenModel::saveSelectedPrompt,
                             enabled = state.canSave,
@@ -91,7 +92,7 @@ class SystemPromptEditorScreen(
                         modifier =
                             Modifier
                                 .align(Alignment.CenterHorizontally)
-                                .padding(16.dp),
+                                .padding(dimens.space16),
                     )
                 }
 
@@ -102,7 +103,7 @@ class SystemPromptEditorScreen(
                     modifier =
                         Modifier
                             .weight(1f)
-                            .padding(16.dp),
+                            .padding(dimens.space16),
                 )
             }
         }

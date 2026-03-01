@@ -25,7 +25,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import dev.egograph.shared.core.platform.isValidUrl
@@ -33,6 +32,7 @@ import dev.egograph.shared.core.settings.AppTheme
 import dev.egograph.shared.core.ui.common.testTagResourceId
 import dev.egograph.shared.core.ui.components.SecretTextField
 import dev.egograph.shared.core.ui.components.SettingsTopBar
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 import kotlinx.coroutines.launch
 
 /**
@@ -50,6 +50,7 @@ class SettingsScreen(
         val screenModel = koinScreenModel<SettingsScreenModel>()
         val state by screenModel.state.collectAsState()
         val snackbarHostState = remember { SnackbarHostState() }
+        val dimens = EgoGraphThemeTokens.dimens
 
         LaunchedEffect(Unit) {
             screenModel.effect.collect { effect ->
@@ -76,14 +77,14 @@ class SettingsScreen(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .padding(16.dp),
+                            .padding(dimens.space16),
                 ) {
                     AppearanceSection(
                         selectedTheme = state.selectedTheme,
                         onThemeSelected = screenModel::onThemeSelected,
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(dimens.space24))
 
                     ApiConfigurationSection(
                         inputUrl = state.inputUrl,
@@ -92,7 +93,7 @@ class SettingsScreen(
                         onKeyChange = screenModel::onKeyChange,
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(dimens.space16))
 
                     SettingsActions(
                         inputUrl = state.inputUrl,
@@ -110,10 +111,12 @@ private fun AppearanceSection(
     selectedTheme: AppTheme,
     onThemeSelected: (AppTheme) -> Unit,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Text(
         text = "Appearance",
         style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(bottom = 8.dp),
+        modifier = Modifier.padding(bottom = dimens.space8),
     )
 
     AppTheme.entries.forEach { theme ->
@@ -134,10 +137,12 @@ private fun ApiConfigurationSection(
     inputKey: String,
     onKeyChange: (String) -> Unit,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Text(
         text = "API Configuration",
         style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(bottom = 8.dp),
+        modifier = Modifier.padding(bottom = dimens.space8),
     )
 
     OutlinedTextField(
@@ -160,7 +165,7 @@ private fun ApiConfigurationSection(
         },
     )
 
-    Spacer(modifier = Modifier.height(16.dp))
+    Spacer(modifier = Modifier.height(dimens.space16))
 
     SecretTextField(
         value = inputKey,
@@ -200,19 +205,21 @@ private fun ThemeOption(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
             Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(vertical = 4.dp),
+                .padding(vertical = dimens.space4),
     ) {
         RadioButton(
             selected = selected,
             onClick = onClick,
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(dimens.space8))
         Text(text)
     }
 }

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -21,12 +20,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
+import dev.egograph.shared.core.ui.theme.monospaceBody
+import dev.egograph.shared.core.ui.theme.monospaceBodyMedium
 
 /**
  * ターミナル画面のヘッダー
@@ -46,43 +44,37 @@ fun TerminalHeader(
     error: String?,
     onBack: () -> Unit,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+    val shapes = EgoGraphThemeTokens.shapes
+    val extendedColors = EgoGraphThemeTokens.extendedColors
+
     CenterAlignedTopAppBar(
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
-                val greenColor = Color(0xFF4CAF50)
-
                 when {
                     isLoading -> {
                         Text(
                             text = "CONNECTING...",
-                            style =
-                                MaterialTheme.typography.bodyMedium.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Medium,
-                                ),
+                            style = MaterialTheme.typography.monospaceBodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     error == null -> {
                         Text(
                             text = agentId,
-                            style =
-                                MaterialTheme.typography.bodyMedium.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Medium,
-                                ),
+                            style = MaterialTheme.typography.monospaceBodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(dimens.space8))
                         Box(
                             modifier =
                                 Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(greenColor)
+                                    .size(dimens.indicatorSizeSmall)
+                                    .clip(shapes.statusCircle)
+                                    .background(extendedColors.statusConnected)
                                     .semantics {
                                         contentDescription = "Connected"
                                     },
@@ -91,18 +83,15 @@ fun TerminalHeader(
                     else -> {
                         Text(
                             text = agentId,
-                            style =
-                                MaterialTheme.typography.bodyMedium.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                ),
+                            style = MaterialTheme.typography.monospaceBody,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(dimens.space8))
                         Box(
                             modifier =
                                 Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
+                                    .size(dimens.indicatorSizeSmall)
+                                    .clip(shapes.statusCircle)
                                     .background(MaterialTheme.colorScheme.error)
                                     .semantics {
                                         contentDescription = "Disconnected"
@@ -112,7 +101,7 @@ fun TerminalHeader(
                 }
             }
         },
-        modifier = Modifier.height(96.dp),
+        modifier = Modifier.height(dimens.terminalHeaderHeight),
         navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to list")

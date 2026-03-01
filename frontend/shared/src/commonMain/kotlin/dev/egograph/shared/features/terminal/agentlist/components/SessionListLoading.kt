@@ -14,17 +14,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 @Composable
 fun SessionListLoading(modifier: Modifier = Modifier) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Column(
-        modifier = modifier.fillMaxSize().padding(16.dp),
+        modifier = modifier.fillMaxSize().padding(dimens.space16),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        CircularProgressIndicator(modifier = Modifier.size(48.dp))
-        Spacer(modifier = Modifier.height(16.dp))
+        CircularProgressIndicator(modifier = Modifier.size(dimens.space48))
+        Spacer(modifier = Modifier.height(dimens.space16))
         Text(
             text = "セッションを読み込み中...",
             style = MaterialTheme.typography.bodyMedium,

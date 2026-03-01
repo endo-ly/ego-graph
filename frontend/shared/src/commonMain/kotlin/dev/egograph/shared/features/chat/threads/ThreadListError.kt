@@ -8,18 +8,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 @Composable
 fun ThreadListError(
     message: String,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(dimens.space16),
         contentAlignment = Alignment.Center,
     ) {
         Text(

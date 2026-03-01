@@ -6,17 +6,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import dev.egograph.shared.core.domain.model.Thread
 import dev.egograph.shared.core.ui.common.testTagResourceId
 import dev.egograph.shared.core.ui.common.toCompactIsoDateTime
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 /**
  * スレッドリストアイテムコンポーネント
@@ -33,6 +32,9 @@ fun ThreadItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+    val shapes = EgoGraphThemeTokens.shapes
+
     val backgroundColor =
         if (isActive) {
             MaterialTheme.colorScheme.primaryContainer
@@ -59,14 +61,14 @@ fun ThreadItem(
             modifier
                 .testTagResourceId("thread_item")
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(shapes.radiusSm)
                 .background(backgroundColor)
                 .border(
-                    width = 1.dp,
+                    width = dimens.borderWidthThin,
                     color = borderColor,
-                    shape = RoundedCornerShape(8.dp),
+                    shape = shapes.radiusSm,
                 ).clickable(onClick = onClick)
-                .padding(12.dp),
+                .padding(dimens.space12),
     ) {
         Text(
             text = thread.title,
@@ -79,7 +81,7 @@ fun ThreadItem(
             text = thread.createdAt.toCompactIsoDateTime(),
             style = MaterialTheme.typography.bodySmall,
             color = contentColor.copy(alpha = 0.7f),
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = dimens.space4),
         )
     }
 }

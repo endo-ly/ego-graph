@@ -17,8 +17,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import dev.egograph.shared.core.ui.common.testTagResourceId
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 /**
  * ターミナル用特殊キーボタンリスト
@@ -35,6 +35,7 @@ fun SpecialKeysBar(
     isVoiceInputActive: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
     val scrollState = rememberScrollState()
 
     Row(
@@ -53,13 +54,13 @@ fun SpecialKeysBar(
         SpecialKeyButton("↓", "\u001B[B", onKeyPress)
         SpecialKeyButton("←", "\u001B[D", onKeyPress)
         SpecialKeyButton("→", "\u001B[C", onKeyPress)
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(dimens.space8))
 
         SpecialKeyButton("Ctrl+C", "\u0003", onKeyPress)
         SpecialKeyButton("Esc", "\u001B", onKeyPress)
         SpecialKeyButton("Tab", "\t", onKeyPress)
         SpecialKeyButton("Shift+Tab", "\u001B[Z", onKeyPress)
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(dimens.space8))
 
         SpecialKeyButton("Ctrl", "\u0000", onKeyPress)
         SpecialKeyButton("Ctrl+D", "\u0004", onKeyPress)
@@ -71,6 +72,7 @@ private fun VoiceInputButton(
     isActive: Boolean,
     onClick: () -> Unit,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
     val containerColor =
         if (isActive) {
             MaterialTheme.colorScheme.errorContainer
@@ -94,7 +96,7 @@ private fun VoiceInputButton(
             ),
         contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(dimens.space6)) {
             Icon(
                 imageVector = if (isActive) Icons.Filled.Stop else Icons.Filled.Mic,
                 contentDescription = if (isActive) "Stop voice input" else "Start voice input",

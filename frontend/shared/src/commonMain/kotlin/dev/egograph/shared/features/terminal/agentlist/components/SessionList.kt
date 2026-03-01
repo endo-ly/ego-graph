@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -31,14 +29,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.egograph.shared.core.domain.model.terminal.Session
 import dev.egograph.shared.core.domain.model.terminal.SessionStatus
 import dev.egograph.shared.core.ui.common.ListStateContent
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
+import dev.egograph.shared.core.ui.theme.monospaceBodyMedium
+import dev.egograph.shared.core.ui.theme.monospaceLabelSmall
 
 /**
  * ターミナルセッション一覧コンポーネント
@@ -63,6 +60,9 @@ fun SessionList(
     onOpenGatewaySettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+    val shapes = EgoGraphThemeTokens.shapes
+    val extendedColors = EgoGraphThemeTokens.extendedColors
     val activeSessionCount = sessions.count { it.status == SessionStatus.CONNECTED }
 
     Column(
@@ -76,7 +76,7 @@ fun SessionList(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = dimens.space16, vertical = dimens.space12),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -85,29 +85,27 @@ fun SessionList(
                 Box(
                     modifier =
                         Modifier
-                            .size(8.dp)
+                            .size(dimens.indicatorSizeSmall)
                             .background(
-                                color = if (activeSessionCount > 0) Color(0xFF4CAF50) else MaterialTheme.colorScheme.outline,
-                                shape = CircleShape,
+                                color = if (activeSessionCount > 0) extendedColors.statusConnected else MaterialTheme.colorScheme.outline,
+                                shape = shapes.statusCircle,
                             ),
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(dimens.space8))
 
                 Icon(
                     imageVector = Icons.Default.Terminal,
                     contentDescription = null,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(dimens.iconSizeMedium),
                     tint = MaterialTheme.colorScheme.primary,
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(dimens.space8))
 
                 Text(
                     text = "TERMINAL SESSIONS",
                     style =
-                        MaterialTheme.typography.titleMedium.copy(
-                            fontFamily = FontFamily.Monospace,
+                        MaterialTheme.typography.monospaceBodyMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp,
                         ),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -117,43 +115,40 @@ fun SessionList(
                 OutlinedButton(
                     onClick = onRefresh,
                     enabled = !isLoading,
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                    modifier = Modifier.height(28.dp).widthIn(min = 48.dp),
+                    shape = shapes.radiusXs,
+                    contentPadding = PaddingValues(horizontal = dimens.space8),
+                    modifier = Modifier.height(dimens.space28).widthIn(min = dimens.space48),
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Sync",
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(dimens.iconSizeSmall),
                     )
                 }
 
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(dimens.space6))
 
                 OutlinedButton(
                     onClick = onOpenGatewaySettings,
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                    modifier = Modifier.height(28.dp).widthIn(min = 48.dp),
+                    shape = shapes.radiusXs,
+                    contentPadding = PaddingValues(horizontal = dimens.space8),
+                    modifier = Modifier.height(dimens.space28).widthIn(min = dimens.space48),
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Settings",
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(dimens.iconSizeSmall),
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(dimens.space8))
 
             Text(
                 text = "$activeSessionCount ACTIVE",
                 style =
-                    MaterialTheme.typography.labelLarge.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                color = if (activeSessionCount > 0) Color(0xFF4CAF50) else MaterialTheme.colorScheme.outline,
+                    MaterialTheme.typography.monospaceLabelSmall.copy(fontWeight = FontWeight.Medium),
+                color = if (activeSessionCount > 0) extendedColors.statusConnected else MaterialTheme.colorScheme.outline,
                 modifier = Modifier.align(Alignment.End),
             )
         }
@@ -195,11 +190,12 @@ private fun SessionListContent(
     onSessionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
     val listState = rememberLazyListState()
     LazyColumn(
-        modifier = modifier.padding(vertical = 8.dp),
+        modifier = modifier.padding(vertical = dimens.space8),
         state = listState,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(dimens.space8),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         items(
@@ -210,11 +206,11 @@ private fun SessionListContent(
                 session = session,
                 isActive = session.sessionId == selectedSessionId,
                 onClick = { onSessionClick(session.sessionId) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = dimens.space16),
             )
         }
         item {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(dimens.space16))
         }
     }
 }

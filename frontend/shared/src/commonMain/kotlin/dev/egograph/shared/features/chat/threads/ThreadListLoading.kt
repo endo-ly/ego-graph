@@ -8,18 +8,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 @Composable
 fun ThreadListLoading(
     modifier: Modifier = Modifier,
     message: String = "Loading...",
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(128.dp),
+                .height(dimens.listLoadingHeight),
         contentAlignment = Alignment.Center,
     ) {
         Text(

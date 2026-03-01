@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -41,6 +40,7 @@ import dev.egograph.shared.core.ui.common.testTagResourceId
 import dev.egograph.shared.core.ui.components.AssistantContentBlock
 import dev.egograph.shared.core.ui.components.MermaidDiagram
 import dev.egograph.shared.core.ui.components.splitAssistantContent
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes.HEADER
@@ -78,11 +78,13 @@ private fun UserMessage(
     message: ThreadMessage,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = dimens.space16, vertical = dimens.space8),
         horizontalArrangement = Arrangement.End,
     ) {
         Column(
@@ -92,7 +94,7 @@ private fun UserMessage(
             MessageBubble(isUser = true) {
                 Text(
                     text = message.content,
-                    modifier = Modifier.padding(12.dp),
+                    modifier = Modifier.padding(dimens.space12),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
@@ -108,6 +110,7 @@ private fun AssistantMessage(
     isStreaming: Boolean = false,
     activeAssistantTask: String? = null,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
     val contentBlocks = remember(message.content) { splitAssistantContent(message.content) }
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
     val assistantBodyStyle =
@@ -174,7 +177,7 @@ private fun AssistantMessage(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = dimens.space16, vertical = dimens.space8),
         horizontalArrangement = Arrangement.Start,
     ) {
         Column(
@@ -187,7 +190,7 @@ private fun AssistantMessage(
                         is AssistantContentBlock.Markdown -> {
                             Markdown(
                                 content = block.content,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                modifier = Modifier.padding(horizontal = dimens.space6, vertical = dimens.space4),
                                 colors = markdownColors,
                                 typography = markdownTextStyles,
                                 components = markdownRendererComponents,
@@ -207,15 +210,15 @@ private fun AssistantMessage(
                 if (message.content.isBlank()) {
                     val statusText = activeAssistantTask?.let { "Running $it..." } ?: "Thinking..."
                     Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = dimens.space6, vertical = dimens.space4),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(dimens.iconSizeSmall),
+                            strokeWidth = dimens.space2,
                             color = MaterialTheme.colorScheme.secondary,
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(dimens.space8))
                         Text(
                             text = statusText,
                             style = MaterialTheme.typography.bodyMedium,
@@ -225,7 +228,7 @@ private fun AssistantMessage(
                 } else {
                     Markdown(
                         content = message.content,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = dimens.space6, vertical = dimens.space4),
                         colors = markdownColors,
                         typography = markdownTextStyles,
                         components = markdownRendererComponents,
@@ -239,7 +242,7 @@ private fun AssistantMessage(
                     text = message.modelName,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+                    modifier = Modifier.padding(top = dimens.space4, start = dimens.space4),
                 )
             }
         }
@@ -318,8 +321,10 @@ private fun MessageBubble(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    val shapes = EgoGraphThemeTokens.shapes
+
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = shapes.radiusMd,
         color =
             if (isUser) {
                 MaterialTheme.colorScheme.primaryContainer

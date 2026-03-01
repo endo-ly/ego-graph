@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -32,19 +31,37 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import dev.egograph.shared.core.domain.model.LLMModel
 import dev.egograph.shared.core.ui.common.testTagResourceId
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 internal object ChatComposerMetrics {
-    val outerHorizontalPadding = 20.dp
-    val outerVerticalPadding = 12.dp
-    val actionButtonsSpacing = 8.dp
-    val containerMinHeight = 100.dp
+    val outerHorizontalPadding
+        @Composable get() = EgoGraphThemeTokens.dimens.space20
+
+    val outerVerticalPadding
+        @Composable get() = EgoGraphThemeTokens.dimens.space12
+
+    val actionButtonsSpacing
+        @Composable get() = EgoGraphThemeTokens.dimens.space8
+
+    val containerMinHeight
+        @Composable get() = EgoGraphThemeTokens.dimens.chatComposerMinHeight
+
     const val INPUT_MIN_LINES = 2
     const val INPUT_MAX_LINES = 5
-    val contentHorizontalPadding = 16.dp
-    val contentTopPadding = 12.dp
-    val contentBottomPadding = 8.dp
+
+    val contentHorizontalPadding
+        @Composable get() = EgoGraphThemeTokens.dimens.space16
+
+    val contentTopPadding
+        @Composable get() = EgoGraphThemeTokens.dimens.space12
+
+    val contentBottomPadding
+        @Composable get() = EgoGraphThemeTokens.dimens.space8
+
     val textLaneMinHeight = 50.dp
-    val modelSelectorSpacing = 8.dp
+
+    val modelSelectorSpacing
+        @Composable get() = EgoGraphThemeTokens.dimens.space8
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,9 +79,11 @@ internal fun ChatComposerField(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused = interactionSource.collectIsFocusedAsState().value
+    val dimens = EgoGraphThemeTokens.dimens
+    val shapes = EgoGraphThemeTokens.shapes
 
     val colors = OutlinedTextFieldDefaults.colors()
-    val shape: Shape = RoundedCornerShape(22.dp)
+    val shape: Shape = shapes.radiusXl
 
     BasicTextField(
         value = text,
@@ -87,7 +106,7 @@ internal fun ChatComposerField(
                         .fillMaxWidth()
                         .clip(shape)
                         .border(
-                            width = 1.dp,
+                            width = dimens.borderWidthThin,
                             color = MaterialTheme.colorScheme.outline,
                             shape = shape,
                         ),

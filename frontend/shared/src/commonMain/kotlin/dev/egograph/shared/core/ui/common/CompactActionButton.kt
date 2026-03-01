@@ -6,14 +6,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 /**
  * コンパクト表示用の共通アクションボタン。
@@ -26,14 +25,16 @@ internal fun CompactActionButton(
     testTag: String,
     text: String? = null,
 ) {
-    val buttonHeight = 28.dp
-    val buttonPadding = PaddingValues(horizontal = 8.dp)
-    val iconSize = 16.dp
-    val minWidth = if (text == null) 48.dp else 60.dp
+    val dimens = EgoGraphThemeTokens.dimens
+    val shapes = EgoGraphThemeTokens.shapes
+    val buttonHeight = dimens.space28
+    val buttonPadding = PaddingValues(horizontal = dimens.space8)
+    val iconSize = dimens.iconSizeSmall
+    val minWidth = if (text == null) dimens.space48 else dimens.space60
 
     OutlinedButton(
         onClick = onClick,
-        shape = RoundedCornerShape(6.dp),
+        shape = shapes.radiusXs,
         contentPadding = buttonPadding,
         modifier =
             Modifier
@@ -47,7 +48,7 @@ internal fun CompactActionButton(
             modifier = Modifier.size(iconSize),
         )
         if (text != null) {
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(dimens.space4))
             Text(text)
         }
     }

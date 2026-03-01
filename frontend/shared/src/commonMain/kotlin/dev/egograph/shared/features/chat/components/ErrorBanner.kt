@@ -17,7 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 import dev.egograph.shared.features.chat.ChatErrorState
 
 /**
@@ -37,6 +37,7 @@ fun ErrorBanner(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
     val backgroundColor =
         when (errorState.severity) {
             dev.egograph.shared.core.domain.repository.ErrorSeverity.INFO -> MaterialTheme.colorScheme.primaryContainer
@@ -58,7 +59,7 @@ fun ErrorBanner(
         color = backgroundColor,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(dimens.space16),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -71,7 +72,7 @@ fun ErrorBanner(
             )
 
             if (errorState.isRetryable && onRetry != null) {
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(dimens.space8))
                 IconButton(onClick = onRetry) {
                     Icon(
                         imageVector = Icons.Default.Refresh,

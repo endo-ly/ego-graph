@@ -25,12 +25,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import dev.egograph.shared.core.domain.model.Thread
 import dev.egograph.shared.core.ui.common.testTagResourceId
 import dev.egograph.shared.core.ui.components.EmptyView
 import dev.egograph.shared.core.ui.components.ErrorView
 import dev.egograph.shared.core.ui.components.LoadingView
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 /**
  * スレッド一覧コンポーネント
@@ -107,6 +107,8 @@ private fun ThreadListContent(
     listState: LazyListState,
     onThreadClick: (String) -> Unit,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
+
     if (error != null && threads.isEmpty()) {
         Box(
             modifier =
@@ -128,8 +130,8 @@ private fun ThreadListContent(
     } else {
         LazyColumn(
             state = listState,
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(dimens.space16),
+            verticalArrangement = Arrangement.spacedBy(dimens.space8),
             modifier =
                 Modifier
                     .testTagResourceId("thread_list")
@@ -157,11 +159,13 @@ private fun ThreadListContent(
 
 @Composable
 private fun LoadingMoreIndicator() {
+    val dimens = EgoGraphThemeTokens.dimens
+
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(dimens.space12),
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator()

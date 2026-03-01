@@ -22,9 +22,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import dev.egograph.shared.core.domain.model.LLMModel
 import dev.egograph.shared.core.ui.common.testTagResourceId
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 /**
  * モデル選択コンポーネント
@@ -47,6 +47,7 @@ fun ModelSelector(
     onModelSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val dimens = EgoGraphThemeTokens.dimens
     var expanded by remember { mutableStateOf(false) }
 
     val selectedModel = models.find { it.id == selectedModelId }
@@ -74,11 +75,11 @@ fun ModelSelector(
             modifier =
                 Modifier
                     .testTagResourceId("model_selector_surface")
-                    .widthIn(max = 160.dp)
+                    .widthIn(max = dimens.size160)
                     .clickable(enabled = isEnabled) { expanded = !expanded },
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = dimens.space10, vertical = dimens.space4),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -93,7 +94,7 @@ fun ModelSelector(
                 Icon(
                     imageVector = Icons.Filled.ArrowDropDown,
                     contentDescription = null,
-                    modifier = Modifier.padding(start = 4.dp),
+                    modifier = Modifier.padding(start = dimens.space4),
                 )
             }
         }

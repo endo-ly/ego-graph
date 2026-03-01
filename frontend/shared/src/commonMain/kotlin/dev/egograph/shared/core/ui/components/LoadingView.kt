@@ -9,7 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 /**
  * ローディング表示コンポーネント
@@ -22,13 +22,15 @@ import androidx.compose.ui.unit.dp
 fun LoadingView(
     modifier: Modifier = Modifier,
     message: String = "Loading...",
-    height: Dp = 128.dp,
+    height: Dp? = null,
 ) {
+    val resolvedHeight = height ?: EgoGraphThemeTokens.dimens.listLoadingHeight
+
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(height),
+                .height(resolvedHeight),
         contentAlignment = Alignment.Center,
     ) {
         Text(

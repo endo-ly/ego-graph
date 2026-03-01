@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
@@ -22,15 +21,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.egograph.shared.core.domain.model.terminal.Session
 import dev.egograph.shared.core.domain.model.terminal.SessionStatus
 import dev.egograph.shared.core.ui.common.testTagResourceId
 import dev.egograph.shared.core.ui.common.toCompactIsoDateTime
+import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
+import dev.egograph.shared.core.ui.theme.monospaceBody
+import dev.egograph.shared.core.ui.theme.monospaceLabelSmall
 
 /**
  * セッションリストアイテムコンポーネント
@@ -47,7 +45,9 @@ fun SessionListItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val greenColor = Color(0xFF4CAF50)
+    val dimens = EgoGraphThemeTokens.dimens
+    val shapes = EgoGraphThemeTokens.shapes
+    val extendedColors = EgoGraphThemeTokens.extendedColors
 
     val backgroundColor = MaterialTheme.colorScheme.surface
     val contentColor = MaterialTheme.colorScheme.onSurface
@@ -55,7 +55,7 @@ fun SessionListItem(
 
     val statusColor =
         when (session.status) {
-            SessionStatus.CONNECTED -> greenColor
+            SessionStatus.CONNECTED -> extendedColors.statusConnected
             SessionStatus.DISCONNECTED -> MaterialTheme.colorScheme.outline
             SessionStatus.FAILED -> MaterialTheme.colorScheme.error
         }
@@ -65,63 +65,53 @@ fun SessionListItem(
             modifier
                 .testTagResourceId("session_item")
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
+                .clip(shapes.radiusXs)
                 .background(backgroundColor)
                 .border(
-                    width = 1.dp,
+                    width = dimens.borderWidthThin,
                     color = borderColor,
-                    shape = RoundedCornerShape(6.dp),
+                    shape = shapes.radiusXs,
                 ).clickable(onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = dimens.space12, vertical = dimens.space10),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier =
                 Modifier
-                    .size(10.dp)
+                    .size(dimens.indicatorSizeMedium)
                     .clip(CircleShape)
                     .background(statusColor),
         )
 
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(dimens.space10))
 
         Icon(
             imageVector = Icons.Default.Terminal,
             contentDescription = null,
             tint = contentColor.copy(alpha = 0.6f),
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(dimens.iconSizeMedium),
         )
 
         Column(
-            modifier = Modifier.weight(1f).padding(start = 10.dp),
+            modifier = Modifier.weight(1f).padding(start = dimens.space10),
         ) {
             Text(
                 text = session.name,
-                style =
-                    MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace,
-                    ),
+                style = MaterialTheme.typography.monospaceBody,
                 color = contentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = "[${getStatusText(session.status)}]",
-                style =
-                    MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                        letterSpacing = 0.5.sp,
-                    ),
-                color = if (session.status == SessionStatus.CONNECTED) greenColor else contentColor.copy(alpha = 0.6f),
+                style = MaterialTheme.typography.monospaceLabelSmall,
+                color = if (session.status == SessionStatus.CONNECTED) extendedColors.statusConnected else contentColor.copy(alpha = 0.6f),
             )
         }
 
         Text(
             text = session.lastActivity.toCompactIsoDateTime(),
-            style =
-                MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
-                ),
+            style = MaterialTheme.typography.monospaceLabelSmall,
             color = contentColor.copy(alpha = 0.5f),
         )
     }
