@@ -80,8 +80,8 @@ private fun TerminalContent(
     var terminalError by remember { mutableStateOf<String?>(null) }
     var hasConnectedOnce by remember { mutableStateOf(false) }
 
-    val voiceInputController =
-        rememberTerminalVoiceInputController(
+    val voiceInputCoordinator =
+        rememberTerminalVoiceInputCoordinator(
             onRecognizedText = { recognizedText -> webView.sendKey(recognizedText) },
             onError = { message -> voiceInputError = message.ifBlank { null } },
         )
@@ -205,8 +205,8 @@ private fun TerminalContent(
                 if (keyboardState.isVisible) {
                     SpecialKeysBar(
                         onKeyPress = { keySequence -> webView.sendKey(keySequence) },
-                        onVoiceInputClick = voiceInputController.onToggle,
-                        isVoiceInputActive = voiceInputController.isActive,
+                        onVoiceInputClick = voiceInputCoordinator.onToggle,
+                        isVoiceInputActive = voiceInputCoordinator.isActive,
                         modifier =
                             Modifier
                                 .imePadding()

@@ -1,23 +1,19 @@
 package dev.egograph.shared.features.terminal.session.components
 
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import dev.egograph.shared.core.ui.common.testTagResourceId
+import dev.egograph.shared.core.ui.components.VoiceInputToggleButton
 import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 /**
@@ -26,6 +22,8 @@ import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
  * Ctrl+C, Esc, 矢印キーなどの特殊キーを送信するボタン群。
  *
  * @param onKeyPress キー送信コールバック
+ * @param onVoiceInputClick 音声入力ボタン押下時のコールバック
+ * @param isVoiceInputActive 音声入力が有効かどうか
  * @param modifier Modifier
  */
 @Composable
@@ -72,41 +70,11 @@ private fun VoiceInputButton(
     isActive: Boolean,
     onClick: () -> Unit,
 ) {
-    val dimens = EgoGraphThemeTokens.dimens
-    val containerColor =
-        if (isActive) {
-            MaterialTheme.colorScheme.errorContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
-        }
-    val contentColor =
-        if (isActive) {
-            MaterialTheme.colorScheme.onErrorContainer
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        }
-
-    Button(
+    VoiceInputToggleButton(
+        isActive = isActive,
         onClick = onClick,
-        modifier = Modifier.testTagResourceId("terminal_voice_button"),
-        colors =
-            ButtonDefaults.buttonColors(
-                containerColor = containerColor,
-                contentColor = contentColor,
-            ),
-        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(dimens.space6)) {
-            Icon(
-                imageVector = if (isActive) Icons.Filled.Stop else Icons.Filled.Mic,
-                contentDescription = if (isActive) "Stop voice input" else "Start voice input",
-            )
-            Text(
-                text = if (isActive) "Listening" else "Mic",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-    }
+        testTag = "terminal_voice_button",
+    )
 }
 
 @Composable

@@ -9,7 +9,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import dev.egograph.shared.core.domain.model.LLMModel
+import dev.egograph.shared.core.ui.components.rememberVoiceInputCoordinator
 
+/**
+ * チャット入力欄と送信/音声入力操作をまとめたコンポーザー。
+ *
+ * @param models モデル選択に表示する候補一覧
+ * @param selectedModelId 現在選択中のモデルID
+ * @param isLoadingModels モデル一覧の読み込み状態
+ * @param modelsError モデル一覧取得エラー
+ * @param onModelSelected モデル選択時のコールバック
+ * @param onSendMessage 送信時のコールバック
+ * @param isLoading メッセージ送信中かどうか
+ * @param modifier 追加のModifier
+ */
 @Composable
 fun ChatComposer(
     models: List<LLMModel>,
@@ -19,10 +32,25 @@ fun ChatComposer(
     onModelSelected: (String) -> Unit,
     onSendMessage: (String) -> Unit,
     isLoading: Boolean = false,
-    onVoiceInputClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var text by remember { mutableStateOf("") }
+    val voiceInputCoordinator =
+        rememberVoiceInputCoordinator(
+            onRecognizedText = { recognizedText ->
+                val current = text.trim()
+                val recognized = recognizedText.trim()
+                if (recognized.isNotEmpty()) {
+                    text =
+                        if (current.isEmpty()) {
+                            recognized
+                        } else {
+                            "$current $recognized"
+                        }
+                }
+            },
+            onError = { _ -> },
+        )
 
     ChatComposerField(
         text = text,
@@ -37,7 +65,8 @@ fun ChatComposer(
             onSendMessage(text)
             text = ""
         },
-        onVoiceInputClick = onVoiceInputClick,
+        onVoiceInputClick = voiceInputCoordinator.onToggle,
+        isVoiceInputActive = voiceInputCoordinator.isActive,
         modifier =
             modifier
                 .fillMaxWidth()

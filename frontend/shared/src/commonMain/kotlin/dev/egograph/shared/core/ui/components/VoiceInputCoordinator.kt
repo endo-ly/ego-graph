@@ -1,4 +1,4 @@
-package dev.egograph.shared.features.terminal.session
+package dev.egograph.shared.core.ui.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -15,16 +15,28 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-internal data class TerminalVoiceInputController(
+/**
+ * 音声入力のUI状態とトグル操作をまとめたコーディネーター。
+ *
+ * @property isActive 音声認識が有効かどうか
+ * @property onToggle 音声認識の開始/停止を切り替える処理
+ */
+data class VoiceInputCoordinator(
     val isActive: Boolean,
     val onToggle: () -> Unit,
 )
 
+/**
+ * 音声入力コーディネーターを生成して Compose ライフサイクルに追従させる。
+ *
+ * @param onRecognizedText 認識した確定テキストを受け取るコールバック
+ * @param onError 音声認識や権限取得で発生したエラーを受け取るコールバック
+ */
 @Composable
-internal fun rememberTerminalVoiceInputController(
+fun rememberVoiceInputCoordinator(
     onRecognizedText: (String) -> Unit,
     onError: (String) -> Unit,
-): TerminalVoiceInputController {
+): VoiceInputCoordinator {
     val coroutineScope = rememberCoroutineScope()
     val permissionUtil = remember { createPermissionUtil() }
     val speechRecognizer = remember { createSpeechRecognizer() }
@@ -45,9 +57,7 @@ internal fun rememberTerminalVoiceInputController(
             stopVoiceInput()
         } else {
             coroutineScope.launch {
-                // Acquire lock to prevent concurrent startups
                 voiceInputMutex.withLock {
-                    // Double-check after acquiring lock
                     if (isVoiceInputActive) {
                         return@withLock
                     }
@@ -89,7 +99,7 @@ internal fun rememberTerminalVoiceInputController(
         }
     }
 
-    return TerminalVoiceInputController(
+    return VoiceInputCoordinator(
         isActive = isVoiceInputActive,
         onToggle = toggleVoiceInput,
     )

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +32,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import dev.egograph.shared.core.domain.model.LLMModel
 import dev.egograph.shared.core.ui.common.testTagResourceId
+import dev.egograph.shared.core.ui.components.VoiceInputToggleButton
 import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 
 internal object ChatComposerMetrics {
@@ -67,6 +67,11 @@ internal object ChatComposerMetrics {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+/**
+ * チャット入力本体のUI。
+ *
+ * モデル選択、送信、音声入力ボタンを同一コンテナで扱う。
+ */
 @Composable
 internal fun ChatComposerField(
     text: String,
@@ -79,6 +84,7 @@ internal fun ChatComposerField(
     onModelSelected: (String) -> Unit,
     onSendMessage: () -> Unit,
     onVoiceInputClick: (() -> Unit)? = null,
+    isVoiceInputActive: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -159,7 +165,11 @@ internal fun ChatComposerField(
 
                         onVoiceInputClick?.let { voiceInputClick ->
                             Spacer(modifier = Modifier.width(ChatComposerMetrics.actionButtonsSpacing))
-                            MicButton(onClick = voiceInputClick)
+                            VoiceInputToggleButton(
+                                isActive = isVoiceInputActive,
+                                onClick = voiceInputClick,
+                                testTag = "mic_button",
+                            )
                         }
 
                         Spacer(modifier = Modifier.width(ChatComposerMetrics.actionButtonsSpacing))
@@ -174,22 +184,12 @@ internal fun ChatComposerField(
     )
 }
 
-@Composable
-internal fun MicButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    IconButton(
-        onClick = onClick,
-        modifier = modifier.testTagResourceId("mic_button"),
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Mic,
-            contentDescription = "Voice input",
-        )
-    }
-}
-
+/**
+ * 送信アイコンボタン。
+ *
+ * @param enabled 押下可能かどうか
+ * @param onClick 押下時の処理
+ */
 @Composable
 internal fun SendButton(
     enabled: Boolean,
