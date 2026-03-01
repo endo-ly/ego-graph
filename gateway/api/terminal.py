@@ -100,11 +100,12 @@ async def get_session(request: Request) -> JSONResponse:
 
     return JSONResponse(_build_session_response(session_id, target))
 
+
 async def issue_ws_token(request: Request) -> JSONResponse:
     """WebSocket接続用トークンを発行します。
 
     指定されたセッションIDに紐付く一回限りのWebSocketトークンを発行します。
-    トークンは5分間有効で、使用時に消費されます。
+    トークンは短命（設定値、既定60秒）で、使用時に消費されます。
 
     Args:
         request: Starlette リクエストオブジェクト
@@ -167,7 +168,11 @@ def get_terminal_routes() -> list[Route]:
     return [
         Route("/v1/terminal/sessions", get_sessions, methods=["GET"]),
         Route("/v1/terminal/sessions/{session_id}", get_session, methods=["GET"]),
-        Route("/v1/terminal/sessions/{session_id}/ws-token", issue_ws_token, methods=["POST"]),
+        Route(
+            "/v1/terminal/sessions/{session_id}/ws-token",
+            issue_ws_token,
+            methods=["POST"],
+        ),
         WebSocketRoute("/ws/terminal", terminal_websocket),
     ]
 
@@ -334,11 +339,9 @@ def _build_session_response(session_id: str, session) -> dict[str, str]:
     }
 
 
-
-
 async def _authenticate_websocket(websocket: WebSocket, session_id: str) -> bool:
     """WebSocket接続の初回認証を行う。
-    
+
     ws_token を使用して一回限りの認証を行います。
     """
     try:

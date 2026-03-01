@@ -40,6 +40,22 @@ class TestTerminalWSTokenStore:
         assert store._tokens[token].expires_at == now + timedelta(seconds=60)
 
     @pytest.mark.asyncio
+    async def test_issue_token_with_explicit_ttl(self) -> None:
+        """issue で明示 TTL を渡した場合に有効期限へ反映されることを確認する。"""
+        # Arrange
+        store = TerminalWSTokenStore()
+        now = datetime(2025, 1, 1, 12, 0, 0)
+        store._now_fn = lambda: now
+
+        # Act
+        token = await store.issue("session-123", 45)
+
+        # Assert
+        assert token
+        assert token in store._tokens
+        assert store._tokens[token].expires_at == now + timedelta(seconds=45)
+
+    @pytest.mark.asyncio
     async def test_consume_token_once(self) -> None:
         """トークンが一回だけ使用できることのテスト。"""
         # Arrange
@@ -248,6 +264,7 @@ class TestTerminalWSTokenStore:
         store._now_fn = lambda: datetime(2025, 1, 1, 12, 5, 1)
         success2, _ = await store.consume(token2)
         assert success2 is False
+
     @pytest.mark.asyncio
     async def test_multiple_issues_same_session_cleanup(self) -> None:
         """同一セッションで複数回発行時のクリーンアップテスト。"""

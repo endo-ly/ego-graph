@@ -36,11 +36,11 @@ class TerminalWSTokenStore:
         - インメモリストア（プロセス再起動でリセット）
         - 一回きりの使用（consume で削除）
         - セッション単位の発行（同一セッションで新しいトークン発行時は前のトークンを無効化）
-        - 有効期限付き（デフォルト5分）
+        - 有効期限付き（デフォルト60秒）
         - consume 時に期限切れトークンを opportunistically にクリーンアップ
 
     Args:
-        token_ttl_seconds: トークンの有効期限（秒）。デフォルトは300秒（5分）
+        token_ttl_seconds: トークンの有効期限（秒）。デフォルトは60秒
         now_fn: 現在時刻取得関数。テスト用のモック注入用
     """
 
@@ -49,9 +49,9 @@ class TerminalWSTokenStore:
     def __init__(
         self,
         token_ttl_seconds: int = DEFAULT_TTL_SECONDS,
-        now_fn: Callable[[], datetime] = lambda: datetime.now(
-            timezone.utc
-        ).replace(tzinfo=None),
+        now_fn: Callable[[], datetime] = lambda: datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ),
     ) -> None:
         """トークンストアを初期化します。
 
@@ -66,7 +66,7 @@ class TerminalWSTokenStore:
         self._session_tokens: dict[str, str] = {}
         self._lock = asyncio.Lock()
 
-    async def issue(self, session_id: str) -> str:
+    async def issue(self, session_id: str, ttl_seconds: int | None = None) -> str:
         """指定されたセッションに紐付くトークンを発行します。
 
         同一セッションIDで既にトークンが発行されている場合、
@@ -74,6 +74,7 @@ class TerminalWSTokenStore:
 
         Args:
             session_id: トークンを紐付けるセッションID
+            ttl_seconds: この発行で利用する TTL（秒）。None の場合はストア既定値を使う
 
         Returns:
             発行されたトークン文字列
@@ -81,9 +82,13 @@ class TerminalWSTokenStore:
         Note:
             トークンは secrets.token_urlsafe(32) で生成されます。
         """
+        effective_ttl_seconds = (
+            ttl_seconds if ttl_seconds is not None else self._token_ttl_seconds
+        )
+
         token = secrets.token_urlsafe(32)
         now = self._now_fn()
-        expires_at = now + timedelta(seconds=self._token_ttl_seconds)
+        expires_at = now + timedelta(seconds=effective_ttl_seconds)
 
         async with self._lock:
             # 同一セッションの以前のトークンを無効化
