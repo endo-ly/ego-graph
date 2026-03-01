@@ -62,7 +62,6 @@ fun ThreadList(
     onLoadMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val dimens = EgoGraphThemeTokens.dimens
     val pullRefreshState = rememberPullToRefreshState()
     val listState = rememberLazyListState()
 
