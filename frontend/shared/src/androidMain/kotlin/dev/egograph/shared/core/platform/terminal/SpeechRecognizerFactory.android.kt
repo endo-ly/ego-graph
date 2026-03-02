@@ -18,6 +18,7 @@ import android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import java.util.Locale
 
 /**
  * Android音声認識実装
@@ -29,9 +30,12 @@ actual fun createSpeechRecognizer(): ISpeechRecognizer = AndroidSpeechRecognizer
 
 /**
  * Android音声認識の実装クラス
+ *
+ * 確定結果のみをストリームに流し、停止要求があるまで連続で再開する。
  */
 class AndroidSpeechRecognizer : ISpeechRecognizer {
     private var speechRecognizer: SpeechRecognizer? = null
+    private var keepListening: Boolean = false
 
     override suspend fun startRecognition(): Flow<String> =
         callbackFlow {
@@ -40,6 +44,9 @@ class AndroidSpeechRecognizer : ISpeechRecognizer {
                     ?: throw IllegalStateException("No active context available")
 
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+            keepListening = true
+
+            val localeTag = Locale.getDefault().toLanguageTag()
 
             val intent =
                 Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -47,9 +54,17 @@ class AndroidSpeechRecognizer : ISpeechRecognizer {
                         RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                         RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
                     )
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault())
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, localeTag)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, localeTag)
                 }
+
+            fun restartListening() {
+                if (!keepListening) {
+                    return
+                }
+                speechRecognizer?.startListening(intent)
+            }
 
             val listener =
                 object : RecognitionListener {
@@ -74,6 +89,14 @@ class AndroidSpeechRecognizer : ISpeechRecognizer {
                     }
 
                     override fun onError(error: Int) {
+                        if (!keepListening && error == ERROR_CLIENT) {
+                            return
+                        }
+                        if (error == ERROR_NO_MATCH || error == ERROR_SPEECH_TIMEOUT) {
+                            restartListening()
+                            return
+                        }
+
                         val errorMessage =
                             when (error) {
                                 ERROR_AUDIO -> "Audio recording error"
@@ -96,16 +119,10 @@ class AndroidSpeechRecognizer : ISpeechRecognizer {
                         if (!matches.isNullOrEmpty()) {
                             trySend(matches[0])
                         }
-                        // 最終結果が得られたらストリームを閉じる
-                        close()
+                        restartListening()
                     }
 
                     override fun onPartialResults(partialResults: Bundle?) {
-                        val matches =
-                            partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        if (!matches.isNullOrEmpty()) {
-                            trySend(matches[0])
-                        }
                     }
 
                     override fun onEvent(
@@ -120,6 +137,7 @@ class AndroidSpeechRecognizer : ISpeechRecognizer {
             speechRecognizer?.startListening(intent)
 
             awaitClose {
+                keepListening = false
                 speechRecognizer?.stopListening()
                 speechRecognizer?.destroy()
                 speechRecognizer = null
@@ -127,7 +145,11 @@ class AndroidSpeechRecognizer : ISpeechRecognizer {
         }
 
     override fun stopRecognition() {
+        keepListening = false
         speechRecognizer?.stopListening()
+        speechRecognizer?.cancel()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
     }
 }
 
