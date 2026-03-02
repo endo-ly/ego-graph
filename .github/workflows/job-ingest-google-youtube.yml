@@ -1,152 +1,152 @@
-name: Google YouTube Data Ingestion
+# name: Google YouTube Data Ingestion
 
-on:
-  schedule:
-    # - cron: '0 14 * * *'  # 14:00 UTC = 23:00 JST
-  workflow_dispatch:
+# on:
+#   schedule:
+#     - cron: '0 14 * * *'  # 14:00 UTC = 23:00 JST
+#   workflow_dispatch:
 
-jobs:
-  ingest-google-youtube:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-      GOOGLE_COOKIE_ACCOUNT1: ${{ secrets.GOOGLE_COOKIE_ACCOUNT1 }}
-      GOOGLE_COOKIE_ACCOUNT2: ${{ secrets.GOOGLE_COOKIE_ACCOUNT2 }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+# jobs:
+#   ingest-google-youtube:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     env:
+#       R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+#       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+#       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+#       R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+#       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+#       GOOGLE_COOKIE_ACCOUNT1: ${{ secrets.GOOGLE_COOKIE_ACCOUNT1 }}
+#       GOOGLE_COOKIE_ACCOUNT2: ${{ secrets.GOOGLE_COOKIE_ACCOUNT2 }}
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+#       - name: Install uv
+#         uses: astral-sh/setup-uv@v4
+#         with:
+#           enable-cache: true
+#           cache-dependency-glob: "uv.lock"
 
-      - name: Set up Python 3.13
-        run: uv python install 3.13
+#       - name: Set up Python 3.13
+#         run: uv python install 3.13
 
-      - name: Install Playwright and dependencies
-        run: |
-          uv sync
-          uv run playwright install --with-deps chromium
+#       - name: Install Playwright and dependencies
+#         run: |
+#           uv sync
+#           uv run playwright install --with-deps chromium
 
-      - name: Run Google YouTube ingestion
-        run: uv run python -m ingest.google_activity.main
+#       - name: Run Google YouTube ingestion
+#         run: uv run python -m ingest.google_activity.main
 
-      - name: Verify Parquet Data Integrity (R2)
-        if: success()
-        env:
-          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-        run: |
-          uv run python - << 'PY'
-          import duckdb
-          import os
+#       - name: Verify Parquet Data Integrity (R2)
+#         if: success()
+#         env:
+#           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+#           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+#           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+#           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+#         run: |
+#           uv run python - << 'PY'
+#           import duckdb
+#           import os
 
-          endpoint_url = os.environ["R2_ENDPOINT_URL"]
-          access_key_id = os.environ["R2_ACCESS_KEY_ID"]
-          secret_access_key = os.environ["R2_SECRET_ACCESS_KEY"]
-          bucket_name = os.environ["R2_BUCKET_NAME"]
+#           endpoint_url = os.environ["R2_ENDPOINT_URL"]
+#           access_key_id = os.environ["R2_ACCESS_KEY_ID"]
+#           secret_access_key = os.environ["R2_SECRET_ACCESS_KEY"]
+#           bucket_name = os.environ["R2_BUCKET_NAME"]
 
-          conn = duckdb.connect(":memory:")
-          conn.execute("INSTALL httpfs; LOAD httpfs;")
-          conn.execute(f"""
-              CREATE SECRET (
-                  TYPE S3,
-                  KEY_ID '{access_key_id}',
-                  SECRET '{secret_access_key}',
-                  REGION 'auto',
-                  ENDPOINT '{endpoint_url.replace("https://", "")}',
-                  URL_STYLE 'path'
-              );
-          """)
+#           conn = duckdb.connect(":memory:")
+#           conn.execute("INSTALL httpfs; LOAD httpfs;")
+#           conn.execute(f"""
+#               CREATE SECRET (
+#                   TYPE S3,
+#                   KEY_ID '{access_key_id}',
+#                   SECRET '{secret_access_key}',
+#                   REGION 'auto',
+#                   ENDPOINT '{endpoint_url.replace("https://", "")}',
+#                   URL_STYLE 'path'
+#               );
+#           """)
 
-          parquet_url = f"s3://{bucket_name}/events/youtube/watch_history/**/*.parquet"
-          print(f"🧐 Querying: {parquet_url}")
+#           parquet_url = f"s3://{bucket_name}/events/youtube/watch_history/**/*.parquet"
+#           print(f"🧐 Querying: {parquet_url}")
 
-          try:
-              count = conn.execute(f"SELECT COUNT(*) FROM read_parquet('{parquet_url}')").fetchone()[0]
-              latest = conn.execute(f"SELECT MAX(watched_at_utc) FROM read_parquet('{parquet_url}')").fetchone()[0]
-              unique_videos = conn.execute(f"SELECT COUNT(DISTINCT video_id) FROM read_parquet('{parquet_url}')").fetchone()[0]
+#           try:
+#               count = conn.execute(f"SELECT COUNT(*) FROM read_parquet('{parquet_url}')").fetchone()[0]
+#               latest = conn.execute(f"SELECT MAX(watched_at_utc) FROM read_parquet('{parquet_url}')").fetchone()[0]
+#               unique_videos = conn.execute(f"SELECT COUNT(DISTINCT video_id) FROM read_parquet('{parquet_url}')").fetchone()[0]
 
-              print(f"✅ Total watch events in R2: {count}")
-              print(f"✅ Unique videos in R2: {unique_videos}")
-              print(f"✅ Latest watch in R2: {latest}")
-          except Exception as e:
-              print(f"⚠️ Verification failed or no data: {e}")
-          finally:
-              conn.close()
-          PY
+#               print(f"✅ Total watch events in R2: {count}")
+#               print(f"✅ Unique videos in R2: {unique_videos}")
+#               print(f"✅ Latest watch in R2: {latest}")
+#           except Exception as e:
+#               print(f"⚠️ Verification failed or no data: {e}")
+#           finally:
+#               conn.close()
+#           PY
 
-      - name: Verify YouTube Master Data Integrity (R2)
-        if: success()
-        env:
-          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          R2_MASTER_PATH: ${{ secrets.R2_MASTER_PATH }}
-        run: |
-          uv run python - << 'PY'
-          import duckdb
-          import os
+#       - name: Verify YouTube Master Data Integrity (R2)
+#         if: success()
+#         env:
+#           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+#           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+#           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+#           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+#           R2_MASTER_PATH: ${{ secrets.R2_MASTER_PATH }}
+#         run: |
+#           uv run python - << 'PY'
+#           import duckdb
+#           import os
 
-          endpoint_url = os.environ["R2_ENDPOINT_URL"]
-          access_key_id = os.environ["R2_ACCESS_KEY_ID"]
-          secret_access_key = os.environ["R2_SECRET_ACCESS_KEY"]
-          bucket_name = os.environ["R2_BUCKET_NAME"]
-          master_path = os.getenv("R2_MASTER_PATH", "master/")
-          if not master_path.endswith("/"):
-              master_path = f"{master_path}/"
+#           endpoint_url = os.environ["R2_ENDPOINT_URL"]
+#           access_key_id = os.environ["R2_ACCESS_KEY_ID"]
+#           secret_access_key = os.environ["R2_SECRET_ACCESS_KEY"]
+#           bucket_name = os.environ["R2_BUCKET_NAME"]
+#           master_path = os.getenv("R2_MASTER_PATH", "master/")
+#           if not master_path.endswith("/"):
+#               master_path = f"{master_path}/"
 
-          conn = duckdb.connect(":memory:")
-          conn.execute("INSTALL httpfs; LOAD httpfs;")
-          conn.execute(f"""
-              CREATE SECRET (
-                  TYPE S3,
-                  KEY_ID '{access_key_id}',
-                  SECRET '{secret_access_key}',
-                  REGION 'auto',
-                  ENDPOINT '{endpoint_url.replace("https://", "")}',
-                  URL_STYLE 'path'
-              );
-          """)
+#           conn = duckdb.connect(":memory:")
+#           conn.execute("INSTALL httpfs; LOAD httpfs;")
+#           conn.execute(f"""
+#               CREATE SECRET (
+#                   TYPE S3,
+#                   KEY_ID '{access_key_id}',
+#                   SECRET '{secret_access_key}',
+#                   REGION 'auto',
+#                   ENDPOINT '{endpoint_url.replace("https://", "")}',
+#                   URL_STYLE 'path'
+#               );
+#           """)
 
-          videos_url = f"s3://{bucket_name}/{master_path}youtube/videos/**/*.parquet"
-          channels_url = f"s3://{bucket_name}/{master_path}youtube/channels/**/*.parquet"
-          print(f"🧐 Querying: {videos_url}")
-          print(f"🧐 Querying: {channels_url}")
+#           videos_url = f"s3://{bucket_name}/{master_path}youtube/videos/**/*.parquet"
+#           channels_url = f"s3://{bucket_name}/{master_path}youtube/channels/**/*.parquet"
+#           print(f"🧐 Querying: {videos_url}")
+#           print(f"🧐 Querying: {channels_url}")
 
-          try:
-              video_count = conn.execute(
-                  f"SELECT COUNT(*) FROM read_parquet('{videos_url}')"
-              ).fetchone()[0]
-              channel_count = conn.execute(
-                  f"SELECT COUNT(*) FROM read_parquet('{channels_url}')"
-              ).fetchone()[0]
+#           try:
+#               video_count = conn.execute(
+#                   f"SELECT COUNT(*) FROM read_parquet('{videos_url}')"
+#               ).fetchone()[0]
+#               channel_count = conn.execute(
+#                   f"SELECT COUNT(*) FROM read_parquet('{channels_url}')"
+#               ).fetchone()[0]
 
-              print(f"✅ Total video masters in R2: {video_count}")
-              print(f"✅ Total channel masters in R2: {channel_count}")
-          except Exception as e:
-              print(f"⚠️ Master data verification failed or no data: {e}")
-          finally:
-              conn.close()
-          PY
+#               print(f"✅ Total video masters in R2: {video_count}")
+#               print(f"✅ Total channel masters in R2: {channel_count}")
+#           except Exception as e:
+#               print(f"⚠️ Master data verification failed or no data: {e}")
+#           finally:
+#               conn.close()
+#           PY
 
-      - name: Upload logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: youtube-pipeline-logs-${{ github.run_number }}
-          path: |
-            *.log
-            logs/
-          retention-days: 7
-          if-no-files-found: ignore
+#       - name: Upload logs on failure
+#         if: failure()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: youtube-pipeline-logs-${{ github.run_number }}
+#           path: |
+#             *.log
+#             logs/
+#           retention-days: 7
+#           if-no-files-found: ignore
