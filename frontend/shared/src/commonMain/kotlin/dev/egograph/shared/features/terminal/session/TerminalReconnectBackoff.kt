@@ -43,8 +43,12 @@ data class TerminalReconnectBackoff(
         return if (jitterPercentage > 0.0) {
             val jitterRange = (cappedDelay * jitterPercentage).toLong()
             val minDelay = maxOf(cappedDelay - jitterRange, baseDelayMs)
-            val maxDelay = cappedDelay + jitterRange
-            random.nextLong(minDelay, maxDelay + 1)
+            val maxDelay = minOf(cappedDelay + jitterRange, maxDelayMs)
+            if (maxDelay <= minDelay) {
+                minDelay
+            } else {
+                random.nextLong(minDelay, maxDelay + 1)
+            }
         } else {
             cappedDelay
         }

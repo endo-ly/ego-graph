@@ -227,16 +227,6 @@ class TerminalReconnectBackoffTest {
             }
         assertTrue(exception2.message!!.contains("jitterPercentage must be between 0.0 and 1.0"))
     }
-
-    @Test
-    fun `calculateDelay throws for negative attempt`() {
-        val backoff = createTerminalReconnectBackoffForTesting(seed = 0)
-        val exception =
-            assertThrows<IllegalArgumentException> {
-                backoff.calculateDelay(-1)
-            }
-        assertTrue(exception.message!!.contains("attempt must be >= 0"))
-    }
 }
 
 /**

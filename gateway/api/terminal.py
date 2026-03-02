@@ -17,7 +17,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket
 
-from gateway.config import is_tailscale_hostname
+from gateway.config import LOCAL_ALLOWED_HOSTS, is_tailscale_hostname
 from gateway.dependencies import get_config, verify_gateway_token
 from gateway.domain.models import SessionStatus
 from gateway.services.ws_token_store import terminal_ws_token_store
@@ -27,7 +27,6 @@ from gateway.services.websocket_handler import TerminalWebSocketHandler
 logger = logging.getLogger(__name__)
 
 AUTH_TIMEOUT_SECONDS = 10
-LOCAL_ALLOWED_HOSTS = {"localhost", "127.0.0.1", "::1"}
 WEBVIEW_ALLOWED_ORIGINS = {"null", "file://", "file:///"}
 
 
@@ -371,6 +370,11 @@ async def _authenticate_websocket(websocket: WebSocket, session_id: str) -> bool
         return False
     except Exception:
         logger.warning("Authentication message is invalid for session: %s", session_id)
+        await websocket.close(code=1008, reason="Unauthorized")
+        return False
+
+    if not isinstance(payload, dict):
+        logger.warning("Authentication payload is not an object for session: %s", session_id)
         await websocket.close(code=1008, reason="Unauthorized")
         return False
 
