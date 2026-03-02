@@ -18,6 +18,10 @@ from gateway.domain.models import (
     WSStatusMessage,
 )
 
+MOCK_TAILSCALE_HOST = "mock-gateway.test.ts.net"
+MOCK_TAILSCALE_ORIGIN = f"https://{MOCK_TAILSCALE_HOST}"
+MOCK_OTHER_TAILSCALE_ORIGIN = "https://other-gateway.test.ts.net"
+
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -51,8 +55,8 @@ def invalid_session_id():
 def valid_ws_headers():
     """有効な WebSocket ヘッダー。"""
     return {
-        "host": "dev-server.tail905a15.ts.net",
-        "origin": "https://dev-server.tail905a15.ts.net",
+        "host": MOCK_TAILSCALE_HOST,
+        "origin": MOCK_TAILSCALE_ORIGIN,
     }
 
 
@@ -76,6 +80,7 @@ class TestWebSocketAuthentication:
         mock_websocket = MagicMock()
         mock_websocket.query_params = {"session_id": valid_session_id}
         mock_websocket.headers = valid_ws_headers
+        mock_websocket.client = ("100.100.100.100", 12345)
         mock_websocket.accept = AsyncMock()
         mock_websocket.receive_text = AsyncMock(
             return_value=f'{{"type":"auth","ws_token":"{valid_token}"}}'
@@ -121,6 +126,7 @@ class TestWebSocketAuthentication:
         mock_websocket = MagicMock()
         mock_websocket.query_params = {"session_id": valid_session_id}
         mock_websocket.headers = valid_ws_headers
+        mock_websocket.client = ("100.100.100.100", 12345)
         mock_websocket.receive_text = AsyncMock(
             return_value=f'{{"type":"auth","ws_token":"{invalid_token}"}}'
         )
@@ -150,6 +156,7 @@ class TestWebSocketAuthentication:
         mock_websocket = MagicMock()
         mock_websocket.query_params = {"session_id": valid_session_id}
         mock_websocket.headers = valid_ws_headers
+        mock_websocket.client = ("100.100.100.100", 12345)
         mock_websocket.receive_text = AsyncMock(return_value='{"type":"auth"}')
         mock_websocket.accept = AsyncMock()
         mock_websocket.close = AsyncMock()
@@ -172,6 +179,7 @@ class TestWebSocketAuthentication:
         first_websocket = MagicMock()
         first_websocket.query_params = {"session_id": valid_session_id}
         first_websocket.headers = valid_ws_headers
+        first_websocket.client = ("100.100.100.100", 12345)
         first_websocket.accept = AsyncMock()
         first_websocket.receive_text = AsyncMock(
             return_value=f'{{"type":"auth","ws_token":"{valid_token}"}}'
@@ -181,6 +189,7 @@ class TestWebSocketAuthentication:
         replay_websocket = MagicMock()
         replay_websocket.query_params = {"session_id": valid_session_id}
         replay_websocket.headers = valid_ws_headers
+        replay_websocket.client = ("100.100.100.100", 12345)
         replay_websocket.accept = AsyncMock()
         replay_websocket.receive_text = AsyncMock(
             return_value=f'{{"type":"auth","ws_token":"{valid_token}"}}'
@@ -233,6 +242,7 @@ class TestWebSocketAuthentication:
         mock_websocket = MagicMock()
         mock_websocket.query_params = {"session_id": valid_session_id}
         mock_websocket.headers = valid_ws_headers
+        mock_websocket.client = ("100.100.100.100", 12345)
         mock_websocket.accept = AsyncMock()
         mock_websocket.receive_text = AsyncMock(
             return_value=f'{{"type":"auth","ws_token":"{valid_token}"}}'
@@ -264,6 +274,7 @@ class TestWebSocketAuthentication:
         mock_websocket = MagicMock()
         mock_websocket.query_params = {"session_id": valid_session_id}
         mock_websocket.headers = valid_ws_headers
+        mock_websocket.client = ("100.100.100.100", 12345)
         mock_websocket.accept = AsyncMock()
         mock_websocket.receive_text = AsyncMock(
             return_value=f'{{"type":"auth","ws_token":"{valid_token}"}}'
@@ -303,6 +314,7 @@ class TestSessionIdValidation:
         mock_websocket = MagicMock()
         mock_websocket.query_params = {"session_id": invalid_session_id}
         mock_websocket.headers = valid_ws_headers
+        mock_websocket.client = ("100.100.100.100", 12345)
         mock_websocket.close = AsyncMock()
 
         # Act (no patch needed - validation happens before auth)
@@ -320,6 +332,7 @@ class TestSessionIdValidation:
         mock_websocket = MagicMock()
         mock_websocket.query_params = {"session_id": "agent-0001-8"}
         mock_websocket.headers = valid_ws_headers
+        mock_websocket.client = ("100.100.100.100", 12345)
         mock_websocket.close = AsyncMock()
 
         await terminal_websocket(mock_websocket)
@@ -336,8 +349,9 @@ class TestSessionIdValidation:
         mock_websocket.query_params = {"session_id": valid_session_id}
         mock_websocket.headers = {
             "host": "example.com",
-            "origin": "https://dev-server.tail905a15.ts.net",
+            "origin": MOCK_TAILSCALE_ORIGIN,
         }
+        mock_websocket.client = ("100.100.100.100", 12345)
         mock_websocket.accept = AsyncMock()
         mock_websocket.receive_text = AsyncMock(
             return_value=f'{{"type":"auth","ws_token":"{valid_token}"}}'
@@ -359,9 +373,10 @@ class TestSessionIdValidation:
         mock_websocket = MagicMock()
         mock_websocket.query_params = {"session_id": valid_session_id}
         mock_websocket.headers = {
-            "host": "dev-server.tail905a15.ts.net",
+            "host": MOCK_TAILSCALE_HOST,
             "origin": "https://example.com",
         }
+        mock_websocket.client = ("100.100.100.100", 12345)
         mock_websocket.accept = AsyncMock()
         mock_websocket.receive_text = AsyncMock(
             return_value=f'{{"type":"auth","ws_token":"{valid_token}"}}'
@@ -386,9 +401,10 @@ class TestSessionIdValidation:
         mock_websocket = MagicMock()
         mock_websocket.query_params = {"session_id": valid_session_id}
         mock_websocket.headers = {
-            "host": "dev-server.tail905a15.ts.net",
-            "origin": "https://other-server.tail905a15.ts.net",
+            "host": MOCK_TAILSCALE_HOST,
+            "origin": MOCK_OTHER_TAILSCALE_ORIGIN,
         }
+        mock_websocket.client = ("100.100.100.100", 12345)
         mock_websocket.accept = AsyncMock()
         mock_websocket.receive_text = AsyncMock(
             return_value=f'{{"type":"auth","ws_token":"{valid_token}"}}'
@@ -401,6 +417,34 @@ class TestSessionIdValidation:
         mock_websocket.close.assert_called_once_with(
             code=1008,
             reason="Invalid origin",
+        )
+
+    @pytest.mark.asyncio
+    async def test_websocket_rejects_non_tailnet_client_ip(
+        self,
+        valid_session_id,
+        valid_token,
+    ):
+        """Tailnet外IPの接続元はWebSocket握手時に拒否することを確認する。"""
+        mock_websocket = MagicMock()
+        mock_websocket.query_params = {"session_id": valid_session_id}
+        mock_websocket.headers = {
+            "host": MOCK_TAILSCALE_HOST,
+            "origin": MOCK_TAILSCALE_ORIGIN,
+        }
+        mock_websocket.client = ("8.8.8.8", 44321)
+        mock_websocket.accept = AsyncMock()
+        mock_websocket.receive_text = AsyncMock(
+            return_value=f'{{"type":"auth","ws_token":"{valid_token}"}}'
+        )
+        mock_websocket.close = AsyncMock()
+
+        await terminal_websocket(mock_websocket)
+
+        mock_websocket.accept.assert_not_called()
+        mock_websocket.close.assert_called_once_with(
+            code=1008,
+            reason="Invalid client ip",
         )
 
 

@@ -5,7 +5,9 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from gateway.config import GatewayConfig
+from gateway.config import GatewayConfig, is_allowed_client_ip, is_tailscale_ip
+
+MOCK_TAILSCALE_ORIGIN = "https://mock-gateway.test.ts.net"
 
 # ============================================================================
 # GatewayConfigテスト
@@ -54,7 +56,7 @@ class TestGatewayConfig:
             "GATEWAY_PORT": "9001",
             "GATEWAY_API_KEY": "env_api_key_32_bytes_or_more",
             "GATEWAY_WEBHOOK_SECRET": "env_webhook_secret_32_bytes_or_more",
-            "CORS_ORIGINS": "https://dev-server.tail905a15.ts.net",
+            "CORS_ORIGINS": MOCK_TAILSCALE_ORIGIN,
             "LOG_LEVEL": "DEBUG",
             "GATEWAY_RELOAD": "true",
             "FCM_PROJECT_ID": "test-project",
@@ -76,7 +78,7 @@ class TestGatewayConfig:
             config.webhook_secret.get_secret_value()
             == "env_webhook_secret_32_bytes_or_more"
         )
-        assert config.cors_origins == "https://dev-server.tail905a15.ts.net"
+        assert config.cors_origins == MOCK_TAILSCALE_ORIGIN
         assert config.log_level == "DEBUG"
         assert config.reload is True
         assert config.fcm_project_id == "test-project"
@@ -158,6 +160,35 @@ class TestGatewayConfig:
 
         assert "CORS_ORIGINS" in str(exc_info.value)
 
+    def test_config_accepts_wildcard_cors_origins(self):
+        """CORS_ORIGINS のワイルドカード指定を受け入れることを確認する。"""
+        env_vars = {
+            "USE_ENV_FILE": "false",
+            "GATEWAY_API_KEY": "env_api_key_32_bytes_or_more",
+            "GATEWAY_WEBHOOK_SECRET": "env_webhook_secret_32_bytes_or_more",
+            "CORS_ORIGINS": "*",
+        }
+
+        with patch.dict("os.environ", env_vars, clear=True):
+            config = GatewayConfig(_env_file=None)
+
+        assert config.cors_origins == "*"
+
+    def test_config_rejects_mixed_wildcard_and_specific_cors_origins(self):
+        """CORS_ORIGINS のワイルドカードと個別指定の混在を拒否することを確認する。"""
+        env_vars = {
+            "USE_ENV_FILE": "false",
+            "GATEWAY_API_KEY": "env_api_key_32_bytes_or_more",
+            "GATEWAY_WEBHOOK_SECRET": "env_webhook_secret_32_bytes_or_more",
+            "CORS_ORIGINS": f"*,{MOCK_TAILSCALE_ORIGIN}",
+        }
+
+        with patch.dict("os.environ", env_vars, clear=True):
+            with pytest.raises(ValidationError) as exc_info:
+                GatewayConfig(_env_file=None)
+
+        assert "CORS_ORIGINS" in str(exc_info.value)
+
     def test_config_requires_api_key(self):
         """必須のAPIキーが未設定の場合はバリデーションエラーになることを確認する。"""
         # Arrange
@@ -229,7 +260,7 @@ class TestGatewayConfig:
             "USE_ENV_FILE": "false",
             "GATEWAY_API_KEY": "test_api_key_32_bytes_or_more",
             "GATEWAY_WEBHOOK_SECRET": "test_webhook_secret_32_bytes_or_more",
-            "CORS_ORIGINS": "https://dev-server.tail905a15.ts.net",
+            "CORS_ORIGINS": MOCK_TAILSCALE_ORIGIN,
             "LOG_LEVEL": "DEBUG",
         }
 
@@ -293,3 +324,37 @@ class TestModuleConstants:
 
             importlib.reload(config_module)
             assert config_module.GATEWAY_ENV_FILES == []
+
+
+class TestNetworkValidationHelpers:
+    """ネットワーク検証ヘルパーのテスト。"""
+
+    @pytest.mark.parametrize(
+        ("ip", "expected"),
+        [
+            ("100.64.0.1", True),
+            ("100.127.255.254", True),
+            ("fd7a:115c:a1e0::1", True),
+            ("192.168.1.10", False),
+            ("8.8.8.8", False),
+            ("invalid", False),
+        ],
+    )
+    def test_is_tailscale_ip(self, ip: str, expected: bool):
+        """is_tailscale_ip が Tailscale 範囲のみ真を返すことを確認する。"""
+        assert is_tailscale_ip(ip) is expected
+
+    @pytest.mark.parametrize(
+        ("ip", "expected"),
+        [
+            ("127.0.0.1", True),
+            ("::1", True),
+            ("100.100.100.100", True),
+            ("fd7a:115c:a1e0::1234", True),
+            ("10.0.0.1", False),
+            ("example.com", False),
+        ],
+    )
+    def test_is_allowed_client_ip(self, ip: str, expected: bool):
+        """is_allowed_client_ip が localhost と Tailnet のみ許可することを確認する。"""
+        assert is_allowed_client_ip(ip) is expected

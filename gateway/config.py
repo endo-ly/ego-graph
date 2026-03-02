@@ -5,6 +5,7 @@
 
 import logging
 import os
+from ipaddress import ip_address, ip_network
 from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, field_validator
@@ -14,12 +15,36 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 USE_ENV_FILE = os.getenv("USE_ENV_FILE", "true").lower() in ("true", "1", "yes")
 GATEWAY_ENV_FILES = ["gateway/.env"] if USE_ENV_FILE else []
 LOCAL_ALLOWED_HOSTS = {"localhost", "127.0.0.1", "::1"}
+TAILSCALE_IP_RANGES = (
+    ip_network("100.64.0.0/10"),
+    ip_network("fd7a:115c:a1e0::/48"),
+)
 
 
 def is_tailscale_hostname(hostname: str) -> bool:
     """Tailscale のマジックドメインかどうかを判定する。"""
     host = hostname.strip().lower().rstrip(".")
     return host.endswith(".ts.net")
+
+
+def is_tailscale_ip(value: str) -> bool:
+    """IP が Tailscale 割り当て範囲かどうかを判定する。"""
+    try:
+        address = ip_address(value.strip())
+    except ValueError:
+        return False
+    return any(address in network for network in TAILSCALE_IP_RANGES)
+
+
+def is_allowed_client_ip(value: str) -> bool:
+    """接続元IPが許可対象（localhost または Tailnet）か判定する。"""
+    try:
+        address = ip_address(value.strip())
+    except ValueError:
+        return False
+    if address.is_loopback:
+        return True
+    return is_tailscale_ip(value)
 
 
 class GatewayConfig(BaseSettings):
@@ -44,7 +69,7 @@ class GatewayConfig(BaseSettings):
     # Webhook シークレット（必須、32バイト以上推奨）
     webhook_secret: SecretStr = Field(..., alias="GATEWAY_WEBHOOK_SECRET")
 
-    # CORS設定（空の場合はCORS無効、設定する場合は https://*.ts.net のみ）
+    # CORS設定（空は無効、"*"はワイルドカード、それ以外は https://*.ts.net のみ）
     cors_origins: str = Field("", alias="CORS_ORIGINS")
 
     # ロギング
@@ -84,6 +109,11 @@ class GatewayConfig(BaseSettings):
             return ""
 
         origins = [origin.strip() for origin in value.split(",") if origin.strip()]
+        if "*" in origins:
+            if len(origins) > 1:
+                raise ValueError("CORS_ORIGINS wildcard '*' must be used alone")
+            return "*"
+
         normalized: list[str] = []
         for origin in origins:
             parsed = urlparse(origin)

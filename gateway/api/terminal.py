@@ -7,7 +7,6 @@ import asyncio
 import json
 import logging
 import re
-import secrets
 from urllib.parse import urlparse
 
 import anyio
@@ -17,12 +16,16 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from gateway.config import LOCAL_ALLOWED_HOSTS, is_tailscale_hostname
+from gateway.config import (
+    LOCAL_ALLOWED_HOSTS,
+    is_allowed_client_ip,
+    is_tailscale_hostname,
+)
 from gateway.dependencies import get_config, verify_gateway_token
 from gateway.domain.models import SessionStatus
-from gateway.services.ws_token_store import terminal_ws_token_store
 from gateway.infrastructure.tmux import list_sessions, session_exists
 from gateway.services.websocket_handler import TerminalWebSocketHandler
+from gateway.services.ws_token_store import terminal_ws_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +209,10 @@ async def terminal_websocket(websocket: WebSocket) -> None:
     # クエリパラメータを取得
     session_id = websocket.query_params.get("session_id")
 
+    if not _validate_websocket_client_ip(websocket):
+        await websocket.close(code=1008, reason="Invalid client ip")
+        return
+
     if not _validate_websocket_host_header(websocket):
         await websocket.close(code=1008, reason="Invalid host")
         return
@@ -302,6 +309,23 @@ def _validate_websocket_host_header(websocket: WebSocket) -> bool:
     return True
 
 
+def _validate_websocket_client_ip(websocket: WebSocket) -> bool:
+    """WebSocket の接続元IPを検証する。"""
+    client = websocket.client
+    if client is None:
+        client_host = ""
+    elif hasattr(client, "host"):
+        client_host = str(client.host)
+    elif isinstance(client, (tuple, list)) and client:
+        client_host = str(client[0])
+    else:
+        client_host = str(client)
+    if not is_allowed_client_ip(client_host):
+        logger.warning("WebSocket rejected: invalid client ip (%s)", client_host)
+        return False
+    return True
+
+
 def _validate_websocket_origin_header(websocket: WebSocket) -> bool:
     """WebSocket の Origin ヘッダーを検証する。"""
     origin = websocket.headers.get("origin")
@@ -382,7 +406,9 @@ async def _authenticate_websocket(websocket: WebSocket, session_id: str) -> bool
         return False
 
     if not isinstance(payload, dict):
-        logger.warning("Authentication payload is not an object for session: %s", session_id)
+        logger.warning(
+            "Authentication payload is not an object for session: %s", session_id
+        )
         await websocket.close(code=1008, reason="Unauthorized")
         return False
 

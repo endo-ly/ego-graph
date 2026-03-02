@@ -29,6 +29,11 @@ cp gateway/.env.example gateway/.env
 必須環境変数:
 - `GATEWAY_API_KEY`: Gateway API Key（32バイト以上推奨）
 - `GATEWAY_WEBHOOK_SECRET`: Webhook シークレット（32バイト以上推奨）
+- `CORS_ORIGINS`: ブラウザアクセスを許可する Origin（本番は `https://<host>.ts.net` を明示）
+
+`CORS_ORIGINS` の設定指針:
+- 本番: `https://<host>.ts.net` を必要数だけカンマ区切りで指定
+- 開発: 一時的に `*` も利用可能（ただし本番非推奨）
 
 プッシュ通知利用時に必要な環境変数:
 - `FCM_PROJECT_ID`: Firebase プロジェクト ID

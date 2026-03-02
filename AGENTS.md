@@ -81,7 +81,7 @@ uv run pytest backend/tests --cov=backend
 uv run python -m backend.dev_tools.chat_cli   # デバッグ用CLIツール
 
 # === Gateway ===
-tmux new-session -d -s egograph-gateway 'uv run python -m gateway.main'
+tmux new-session -d -s gateway 'uv run python -m gateway.main'
 uv run pytest gateway/tests --cov=gateway
 
 # === Frontend (cd frontend) ===
