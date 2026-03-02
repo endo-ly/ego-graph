@@ -13,10 +13,12 @@ import io.ktor.http.encodeURLParameter
  * ターミナル設定データ
  *
  * @property wsUrl WebSocket URL
+ * @property apiKey APIキー
  * @property error エラーメッセージ
  */
 data class TerminalSettings(
     val wsUrl: String?,
+    val apiKey: String?,
     val error: String?,
 )
 
@@ -40,10 +42,24 @@ fun rememberTerminalSettings(
                     PlatformPrefsDefaults.DEFAULT_GATEWAY_API_URL,
                 ).ifBlank { getDefaultGatewayBaseUrl() }
                 .trim()
+        val apiKey =
+            preferences
+                .getString(
+                    PlatformPrefsKeys.KEY_API_KEY,
+                    PlatformPrefsDefaults.DEFAULT_API_KEY,
+                ).trim()
+
         if (gatewayUrl.isBlank()) {
             TerminalSettings(
                 wsUrl = null,
+                apiKey = null,
                 error = "Gateway API URL is not configured",
+            )
+        } else if (apiKey.isBlank()) {
+            TerminalSettings(
+                wsUrl = null,
+                apiKey = null,
+                error = "API key is not configured",
             )
         } else {
             val normalizedUrl =
@@ -52,6 +68,7 @@ fun rememberTerminalSettings(
                 } catch (_: IllegalArgumentException) {
                     return@remember TerminalSettings(
                         wsUrl = null,
+                        apiKey = null,
                         error = "Gateway API URL is invalid",
                     )
                 }
@@ -63,6 +80,7 @@ fun rememberTerminalSettings(
                 }
             TerminalSettings(
                 wsUrl = "$wsBaseUrl/api/ws/terminal?session_id=${agentId.encodeURLParameter()}",
+                apiKey = apiKey,
                 error = null,
             )
         }
