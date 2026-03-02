@@ -12,9 +12,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-private fun Color.luminance(): Float {
-    return (0.299f * red + 0.587f * green + 0.114f * blue)
-}
+private fun Color.luminance(): Float = (0.299f * red + 0.587f * green + 0.114f * blue)
 
 @Immutable
 data class EgoGraphDimens(
