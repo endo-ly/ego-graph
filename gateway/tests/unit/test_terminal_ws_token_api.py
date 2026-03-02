@@ -1,12 +1,12 @@
 """WebSocketトークン発行APIの単体テスト。"""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.exceptions import HTTPException
 
 from gateway.api.terminal import issue_ws_token
-
 
 # ============================================================================
 # Fixtures
@@ -137,8 +137,6 @@ class TestIssueWsToken:
             # Assert
             assert response.status_code == 200
             body = response.body.decode()
-            import json
-
             result = json.loads(body)
             assert result["ws_token"] == test_token
             assert result["expires_in_seconds"] == 60
