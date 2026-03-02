@@ -82,4 +82,4 @@ jobs:
         with:
           model: zai-coding-plan/glm-4.7
           share: false
-          prompt: "/pr-review-back-workflow"
+          prompt: "`/pr-review-back-workflow` Skillに従って作業を進めてください"
