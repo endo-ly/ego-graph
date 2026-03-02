@@ -21,7 +21,7 @@ from gateway.config import (
     is_allowed_client_ip,
     is_tailscale_hostname,
 )
-from gateway.dependencies import get_config, verify_gateway_token
+from gateway.dependencies import get_config
 from gateway.domain.models import SessionStatus
 from gateway.infrastructure.tmux import list_sessions, session_exists
 from gateway.services.websocket_handler import TerminalWebSocketHandler
@@ -53,8 +53,6 @@ async def get_sessions(request: Request) -> JSONResponse:
     Raises:
         HTTPException: tmux コマンドが失敗した場合
     """
-    await verify_gateway_token(request)
-
     try:
         tmux_sessions = await anyio.to_thread.run_sync(list_sessions)
     except OSError as e:
@@ -79,8 +77,6 @@ async def get_sessions(request: Request) -> JSONResponse:
 
 async def get_session(request: Request) -> JSONResponse:
     """指定された tmux セッション情報を取得します。"""
-    await verify_gateway_token(request)
-
     session_id = request.path_params.get("session_id")
     if not session_id or not _validate_session_id(session_id):
         raise HTTPException(status_code=400, detail="Invalid session_id format")
@@ -118,8 +114,6 @@ async def issue_ws_token(request: Request) -> JSONResponse:
     Raises:
         HTTPException: 認証失敗(401)、セッションID形式不正(400)、セッション不在(404)
     """
-    await verify_gateway_token(request)
-
     session_id = request.path_params.get("session_id")
     if not session_id or not _validate_session_id(session_id):
         raise HTTPException(status_code=400, detail="Invalid session_id format")

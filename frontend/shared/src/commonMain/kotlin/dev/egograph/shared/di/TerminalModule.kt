@@ -25,17 +25,12 @@ val terminalModule =
             }
         }
 
-        single<String>(qualifier = named("GatewayApiKey")) {
-            val preferences = getOrNull<PlatformPreferences>()
-            preferences?.getString(PlatformPrefsKeys.KEY_API_KEY, PlatformPrefsDefaults.DEFAULT_API_KEY) ?: ""
-        }
-
         // === RepositoryClient (Gateway API) ===
         single<RepositoryClient>(qualifier = named("GatewayClient")) {
             RepositoryClient(
                 httpClient = get(),
                 baseUrl = get(qualifier = named("GatewayBaseUrl")),
-                apiKey = get(qualifier = named("GatewayApiKey")),
+                apiKey = "",
             )
         }
 

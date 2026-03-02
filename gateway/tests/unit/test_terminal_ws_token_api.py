@@ -1,12 +1,12 @@
 """WebSocketトークン発行APIの単体テスト。"""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.exceptions import HTTPException
 
 from gateway.api.terminal import issue_ws_token
-
 
 # ============================================================================
 # Fixtures
@@ -17,7 +17,7 @@ from gateway.api.terminal import issue_ws_token
 def mock_request():
     """テスト用リクエスト。"""
     request = MagicMock()
-    request.headers = {"X-API-Key": "valid_api_key_32_bytes_or_more"}
+    request.headers = {}
     request.path_params = {}
     return request
 
@@ -31,38 +31,13 @@ class TestIssueWsToken:
     """issue_ws_tokenエンドポイントのテスト。"""
 
     @pytest.mark.asyncio
-    async def test_issue_ws_token_missing_api_key_returns_401(self, mock_request):
-        """APIキーが欠落している場合に401エラーを返すことを確認する。"""
-        # Arrange
-        mock_request.headers = {}  # APIキーを含まない
+    async def test_issue_ws_token_does_not_require_api_key(self, mock_request):
+        """APIキー未指定でも、session_id不正時は400になることを確認する。"""
+        with pytest.raises(HTTPException) as exc_info:
+            await issue_ws_token(mock_request)
 
-        with patch("gateway.api.terminal.verify_gateway_token") as mock_verify:
-            mock_verify.side_effect = HTTPException(
-                status_code=401, detail="Missing API key"
-            )
-
-            # Act & Assert
-            with pytest.raises(HTTPException) as exc_info:
-                await issue_ws_token(mock_request)
-
-            assert exc_info.value.status_code == 401
-            assert "Missing API key" in exc_info.value.detail
-
-    @pytest.mark.asyncio
-    async def test_issue_ws_token_invalid_api_key_returns_401(self, mock_request):
-        """無効なAPIキーの場合に401エラーを返すことを確認する。"""
-        # Arrange
-        with patch("gateway.api.terminal.verify_gateway_token") as mock_verify:
-            mock_verify.side_effect = HTTPException(
-                status_code=401, detail="Invalid API key"
-            )
-
-            # Act & Assert
-            with pytest.raises(HTTPException) as exc_info:
-                await issue_ws_token(mock_request)
-
-            assert exc_info.value.status_code == 401
-            assert "Invalid API key" in exc_info.value.detail
+        assert exc_info.value.status_code == 400
+        assert "Invalid session_id format" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_issue_ws_token_missing_session_id_returns_400(self, mock_request):
@@ -70,13 +45,12 @@ class TestIssueWsToken:
         # Arrange
         mock_request.path_params = {}  # session_idを含まない
 
-        with patch("gateway.api.terminal.verify_gateway_token"):
-            # Act & Assert
-            with pytest.raises(HTTPException) as exc_info:
-                await issue_ws_token(mock_request)
+        # Act & Assert
+        with pytest.raises(HTTPException) as exc_info:
+            await issue_ws_token(mock_request)
 
-            assert exc_info.value.status_code == 400
-            assert "Invalid session_id format" in exc_info.value.detail
+        assert exc_info.value.status_code == 400
+        assert "Invalid session_id format" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_issue_ws_token_invalid_session_id_format_returns_400(
@@ -86,13 +60,12 @@ class TestIssueWsToken:
         # Arrange
         mock_request.path_params = {"session_id": "invalid-format"}
 
-        with patch("gateway.api.terminal.verify_gateway_token"):
-            # Act & Assert
-            with pytest.raises(HTTPException) as exc_info:
-                await issue_ws_token(mock_request)
+        # Act & Assert
+        with pytest.raises(HTTPException) as exc_info:
+            await issue_ws_token(mock_request)
 
-            assert exc_info.value.status_code == 400
-            assert "Invalid session_id format" in exc_info.value.detail
+        assert exc_info.value.status_code == 400
+        assert "Invalid session_id format" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_issue_ws_token_session_not_found_returns_404(self, mock_request):
@@ -101,7 +74,6 @@ class TestIssueWsToken:
         mock_request.path_params = {"session_id": "agent-0001"}
 
         with (
-            patch("gateway.api.terminal.verify_gateway_token"),
             patch("gateway.api.terminal.anyio.to_thread.run_sync") as mock_run_sync,
         ):
             mock_run_sync.return_value = False
@@ -121,7 +93,6 @@ class TestIssueWsToken:
         test_token = "test_ws_token_32_bytes_or_more"
 
         with (
-            patch("gateway.api.terminal.verify_gateway_token"),
             patch("gateway.api.terminal.anyio.to_thread.run_sync") as mock_run_sync,
             patch("gateway.api.terminal.terminal_ws_token_store") as mock_store,
             patch("gateway.api.terminal.get_config") as mock_get_config,
@@ -137,8 +108,6 @@ class TestIssueWsToken:
             # Assert
             assert response.status_code == 200
             body = response.body.decode()
-            import json
-
             result = json.loads(body)
             assert result["ws_token"] == test_token
             assert result["expires_in_seconds"] == 60
@@ -153,7 +122,6 @@ class TestIssueWsToken:
         test_token = "test_ws_token_32_bytes_or_more"
 
         with (
-            patch("gateway.api.terminal.verify_gateway_token"),
             patch("gateway.api.terminal.anyio.to_thread.run_sync") as mock_run_sync,
             patch("gateway.api.terminal.terminal_ws_token_store") as mock_store,
             patch("gateway.api.terminal.get_config") as mock_get_config,
@@ -176,7 +144,6 @@ class TestIssueWsToken:
         valid_session_ids = ["agent-0000", "agent-0001", "agent-9999"]
 
         with (
-            patch("gateway.api.terminal.verify_gateway_token"),
             patch("gateway.api.terminal.anyio.to_thread.run_sync") as mock_run_sync,
             patch("gateway.api.terminal.terminal_ws_token_store") as mock_store,
             patch("gateway.api.terminal.get_config") as mock_get_config,
