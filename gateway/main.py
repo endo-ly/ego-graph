@@ -53,7 +53,8 @@ def create_app() -> Starlette:
     cors_origins = _parse_cors_origins(config.cors_origins)
     if not cors_origins:
         logger.warning(
-            "CORS_ORIGINS is empty; cross-origin browser access is disabled"
+            "CORS_ORIGINS is empty; cross-origin browser access is disabled and "
+            "TrustedHostMiddleware will restrict remote access to local hosts only"
         )
     allowed_hosts = _build_allowed_hosts(cors_origins)
     middleware = [

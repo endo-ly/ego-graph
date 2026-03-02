@@ -159,7 +159,6 @@ private fun TerminalContent(
                         val delayMs = backoff.calculateDelay(attempt)
                         delay(delayMs)
                         if (!connectionState) {
-                            reconnectAttempts = attempt + 1
                             isConnecting = true
                             val result = terminalRepository.issueWsToken(agentId)
                             result
@@ -168,6 +167,7 @@ private fun TerminalContent(
                                 }.onFailure {
                                     terminalError = "Reconnection failed"
                                     isConnecting = false
+                                    reconnectAttempts = attempt + 1
                                 }
                         }
                     }

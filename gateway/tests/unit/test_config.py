@@ -116,7 +116,7 @@ class TestGatewayConfig:
         assert "TERMINAL_WS_TOKEN_TTL_SECONDS" in str(exc_info.value)
 
     def test_config_accepts_min_ws_token_ttl(self):
-        """TERMINAL_WS_TOKEN_TTL_SECONDS が下限（30秒）を受け入れることを確認する。"""
+        """TERMINAL_WS_TOKEN_TTL_SECONDS が下限(30秒)を受け入れることを確認する。"""
         env_vars = {
             "USE_ENV_FILE": "false",
             "GATEWAY_API_KEY": "env_api_key_32_bytes_or_more",
@@ -130,7 +130,7 @@ class TestGatewayConfig:
         assert config.terminal_ws_token_ttl_seconds == 30
 
     def test_config_accepts_max_ws_token_ttl(self):
-        """TERMINAL_WS_TOKEN_TTL_SECONDS が上限（120秒）を受け入れることを確認する。"""
+        """TERMINAL_WS_TOKEN_TTL_SECONDS が上限(120秒)を受け入れることを確認する。"""
         env_vars = {
             "USE_ENV_FILE": "false",
             "GATEWAY_API_KEY": "env_api_key_32_bytes_or_more",
