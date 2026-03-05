@@ -11,6 +11,13 @@ from backend.api.schemas.data import (
     WatchHistoryResponse,
     WatchingStatsResponse,
 )
+from backend.api.schemas.github import (
+    ActivityStatsResponse,
+    CommitResponse,
+    PullRequestResponse,
+    RepoSummaryStatsResponse,
+    RepositoryResponse,
+)
 from backend.api.schemas.models import ModelsResponse
 from backend.api.schemas.system_prompt import (
     SystemPromptResponse,
@@ -38,6 +45,12 @@ __all__ = [
     "WatchHistoryResponse",
     "WatchingStatsResponse",
     "TopChannelResponse",
+    # GitHub API スキーマ
+    "PullRequestResponse",
+    "CommitResponse",
+    "RepositoryResponse",
+    "ActivityStatsResponse",
+    "RepoSummaryStatsResponse",
     # Models API スキーマ
     "ModelsResponse",
     "LLMModel",

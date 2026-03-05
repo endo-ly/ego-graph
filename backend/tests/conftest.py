@@ -397,3 +397,173 @@ def test_client_with_chat_db(tmp_path, monkeypatch):
     client = TestClient(app)
 
     yield client
+
+
+# ========================================
+# GitHub テスト用フィクスチャ
+# ========================================
+
+
+class GitHubConnectionWrapper:
+    """GitHub用DuckDB接続のラッパー（テスト用の属性を保持）。"""
+
+    def __init__(
+        self,
+        conn,
+        prs_parquet_path: str,
+        commits_parquet_path: str,
+        repos_parquet_path: str,
+    ):
+        self._conn = conn
+        self.test_prs_parquet_path = prs_parquet_path
+        self.test_commits_parquet_path = commits_parquet_path
+        self.test_repos_parquet_path = repos_parquet_path
+
+    def __getattr__(self, name):
+        """属性アクセスを内部の接続オブジェクトに委譲。"""
+        return getattr(self._conn, name)
+
+
+@pytest.fixture
+def github_with_sample_data(duckdb_conn, tmp_path):
+    """サンプルGitHub Parquetデータを持つDuckDB。"""
+    # PRイベントデータ作成
+    prs_data = pd.DataFrame(
+        {
+            "pr_event_id": ["pr_event_1", "pr_event_2", "pr_event_3"],
+            "pr_key": ["pr_key_1", "pr_key_1", "pr_key_2"],
+            "source": ["github"] * 3,
+            "owner": ["test_owner"] * 3,
+            "repo": ["test_repo"] * 3,
+            "repo_full_name": ["test_owner/test_repo"] * 3,
+            "pr_number": [1, 1, 2],
+            "pr_id": [101, 101, 102],
+            "action": ["opened", "merged", "opened"],
+            "state": ["open", "closed", "open"],
+            "is_merged": [False, True, False],
+            "title": ["Test PR 1", "Test PR 1", "Test PR 2"],
+            "labels": [["bug"], ["bug", "enhancement"], ["feature"]],
+            "base_ref": ["main"] * 3,
+            "head_ref": ["feature-1", "feature-1", "feature-2"],
+            "created_at_utc": pd.to_datetime(
+                ["2024-01-01 10:00:00", "2024-01-01 10:00:00", "2024-01-02 10:00:00"]
+            ),
+            "updated_at_utc": pd.to_datetime(
+                ["2024-01-01 10:00:00", "2024-01-02 10:00:00", "2024-01-02 10:00:00"]
+            ),
+            "closed_at_utc": pd.to_datetime(
+                [None, "2024-01-02 10:00:00", None]
+            ),
+            "merged_at_utc": pd.to_datetime(
+                [None, "2024-01-02 10:00:00", None]
+            ),
+            "comments_count": [5, 10, 3],
+            "review_comments_count": [2, 5, 1],
+            "reviews_count": [1, 2, 0],
+            "commits_count": [3, 5, 1],
+            "additions": [100, 150, 50],
+            "deletions": [20, 30, 10],
+            "changed_files_count": [5, 8, 2],
+            "ingested_at_utc": pd.to_datetime(
+                ["2024-01-01 10:00:00"] * 3
+            ),
+        }
+    )
+
+    # Commitイベントデータ作成
+    commits_data = pd.DataFrame(
+        {
+            "commit_event_id": ["commit_1", "commit_2", "commit_3"],
+            "source": ["github"] * 3,
+            "owner": ["test_owner"] * 3,
+            "repo": ["test_repo"] * 3,
+            "repo_full_name": ["test_owner/test_repo"] * 3,
+            "sha": ["abc123", "def456", "ghi789"],
+            "message": [
+                "Initial commit",
+                "Add feature",
+                "Fix bug",
+            ],
+            "committed_at_utc": pd.to_datetime(
+                ["2024-01-01 10:00:00", "2024-01-02 10:00:00", "2024-01-03 10:00:00"]
+            ),
+            "changed_files_count": [5, 3, 1],
+            "additions": [100, 50, 10],
+            "deletions": [20, 10, 5],
+            "ingested_at_utc": pd.to_datetime(
+                ["2024-01-01 10:00:00"] * 3
+            ),
+        }
+    )
+
+    # Repositoryマスターデータ作成
+    repos_data = pd.DataFrame(
+        {
+            "repo_id": [101, 102],
+            "source": ["github"] * 2,
+            "owner": ["test_owner"] * 2,
+            "repo": ["test_repo", "another_repo"],
+            "repo_full_name": ["test_owner/test_repo", "test_owner/another_repo"],
+            "description": ["Test repository", "Another test repository"],
+            "homepage_url": [None, None],
+            "is_private": [False, False],
+            "is_fork": [False, True],
+            "archived": [False, False],
+            "default_branch": ["main", "main"],
+            "primary_language": ["Python", "TypeScript"],
+            "topics": [["test", "demo"], ["example"]],
+            "stargazers_count": [10, 5],
+            "forks_count": [2, 1],
+            "open_issues_count": [3, 1],
+            "size_kb": [100, 50],
+            "created_at_utc": pd.to_datetime(
+                ["2023-01-01 10:00:00", "2023-02-01 10:00:00"]
+            ),
+            "updated_at_utc": pd.to_datetime(
+                ["2024-01-01 10:00:00", "2024-01-02 10:00:00"]
+            ),
+            "pushed_at_utc": pd.to_datetime(
+                ["2024-01-01 10:00:00", "2024-01-02 10:00:00"]
+            ),
+            "repo_summary_text": ["Test repo summary", None],
+            "summary_source": ["manual", None],
+            "summary_updated_at_utc": pd.to_datetime(
+                ["2024-01-01 10:00:00", None]
+            ),
+        }
+    )
+
+    # Parquetファイルとして保存
+    prs_parquet_path = tmp_path / "github_prs.parquet"
+    commits_parquet_path = tmp_path / "github_commits.parquet"
+    repos_parquet_path = tmp_path / "github_repos.parquet"
+    prs_data.to_parquet(prs_parquet_path)
+    commits_data.to_parquet(commits_parquet_path)
+    repos_data.to_parquet(repos_parquet_path)
+
+    # DuckDBにDataFrameを直接登録
+    duckdb_conn.register("github_prs_df", prs_data)
+    duckdb_conn.execute("CREATE TABLE github_prs AS SELECT * FROM github_prs_df")
+    duckdb_conn.unregister("github_prs_df")
+
+    duckdb_conn.register("github_commits_df", commits_data)
+    duckdb_conn.execute(
+        "CREATE TABLE github_commits AS SELECT * FROM github_commits_df"
+    )
+    duckdb_conn.unregister("github_commits_df")
+
+    duckdb_conn.register("github_repos_df", repos_data)
+    duckdb_conn.execute(
+        "CREATE TABLE github_repos AS SELECT * FROM github_repos_df"
+    )
+    duckdb_conn.unregister("github_repos_df")
+
+    # ラッパーオブジェクトを作成
+    wrapper = GitHubConnectionWrapper(
+        duckdb_conn,
+        str(prs_parquet_path),
+        str(commits_parquet_path),
+        str(repos_parquet_path),
+    )
+
+    yield wrapper

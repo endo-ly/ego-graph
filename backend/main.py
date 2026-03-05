@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from backend.api import chat, data, health, system_prompts, threads
+from backend.api import chat, data, github, health, system_prompts, threads
 from backend.config import BackendConfig
 from backend.infrastructure.database import ChatDuckDBConnection, create_chat_tables
 
@@ -91,6 +91,7 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     # ルーターの登録
     app.include_router(health.router)
     app.include_router(data.router)
+    app.include_router(github.router)
     # YouTubeルーターは一時非推奨 (2025-02-04)
     # app.include_router(youtube.router)
     app.include_router(chat.router)

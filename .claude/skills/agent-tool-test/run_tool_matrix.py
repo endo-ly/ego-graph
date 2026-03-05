@@ -77,6 +77,18 @@ def _build_tool_cases(
                 f"end_date={end_date}, limit={limit}. "
                 f"Return only tool calls. Tool description: {description}"
             )
+        elif "activity_stats" in tool_name:
+            prompt = (
+                f"Call {tool_name} with start_date={start_date}, "
+                f"end_date={end_date}, granularity={granularity}. "
+                f"Return only tool calls. Tool description: {description}"
+            )
+        elif "repositories" in tool_name:
+            # repositoriesは日付パラメータが不要
+            prompt = (
+                f"Call {tool_name} to get repository list. "
+                f"Return only tool calls. Tool description: {description}"
+            )
         else:
             # デフォルト: ツール名のみを指定
             prompt = (
@@ -208,6 +220,11 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Comma-separated model list (default: all models)",
     )
+    parser.add_argument(
+        "--tools",
+        default=None,
+        help="Comma-separated tool list (default: all tools)",
+    )
     parser.add_argument("--start-date", default="2026-01-01")
     parser.add_argument("--end-date", default="2026-01-31")
     parser.add_argument("--limit", type=int, default=5)
@@ -242,6 +259,14 @@ def main() -> int:
         if not tools:
             print("No tools available for testing.", file=sys.stderr)
             return 1
+
+        # --toolsオプションで指定されたツールのみを対象にする
+        if args.tools:
+            specified_tools = [t.strip() for t in args.tools.split(",")]
+            tools = [t for t in tools if t["name"] in specified_tools]
+            if not tools:
+                print(f"None of the specified tools found: {specified_tools}", file=sys.stderr)
+                return 1
 
         print(f"Found {len(tools)} tools: {[t['name'] for t in tools]}")
         print(f"Testing {len(models)} models: {models}")

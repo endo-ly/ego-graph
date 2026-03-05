@@ -1,6 +1,13 @@
 """ツールレジストリの構築ヘルパー。"""
 
 from backend.config import R2Config
+from backend.domain.tools.github.worklog import (
+    GetActivityStatsTool,
+    GetCommitsTool,
+    GetPullRequestsTool,
+    GetRepoSummaryStatsTool,
+    GetRepositoriesTool,
+)
 from backend.domain.tools.spotify.stats import GetListeningStatsTool, GetTopTracksTool
 
 # YouTubeツールは一時非推奨 (2025-02-04)
@@ -9,7 +16,7 @@ from backend.domain.tools.spotify.stats import GetListeningStatsTool, GetTopTrac
 #     GetWatchHistoryTool,
 #     GetWatchingStatsTool,
 # )
-from backend.infrastructure.repositories import SpotifyRepository
+from backend.infrastructure.repositories import GitHubRepository, SpotifyRepository
 
 # YouTubeツールは一時非推奨
 # from backend.infrastructure.repositories import YouTubeRepository
@@ -27,6 +34,14 @@ def build_tool_registry(r2_config: R2Config | None) -> ToolRegistry:
     spotify_repository = SpotifyRepository(r2_config)
     tool_registry.register(GetTopTracksTool(spotify_repository))
     tool_registry.register(GetListeningStatsTool(spotify_repository))
+
+    # GitHubツール
+    github_repository = GitHubRepository(r2_config)
+    tool_registry.register(GetPullRequestsTool(github_repository))
+    tool_registry.register(GetCommitsTool(github_repository))
+    tool_registry.register(GetRepositoriesTool(github_repository))
+    tool_registry.register(GetActivityStatsTool(github_repository))
+    tool_registry.register(GetRepoSummaryStatsTool(github_repository))
 
     # YouTubeツールは一時非推奨 (2025-02-04)
     # youtube_repository = YouTubeRepository(r2_config)
