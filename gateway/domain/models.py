@@ -11,14 +11,10 @@ class SessionStatus(str, Enum):
     """セッション状態の列挙型。
 
     Attributes:
-        CONNECTED: WebSocket 接続中
-        DISCONNECTED: tmux セッションは存在するが未接続
-        FAILED: 直近の接続試行が失敗
+        CONNECTED: 接続可能なセッション
     """
 
     CONNECTED = "connected"
-    DISCONNECTED = "disconnected"
-    FAILED = "failed"
 
 
 # ============================================================================
@@ -180,20 +176,6 @@ class TerminalSession(BaseModel):
     session_id: str = Field(..., description="tmuxセッションID")
     activity: str | None = Field(None, description="最終アクティブ時刻")
     created: str | None = Field(None, description="セッション作成時刻")
-
-
-class ConnectionStatus(BaseModel):
-    """接続状態の定義。
-
-    Attributes:
-        connected: 接続中のセッションIDセット
-        failed: 失敗したセッションIDとその理由
-    """
-
-    connected: set[str] = Field(default_factory=set, description="接続中のセッションID")
-    failed: dict[str, str] = Field(
-        default_factory=dict, description="失敗したセッションIDとエラー理由"
-    )
 
 
 # ============================================================================

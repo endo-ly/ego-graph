@@ -98,8 +98,6 @@ class TestWebSocketAuthentication:
             patch(
                 "gateway.api.terminal.TerminalWebSocketHandler"
             ) as mock_handler_class,
-            patch("gateway.api.terminal.mark_session_connected"),
-            patch("gateway.api.terminal.mark_session_disconnected"),
         ):
             mock_store.consume = AsyncMock(return_value=(True, valid_session_id))
             mock_handler = MagicMock()
@@ -207,8 +205,6 @@ class TestWebSocketAuthentication:
             patch(
                 "gateway.api.terminal.TerminalWebSocketHandler"
             ) as mock_handler_class,
-            patch("gateway.api.terminal.mark_session_connected"),
-            patch("gateway.api.terminal.mark_session_disconnected"),
         ):
             mock_store.consume = AsyncMock(
                 side_effect=[

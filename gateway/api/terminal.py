@@ -33,16 +33,11 @@ AUTH_TIMEOUT_SECONDS = 10
 WEBVIEW_ALLOWED_ORIGINS = {"null", "file://", "file:///"}
 
 
-# 接続状態のキャッシュ（簡易実装、プロセス内メモリのみ）
-_active_connections: set[str] = set()
-
-
 async def get_sessions(request: Request) -> JSONResponse:
     """tmux セッション一覧を取得します。
 
     `tmux list-sessions` を使用してセッション情報を取得し、
     `^agent-[0-9]{4}$` パターンに一致するセッションのみを返します。
-    接続状態はプロセス内メモリで管理されます。
 
     Args:
         request: Starlette リクエストオブジェクト
@@ -145,26 +140,6 @@ async def issue_ws_token(request: Request) -> JSONResponse:
     )
 
 
-def mark_session_connected(session_name: str) -> None:
-    """セッションを接続中としてマークします。
-
-    Args:
-        session_name: セッション名
-    """
-    _active_connections.add(session_name)
-    logger.info("Session marked as connected: %s", session_name)
-
-
-def mark_session_disconnected(session_name: str) -> None:
-    """セッションを切断としてマークします。
-
-    Args:
-        session_name: セッション名
-    """
-    _active_connections.discard(session_name)
-    logger.info("Session marked as disconnected: %s", session_name)
-
-
 def get_terminal_routes() -> list[Route]:
     """Terminal API ルートを取得します。
 
@@ -247,9 +222,6 @@ async def terminal_websocket(websocket: WebSocket) -> None:
         await websocket.close(code=1008, reason="Session does not exist")
         return
 
-    # 接続状態を更新
-    mark_session_connected(session_id)
-
     logger.info("WebSocket connection established for session: %s", session_id)
 
     # ハンドラーを作成して実行
@@ -260,8 +232,6 @@ async def terminal_websocket(websocket: WebSocket) -> None:
     except Exception as e:
         logger.error("Error in terminal websocket for session %s: %s", session_id, e)
     finally:
-        # 接続状態を更新
-        mark_session_disconnected(session_id)
         logger.info("WebSocket connection closed for session: %s", session_id)
 
 
@@ -367,17 +337,12 @@ def _validate_websocket_origin_header(websocket: WebSocket) -> bool:
 
 def _build_session_response(session_id: str, session) -> dict[str, str]:
     """tmux セッション情報を API レスポンス形式に変換する。"""
-    status = (
-        SessionStatus.CONNECTED
-        if session_id in _active_connections
-        else SessionStatus.DISCONNECTED
-    )
     return {
         "session_id": session_id,
         "name": session.name,
         "last_activity": session.last_activity.isoformat(),
         "created_at": session.created_at.isoformat(),
-        "status": status.value,
+        "status": SessionStatus.CONNECTED.value,
     }
 
 

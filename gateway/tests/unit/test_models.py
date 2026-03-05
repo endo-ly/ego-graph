@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from gateway.domain.models import (
-    ConnectionStatus,
     PushNotificationRequest,
     TerminalSession,
     WebhookPayload,
@@ -75,59 +74,6 @@ class TestTerminalSession:
         assert parsed["session_id"] == "agent-0001"
         assert parsed["activity"] == "2025-02-10 10:30:00"
         assert parsed["created"] == "2025-02-10 09:00:00"
-
-
-# ============================================================================
-# TestConnectionStatus
-# ============================================================================
-
-
-class TestConnectionStatus:
-    """ConnectionStatusモデルのテスト。"""
-
-    def test_creates_with_empty_defaults(self):
-        """デフォルト値で空の状態が作成されることを確認する。"""
-        # Arrange & Act
-        status = ConnectionStatus()
-
-        # Assert
-        assert status.connected == set()
-        assert status.failed == {}
-
-    def test_creates_with_values(self):
-        """値を指定して接続状態が作成されることを確認する。"""
-        # Arrange
-        connected = {"agent-0001", "agent-0002"}
-        failed = {"agent-0003": "Connection timeout"}
-
-        # Act
-        status = ConnectionStatus(connected=connected, failed=failed)
-
-        # Assert
-        assert status.connected == connected
-        assert status.failed == failed
-
-    def test_connected_is_mutable(self):
-        """connectedが変更可能であることを確認する。"""
-        # Arrange
-        status = ConnectionStatus()
-
-        # Act
-        status.connected.add("agent-0001")
-
-        # Assert
-        assert "agent-0001" in status.connected
-
-    def test_failed_is_mutable(self):
-        """failedが変更可能であることを確認する。"""
-        # Arrange
-        status = ConnectionStatus()
-
-        # Act
-        status.failed["agent-0001"] = "Connection timeout"
-
-        # Assert
-        assert status.failed == {"agent-0001": "Connection timeout"}
 
 
 # ============================================================================
