@@ -38,8 +38,10 @@ load_path_list() {
 
     local -a defaults=("$@")
     local -a paths=()
+    local config_exists=0
 
     if [[ -f "$config_path" ]]; then
+        config_exists=1
         while IFS= read -r line || [[ -n "$line" ]]; do
             line="$(printf '%s' "$line" | sed -E 's/[[:space:]]*#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//')"
             [[ -z "$line" ]] && continue
@@ -47,11 +49,13 @@ load_path_list() {
         done < "$config_path"
     fi
 
-    if [[ "${#paths[@]}" -eq 0 ]]; then
+    if [[ $config_exists -eq 0 && "${#paths[@]}" -eq 0 ]]; then
         paths=("${defaults[@]}")
     fi
 
-    printf '%s\n' "${paths[@]}"
+    if [[ "${#paths[@]}" -gt 0 ]]; then
+        printf '%s\n' "${paths[@]}"
+    fi
 }
 
 copy_if_missing() {
@@ -94,7 +98,8 @@ run_npm_install_for_dir() {
     fi
 
     log_info "Node.js: npm install ($relative_dir)..."
-    (cd "$WORKTREE_PATH/$relative_dir" && npm install)
+    # Husky の prepare による core.hooksPath 上書きを避ける
+    (cd "$WORKTREE_PATH/$relative_dir" && HUSKY=0 npm install)
     log_success "Node.js 依存関係のインストール完了: $relative_dir"
 }
 
