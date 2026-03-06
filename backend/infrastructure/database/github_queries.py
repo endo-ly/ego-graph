@@ -511,7 +511,7 @@ def get_activity_stats(
 
     date_format_map = {
         "day": "%Y-%m-%d",
-        "week": "%Y-W%V",
+        "week": "%G-W%V",
         "month": "%Y-%m",
     }
 
@@ -524,15 +524,26 @@ def get_activity_stats(
     date_format = date_format_map[granularity]
 
     query = f"""
-        WITH pr_stats AS (
+        WITH pr_per_key AS (
             SELECT
                 strftime(pr.updated_at_utc::DATE, '{date_format}') as period,
-                COUNT(*) FILTER (WHERE pr.action = 'opened') as prs_created,
-                COUNT(*) FILTER (WHERE pr.action = 'merged') as prs_merged,
-                COALESCE(SUM(pr.additions), 0) as pr_additions,
-                COALESCE(SUM(pr.deletions), 0) as pr_deletions
+                pr.pr_key,
+                MAX(CASE WHEN pr.action = 'opened' THEN 1 ELSE 0 END) as is_opened,
+                MAX(CASE WHEN pr.action = 'merged' THEN 1 ELSE 0 END) as is_merged,
+                COALESCE(MAX(pr.additions) FILTER (WHERE pr.action = 'merged'), 0) as additions,
+                COALESCE(MAX(pr.deletions) FILTER (WHERE pr.action = 'merged'), 0) as deletions
             FROM read_parquet(?) pr
             WHERE pr.updated_at_utc::DATE BETWEEN ? AND ?
+            GROUP BY period, pr.pr_key
+        ),
+        pr_stats AS (
+            SELECT
+                period,
+                SUM(is_opened) as prs_created,
+                SUM(is_merged) as prs_merged,
+                COALESCE(SUM(additions), 0) as pr_additions,
+                COALESCE(SUM(deletions), 0) as pr_deletions
+            FROM pr_per_key
             GROUP BY period
         ),
         commit_stats AS (
@@ -616,19 +627,31 @@ def get_repo_summary_stats(
     )
 
     query = """
-        WITH pr_summary AS (
+        WITH pr_per_key AS (
             SELECT
                 pr.owner,
                 pr.repo,
                 pr.repo_full_name,
-                COUNT(*) as prs_total,
-                COUNT(*) FILTER (WHERE pr.action = 'merged') as prs_merged,
-                COALESCE(SUM(pr.additions), 0) as pr_additions,
-                COALESCE(SUM(pr.deletions), 0) as pr_deletions,
-                MAX(pr.updated_at_utc) as last_pr_updated_at
+                pr.pr_key,
+                COALESCE(MAX(pr.additions) FILTER (WHERE pr.action = 'merged'), 0) as additions,
+                COALESCE(MAX(pr.deletions) FILTER (WHERE pr.action = 'merged'), 0) as deletions,
+                MAX(CASE WHEN pr.action = 'merged' THEN 1 ELSE 0 END) as is_merged
             FROM read_parquet(?) pr
             WHERE pr.updated_at_utc::DATE BETWEEN ? AND ?
-            GROUP BY pr.owner, pr.repo, pr.repo_full_name
+            GROUP BY pr.owner, pr.repo, pr.repo_full_name, pr.pr_key
+        ),
+        pr_summary AS (
+            SELECT
+                owner,
+                repo,
+                repo_full_name,
+                COUNT(*) as prs_total,
+                SUM(is_merged) as prs_merged,
+                COALESCE(SUM(additions), 0) as pr_additions,
+                COALESCE(SUM(deletions), 0) as pr_deletions,
+                NULL as last_pr_updated_at
+            FROM pr_per_key
+            GROUP BY owner, repo, repo_full_name
         ),
         commit_summary AS (
             SELECT
