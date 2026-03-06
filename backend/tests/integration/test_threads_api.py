@@ -102,7 +102,7 @@ def test_get_threads_empty(test_client_with_threads):
 
     assert response.status_code == 200
     data = response.json()
-    assert data["limit"] == 50
+    assert data["limit"] == 10
     assert data["offset"] == 0
 
 
