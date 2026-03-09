@@ -12,6 +12,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -79,7 +81,9 @@ private fun TerminalContent(
     val selectedTheme by themeRepository.theme.collectAsState()
     val systemDarkTheme = isSystemInDarkTheme()
     val connectionState by webView.connectionState.collectAsState(initial = false)
+    val isSelectionMode by webView.selectionMode.collectAsState(initial = false)
     val keyboardState = rememberKeyboardState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var isConnecting by remember { mutableStateOf(false) }
     var settingsError by remember { mutableStateOf<String?>(null) }
@@ -134,8 +138,8 @@ private fun TerminalContent(
         webView.setTheme(darkMode)
     }
 
-    LaunchedEffect(webView, keyboardState.isVisible) {
-        if (keyboardState.isVisible) {
+    LaunchedEffect(webView, keyboardState.isVisible, isSelectionMode) {
+        if (keyboardState.isVisible && !isSelectionMode) {
             webView.focusInputAtBottom()
         }
     }
@@ -184,6 +188,12 @@ private fun TerminalContent(
         }
     }
 
+    LaunchedEffect(webView) {
+        webView.messages.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             reconnectJob?.cancel()
@@ -199,8 +209,14 @@ private fun TerminalContent(
                 isLoading = isConnecting,
                 error = displayError,
                 onBack = { onClose?.invoke() ?: navigator.pop() },
+                isSelectionMode = isSelectionMode,
+                onSelectionToggle = {
+                    webView.setSelectionMode(!isSelectionMode)
+                },
+                onCopy = webView::copySelectionToClipboard,
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { paddingValues ->
         Surface(
             modifier =
@@ -239,9 +255,10 @@ private fun TerminalContent(
                     }
                 }
 
-                if (keyboardState.isVisible) {
+                if (keyboardState.isVisible && !isSelectionMode) {
                     SpecialKeysBar(
                         onKeyPress = { keySequence -> webView.sendKey(keySequence) },
+                        onPasteClick = webView::pasteFromClipboard,
                         onVoiceInputClick = voiceInputCoordinator.onToggle,
                         isVoiceInputActive = voiceInputCoordinator.isActive,
                         modifier =

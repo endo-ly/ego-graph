@@ -29,6 +29,7 @@ import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 @Composable
 fun SpecialKeysBar(
     onKeyPress: (String) -> Unit,
+    onPasteClick: () -> Unit,
     onVoiceInputClick: () -> Unit,
     isVoiceInputActive: Boolean,
     modifier: Modifier = Modifier,
@@ -47,6 +48,7 @@ fun SpecialKeysBar(
             isActive = isVoiceInputActive,
             onClick = onVoiceInputClick,
         )
+        SpecialActionButton("Paste", onPasteClick)
         SpecialKeyButton("/", "/", onKeyPress)
         SpecialKeyButton("↑", "\u001B[A", onKeyPress)
         SpecialKeyButton("↓", "\u001B[B", onKeyPress)
@@ -75,6 +77,24 @@ private fun VoiceInputButton(
         onClick = onClick,
         testTag = "terminal_voice_button",
     )
+}
+
+@Composable
+private fun SpecialActionButton(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        colors =
+            ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 @Composable
