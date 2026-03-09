@@ -16,6 +16,12 @@
             overscroll-behavior: contain;
         }
 
+        body.selection-mode {
+            touch-action: auto;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
         #xtermRender {
             position: fixed;
             inset: 0;
@@ -24,6 +30,10 @@
             box-sizing: border-box;
             background: #1e1e1e;
             touch-action: none;
+        }
+
+        body.selection-mode #xtermRender {
+            touch-action: auto;
         }
 
         #xtermRender .xterm {
@@ -91,6 +101,7 @@
             var pointerDragActive = false;
             var viewportListenersBound = false;
             var resizeTimeout = null;
+            var selectionModeEnabled = false;
 
             // ===== Bridge 連携 =====
             function notifyError(message) {
@@ -252,6 +263,17 @@
                 return true;
             }
 
+            function getSelectedText() {
+                if (!terminal) {
+                    return '';
+                }
+
+                if (typeof terminal.getSelection === 'function') {
+                    return terminal.getSelection() || '';
+                }
+                return '';
+            }
+
             function parseOutputMessage(message) {
                 if (message.type !== 'output' || !message.data_b64) {
                     return;
@@ -268,7 +290,7 @@
 
             // ===== スクロール制御 =====
             function scrollTerminalByPixels(pixelDelta) {
-                if (!terminal || !isSocketOpen()) {
+                if (!terminal || !isSocketOpen() || selectionModeEnabled) {
                     return false;
                 }
 
@@ -295,6 +317,9 @@
             }
 
             function handleMouseWheelScroll(event) {
+                if (selectionModeEnabled) {
+                    return;
+                }
                 if (!event || typeof event.deltaY !== 'number' || Math.abs(event.deltaY) < MIN_SCROLL_DELTA) {
                     return;
                 }
@@ -305,7 +330,7 @@
             }
 
             function handlePointerScrollStart(event) {
-                if (!event) {
+                if (!event || selectionModeEnabled) {
                     return;
                 }
                 pointerDragActive = true;
@@ -313,7 +338,7 @@
             }
 
             function handlePointerScrollMove(event) {
-                if (!event || !pointerDragActive) {
+                if (!event || !pointerDragActive || selectionModeEnabled) {
                     return;
                 }
 
@@ -339,6 +364,10 @@
                 pointerDragActive = false;
                 pointerScrollLastY = null;
                 touchScrollRemainder = 0;
+            }
+
+            function updateSelectionModeUi() {
+                document.body.classList.toggle('selection-mode', selectionModeEnabled);
             }
 
             function bindViewportScrollListeners() {
@@ -500,6 +529,21 @@
                         return;
                     }
                     scrollTerminalByPixels(pixelDelta);
+                },
+                getSelectedText: function () {
+                    return getSelectedText();
+                },
+                setSelectionMode: function (enabled) {
+                    selectionModeEnabled = !!enabled;
+                    if (!selectionModeEnabled && terminal && typeof terminal.clearSelection === 'function') {
+                        terminal.clearSelection();
+                    }
+                    updateSelectionModeUi();
+                },
+                clearSelection: function () {
+                    if (terminal && typeof terminal.clearSelection === 'function') {
+                        terminal.clearSelection();
+                    }
                 },
             };
 

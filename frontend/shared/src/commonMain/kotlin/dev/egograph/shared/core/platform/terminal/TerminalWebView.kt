@@ -38,6 +38,26 @@ interface TerminalWebView {
     fun sendKey(key: String)
 
     /**
+     * Copy the current terminal selection to the system clipboard.
+     */
+    fun copySelectionToClipboard()
+
+    /**
+     * Paste the current system clipboard text into the terminal.
+     */
+    fun pasteFromClipboard()
+
+    /**
+     * Enable or disable text selection mode.
+     */
+    fun setSelectionMode(enabled: Boolean)
+
+    /**
+     * Clear any active text selection in the terminal.
+     */
+    fun clearSelection()
+
+    /**
      * Focus terminal input and move viewport to the latest line.
      *
      * Used when software keyboard becomes visible so input always targets
@@ -63,6 +83,16 @@ interface TerminalWebView {
      * Emits error messages
      */
     val errors: Flow<String>
+
+    /**
+     * Flow of user-visible terminal messages such as clipboard actions.
+     */
+    val messages: Flow<String>
+
+    /**
+     * Emits whether text selection mode is active.
+     */
+    val selectionMode: Flow<Boolean>
 }
 
 /**

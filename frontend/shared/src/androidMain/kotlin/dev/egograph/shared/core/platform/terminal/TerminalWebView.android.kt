@@ -1,6 +1,8 @@
 package dev.egograph.shared.core.platform.terminal
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Handler
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONTokener
 import java.io.ByteArrayInputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
@@ -54,6 +57,8 @@ class AndroidTerminalWebView(
     private val terminalWebView: WebView by lazy { createWebView() }
     private val connectionStateMutable = MutableStateFlow(false)
     private val errorsMutable = MutableSharedFlow<String>(replay = 0)
+    private val messagesMutable = MutableSharedFlow<String>(replay = 0)
+    private val selectionModeMutable = MutableStateFlow(false)
 
     @Volatile
     private var currentWsUrl: String? = null
@@ -77,6 +82,8 @@ class AndroidTerminalWebView(
 
     override val connectionState: Flow<Boolean> = connectionStateMutable.asStateFlow()
     override val errors: Flow<String> = errorsMutable
+    override val messages: Flow<String> = messagesMutable
+    override val selectionMode: Flow<Boolean> = selectionModeMutable.asStateFlow()
 
     /**
      * UI スレッドでの実行を保証する。
@@ -110,6 +117,60 @@ class AndroidTerminalWebView(
             )
         }
     }
+
+    /**
+     * 端末側の JavaScript 関数を評価し、文字列結果を受け取る。
+     */
+    private fun evaluateTerminalStringFunction(
+        functionCall: String,
+        onResult: (String?) -> Unit,
+    ) {
+        runOnMainThread {
+            terminalWebView.evaluateJavascript(
+                """
+                (function() {
+                    if (window.TerminalAPI) {
+                        return $functionCall;
+                    }
+                    return null;
+                })();
+                """.trimIndent(),
+            ) { rawResult ->
+                onResult(decodeJavascriptStringResult(rawResult))
+            }
+        }
+    }
+
+    /**
+     * evaluateJavascript の戻り値を Kotlin の文字列へ変換する。
+     */
+    private fun decodeJavascriptStringResult(rawResult: String?): String? {
+        if (rawResult.isNullOrBlank() || rawResult == "null") {
+            return null
+        }
+        return when (val parsed = JSONTokener(rawResult).nextValue()) {
+            is String -> parsed
+            else -> parsed?.toString()
+        }
+    }
+
+    /**
+     * クリップボードサービスを取得する。
+     */
+    private fun getClipboardManager(): ClipboardManager? =
+        context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+
+    /**
+     * Snackbar 表示用メッセージを流す。
+     */
+    private fun emitMessage(message: String) {
+        messagesMutable.tryEmit(message)
+    }
+
+    /**
+     * 選択モード中かどうか。
+     */
+    private fun isSelectionModeEnabled(): Boolean = selectionModeMutable.value
 
     /**
      * xterm の 1 行スクロールへ変換するため、ピクセル差分を JavaScript 側へ渡す。
@@ -257,8 +318,13 @@ class AndroidTerminalWebView(
     private fun handleTerminalTouch(
         view: View,
         event: MotionEvent,
-    ): Boolean =
-        when (event.actionMasked) {
+    ): Boolean {
+        if (isSelectionModeEnabled()) {
+            setParentIntercept(view, true)
+            return false
+        }
+
+        return when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 onTouchDown(event)
                 setParentIntercept(view, false)
@@ -304,6 +370,7 @@ class AndroidTerminalWebView(
 
             else -> false
         }
+    }
 
     /**
      * WebView に対してソフトキーボード表示を要求する。
@@ -543,6 +610,59 @@ class AndroidTerminalWebView(
     override fun sendKey(key: String) {
         val escapedKey = escapeJsString(key)
         executeTerminalApiScript("window.TerminalAPI.sendKey('$escapedKey');")
+    }
+
+    override fun copySelectionToClipboard() {
+        evaluateTerminalStringFunction("window.TerminalAPI.getSelectedText()") { text ->
+            val clipboardManager = getClipboardManager()
+            val trimmedText = text?.trimEnd()
+            if (clipboardManager == null) {
+                emitMessage("Clipboard is unavailable")
+                return@evaluateTerminalStringFunction
+            }
+            if (trimmedText.isNullOrBlank()) {
+                emitMessage("No text selected")
+                return@evaluateTerminalStringFunction
+            }
+
+            val clipData = ClipData.newPlainText("terminal", trimmedText)
+            clipboardManager.setPrimaryClip(clipData)
+            emitMessage("Selected text copied")
+            clearSelection()
+            setSelectionMode(false)
+        }
+    }
+
+    override fun pasteFromClipboard() {
+        val clipboardManager = getClipboardManager()
+        if (clipboardManager == null) {
+            emitMessage("Clipboard is unavailable")
+            return
+        }
+
+        val clipItem = clipboardManager.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+        val clipboardText = clipItem?.coerceToText(context)?.toString()
+        if (clipboardText.isNullOrBlank()) {
+            emitMessage("Clipboard is empty")
+            return
+        }
+
+        focusInputAtBottomAndShowKeyboard()
+        sendKey(clipboardText)
+        emitMessage("Clipboard pasted")
+    }
+
+    override fun setSelectionMode(enabled: Boolean) {
+        selectionModeMutable.value = enabled
+        terminalWebView.parent?.requestDisallowInterceptTouchEvent(enabled)
+        if (!enabled) {
+            clearSelection()
+        }
+        executeTerminalApiScript("window.TerminalAPI.setSelectionMode($enabled);")
+    }
+
+    override fun clearSelection() {
+        executeTerminalApiScript("window.TerminalAPI.clearSelection();")
     }
 
     override fun focusInputAtBottom() {
