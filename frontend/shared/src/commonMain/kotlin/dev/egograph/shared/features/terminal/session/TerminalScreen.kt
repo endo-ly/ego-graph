@@ -6,13 +6,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -25,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.core.screen.ScreenKey
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -32,10 +31,12 @@ import dev.egograph.shared.core.domain.repository.TerminalRepository
 import dev.egograph.shared.core.platform.PlatformPreferences
 import dev.egograph.shared.core.platform.PlatformPrefsKeys
 import dev.egograph.shared.core.platform.rememberKeyboardState
+import dev.egograph.shared.core.platform.terminal.CopyResult
 import dev.egograph.shared.core.settings.AppTheme
 import dev.egograph.shared.core.settings.ThemeRepository
 import dev.egograph.shared.features.terminal.session.components.SpecialKeysBar
-import dev.egograph.shared.features.terminal.session.components.TerminalHeader
+import dev.egograph.shared.features.terminal.session.components.TerminalCopyFeedback
+import dev.egograph.shared.features.terminal.session.components.TerminalFloatingControlPill
 import dev.egograph.shared.features.terminal.session.components.TerminalView
 import dev.egograph.shared.features.terminal.session.components.rememberTerminalWebView
 import kotlinx.coroutines.Job
@@ -65,7 +66,12 @@ class TerminalScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+internal fun copyFeedbackMessage(result: CopyResult): String =
+    when (result) {
+        is CopyResult.Success -> "Copied terminal text"
+        is CopyResult.Error -> "Copy failed"
+    }
+
 @Composable
 private fun TerminalContent(
     agentId: String,
@@ -88,7 +94,7 @@ private fun TerminalContent(
     var hasConnectedOnce by remember { mutableStateOf(false) }
     var reconnectAttempts by remember { mutableStateOf(0) }
     var reconnectJob by remember { mutableStateOf<Job?>(null) }
-    var isCopyModeOpen by remember { mutableStateOf(false) }
+    var copyFeedbackMessage by remember { mutableStateOf<String?>(null) }
     val backoff = remember { createTerminalReconnectBackoff() }
     val coroutineScope = rememberCoroutineScope()
 
@@ -185,6 +191,19 @@ private fun TerminalContent(
         }
     }
 
+    LaunchedEffect(webView) {
+        webView.copyResults.collect { result ->
+            copyFeedbackMessage = copyFeedbackMessage(result)
+        }
+    }
+
+    LaunchedEffect(copyFeedbackMessage) {
+        if (copyFeedbackMessage != null) {
+            delay(1800)
+            copyFeedbackMessage = null
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             reconnectJob?.cancel()
@@ -193,73 +212,69 @@ private fun TerminalContent(
     }
 
     val displayError = settingsError ?: terminalError ?: voiceInputError
-    Scaffold(
-        topBar = {
-            TerminalHeader(
-                agentId = agentId,
-                isLoading = isConnecting,
-                error = displayError,
-                onBack = { onClose?.invoke() ?: navigator.pop() },
-                onOpenCopyMode = { isCopyModeOpen = true },
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+    ) {
+        TerminalView(
+            webView = webView,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        if (isConnecting) {
+            LinearProgressIndicator(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth(),
             )
-        },
-    ) { paddingValues ->
-        Surface(
+        }
+
+        displayError?.let { error ->
+            Text(
+                text = error,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.align(Alignment.Center).padding(horizontal = 24.dp),
+            )
+        }
+
+        Column(
             modifier =
                 Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceContainerLowest),
-                ) {
-                    if (isConnecting) {
-                        LinearProgressIndicator(
-                            modifier =
-                                Modifier
-                                    .align(Alignment.TopCenter)
-                                    .fillMaxWidth(),
-                        )
-                    }
-
-                    TerminalView(
-                        webView = webView,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-
-                    displayError?.let { error ->
-                        Text(
-                            text = error,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.align(Alignment.Center),
-                        )
-                    }
-                }
-
-                if (keyboardState.isVisible) {
-                    SpecialKeysBar(
-                        onKeyPress = { keySequence -> webView.sendKey(keySequence) },
-                        onVoiceInputClick = voiceInputCoordinator.onToggle,
-                        isVoiceInputActive = voiceInputCoordinator.isActive,
-                        modifier =
-                            Modifier
-                                .imePadding()
-                                .fillMaxWidth(),
-                    )
-                }
+            copyFeedbackMessage?.let { message ->
+                TerminalCopyFeedback(message = message)
+                Box(modifier = Modifier.height(12.dp))
             }
-        }
-    }
 
-    if (isCopyModeOpen) {
-        TerminalCopyModeSheet(
-            agentId = agentId,
-            onDismiss = { isCopyModeOpen = false },
-        )
+            if (keyboardState.isVisible) {
+                SpecialKeysBar(
+                    onKeyPress = { keySequence -> webView.sendKey(keySequence) },
+                    onVoiceInputClick = voiceInputCoordinator.onToggle,
+                    isVoiceInputActive = voiceInputCoordinator.isActive,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Box(modifier = Modifier.height(12.dp))
+            }
+
+            TerminalFloatingControlPill(
+                sessionId = agentId,
+                isConnected = connectionState && displayError == null,
+                isKeyboardVisible = keyboardState.isVisible,
+                onBack = { onClose?.invoke() ?: navigator.pop() },
+                onKeyboardToggle = {
+                    webView.setKeyboardVisible(!keyboardState.isVisible)
+                },
+                onCopy = { webView.copyVisibleText() },
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+        }
     }
 }
