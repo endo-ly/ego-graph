@@ -1,0 +1,68 @@
+appId: dev.egograph.app
+
+---
+- stopApp
+- waitForAnimationToEnd
+- launchApp
+- waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "chat_input_field"
+    timeout: 15000
+
+- swipe:
+    start: "100,500"
+    end: "700,500"
+    duration: 350
+
+- waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "terminal_button"
+    timeout: 10000
+
+- tapOn:
+    id: "terminal_button"
+
+- extendedWaitUntil:
+    visible:
+      text: "TERMINAL SESSIONS"
+    timeout: 15000
+
+- assertVisible:
+    id: "session_item"
+
+- assertVisible:
+    id: "session_preview"
+
+- tapOn:
+    id: "session_item"
+
+- extendedWaitUntil:
+    visible:
+      id: "terminal_status_pill"
+    timeout: 15000
+
+- assertVisible:
+    id: "terminal_back_button"
+
+- assertVisible:
+    id: "terminal_keyboard_toggle"
+
+- tapOn:
+    id: "terminal_keyboard_toggle"
+
+- assertVisible:
+    id: "special_keys_bar"
+
+- tapOn:
+    id: "terminal_copy_button"
+
+- extendedWaitUntil:
+    visible:
+      id: "terminal_copy_feedback"
+    timeout: 10000
+
+- assertVisible: "Copied terminal text"
