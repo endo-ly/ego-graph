@@ -62,7 +62,8 @@ async def get_sessions(request: Request) -> JSONResponse:
 
     # セッション情報を API レスポンス形式に変換
     sessions = [
-        _build_session_response(session.name, session) for session in tmux_sessions
+        await _build_session_response(session.name, session)
+        for session in tmux_sessions
     ]
 
     return JSONResponse(
@@ -96,7 +97,7 @@ async def get_session(request: Request) -> JSONResponse:
     if target is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return JSONResponse(_build_session_response(session_id, target))
+    return JSONResponse(await _build_session_response(session_id, target))
 
 
 async def issue_ws_token(request: Request) -> JSONResponse:
@@ -372,15 +373,65 @@ def _validate_websocket_origin_header(websocket: WebSocket) -> bool:
     return True
 
 
-def _build_session_response(session_id: str, session) -> dict[str, str]:
-    """tmux セッション情報を API レスポンス形式に変換する。"""
-    return {
+def _extract_preview_lines(snapshot_text: str) -> tuple[bool, list[str]]:
+    """スナップショットテキストからプレビュー行を抽出します。
+
+    ANSI エスケープシーケンスと制御文字を除去し、
+    空でない行を返します。
+
+    Args:
+        snapshot_text: スナップショットテキスト
+    Returns:
+        (preview_available, preview_lines) タプル
+        - preview_available: プレビューが利用可能かどうか
+        - preview_lines: プレビュー行のリスト
+    """
+    # ANSI エスケープシーケンスを除去
+    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+    clean_text = ansi_escape.sub("", snapshot_text)
+
+    # 制御文字を除去（改行とタブは保持）
+    control_chars = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
+    clean_text = control_chars.sub("", clean_text)
+
+    # 行に分割し、空行を除去
+    lines = [line.rstrip() for line in clean_text.split("\n")]
+    non_empty_lines = [line for line in lines if line]
+
+    if not non_empty_lines:
+        return (False, [])
+
+    return (True, non_empty_lines)
+
+
+async def _build_session_response(session_id: str, session) -> dict:
+    """tmux セッション情報を API レスポンス形式に変換します。
+
+    非同期関数として定義し、プレビュースナップショットの取得をサポートします。
+    """
+    response = {
         "session_id": session_id,
         "name": session.name,
         "last_activity": session.last_activity.isoformat(),
         "created_at": session.created_at.isoformat(),
         "status": SessionStatus.CONNECTED.value,
+        "preview_available": False,
+        "preview_lines": [],
     }
+
+    # プレビュースナップショットの取得を試みる
+    try:
+        manager = TmuxAttachManager(session_id)
+        snapshot = await manager.capture_snapshot(include_escape_sequences=False)
+        snapshot_text = snapshot.decode("utf-8", errors="replace")
+        preview_available, preview_lines = _extract_preview_lines(snapshot_text)
+        response["preview_available"] = preview_available
+        response["preview_lines"] = preview_lines
+    except Exception as e:
+        logger.debug("Failed to capture preview for %s: %s", session_id, e)
+        # 失敗時はデフォルト値（プレビューなし）を使用
+
+    return response
 
 
 async def _authenticate_websocket(websocket: WebSocket, session_id: str) -> bool:

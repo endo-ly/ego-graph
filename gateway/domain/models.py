@@ -187,6 +187,11 @@ class TerminalSession(BaseModel):
     session_id: str = Field(..., description="tmuxセッションID")
     activity: str | None = Field(None, description="最終アクティブ時刻")
     created: str | None = Field(None, description="セッション作成時刻")
+    preview_available: bool = Field(False, description="プレビューが利用可能かどうか")
+    preview_lines: list[str] = Field(
+        default_factory=list,
+        description="プレビュー表示用の最新端末行",
+    )
 
 
 class TerminalSnapshotResponse(BaseModel):

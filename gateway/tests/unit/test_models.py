@@ -33,6 +33,8 @@ class TestTerminalSession:
         assert session.session_id == session_id
         assert session.activity is None
         assert session.created is None
+        assert session.preview_available is False
+        assert session.preview_lines == []
 
     def test_creates_with_all_fields(self):
         """全フィールドを指定してセッションが作成されることを確認する。"""
@@ -41,6 +43,8 @@ class TestTerminalSession:
             "session_id": "agent-0001",
             "activity": "2025-02-10 10:30:00",
             "created": "2025-02-10 09:00:00",
+            "preview_available": True,
+            "preview_lines": ["$ uv run pytest", "2 passed"],
         }
 
         # Act
@@ -50,6 +54,8 @@ class TestTerminalSession:
         assert session.session_id == "agent-0001"
         assert session.activity == "2025-02-10 10:30:00"
         assert session.created == "2025-02-10 09:00:00"
+        assert session.preview_available is True
+        assert session.preview_lines == ["$ uv run pytest", "2 passed"]
 
     def test_requires_session_id(self):
         """session_idが必須であることを確認する。"""
@@ -66,6 +72,8 @@ class TestTerminalSession:
             session_id="agent-0001",
             activity="2025-02-10 10:30:00",
             created="2025-02-10 09:00:00",
+            preview_available=True,
+            preview_lines=["$ uv run pytest", "2 passed"],
         )
 
         # Act
@@ -76,6 +84,18 @@ class TestTerminalSession:
         assert parsed["session_id"] == "agent-0001"
         assert parsed["activity"] == "2025-02-10 10:30:00"
         assert parsed["created"] == "2025-02-10 09:00:00"
+        assert parsed["preview_available"] is True
+        assert parsed["preview_lines"] == ["$ uv run pytest", "2 passed"]
+
+    def test_allows_preview_lines_longer_than_four(self):
+        """preview_lines が 4 行を超えても保持されることを確認する。"""
+        session = TerminalSession(
+            session_id="agent-0001",
+            preview_available=True,
+            preview_lines=["1", "2", "3", "4", "5"],
+        )
+
+        assert session.preview_lines == ["1", "2", "3", "4", "5"]
 
 
 class TestTerminalSnapshotResponse:
