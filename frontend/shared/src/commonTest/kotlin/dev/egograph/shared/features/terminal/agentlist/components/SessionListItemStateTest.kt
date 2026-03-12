@@ -32,4 +32,21 @@ class SessionListItemStateTest {
 
         assertEquals(listOf("Preview unavailable"), lines)
     }
+
+    @Test
+    fun `previewDisplayLines prefers preview lines even when availability flag is false`() {
+        val lines = previewDisplayLines(session(false, listOf("cached preview")))
+
+        assertEquals(listOf("cached preview"), lines)
+    }
+
+    @Test
+    fun `sessionSubtitle hides duplicate session name`() {
+        assertEquals(
+            null,
+            sessionSubtitle(
+                session(true, listOf("preview")).copy(name = "agent-0001"),
+            ),
+        )
+    }
 }

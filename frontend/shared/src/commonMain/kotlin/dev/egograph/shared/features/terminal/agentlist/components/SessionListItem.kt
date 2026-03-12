@@ -8,6 +8,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +27,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -39,11 +44,13 @@ import dev.egograph.shared.core.ui.theme.monospaceLabelSmall
 import dev.egograph.shared.features.terminal.TerminalTestTags
 
 internal fun previewDisplayLines(session: Session): List<String> =
-    if (session.previewAvailable && session.previewLines.isNotEmpty()) {
+    if (session.previewLines.isNotEmpty()) {
         session.previewLines
     } else {
         listOf("Preview unavailable")
     }
+
+internal fun sessionSubtitle(session: Session): String? = session.name.takeUnless { it.isBlank() || it == session.sessionId }
 
 /**
  * セッションリストアイテムコンポーネント
@@ -62,7 +69,10 @@ fun SessionListItem(
     val shapes = EgoGraphThemeTokens.shapes
     val extendedColors = EgoGraphThemeTokens.extendedColors
     val previewLines = previewDisplayLines(session)
+    val subtitle = sessionSubtitle(session)
     val previewScrollState = rememberScrollState()
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
     val pulse = rememberInfiniteTransition(label = "sessionIndicatorPulse")
     val pulseAlpha =
         pulse.animateFloat(
@@ -78,12 +88,13 @@ fun SessionListItem(
                 .testTagResourceId(TerminalTestTags.SESSION_ITEM)
                 .fillMaxWidth()
                 .clip(shapes.radiusLg)
-                .background(Color(0xFF141416))
+                .background(if (isHovered) Color(0xFF1C1C1F) else Color(0xFF141416))
                 .border(
                     width = dimens.borderWidthThin,
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
                     shape = shapes.radiusLg,
-                ).clickable(onClick = onClick)
+                ).hoverable(interactionSource)
+                .clickable(onClick = onClick)
                 .padding(horizontal = dimens.space16, vertical = dimens.space16),
     ) {
         Row(
@@ -104,18 +115,20 @@ fun SessionListItem(
                 Text(
                     text = session.sessionId,
                     style = MaterialTheme.typography.monospaceBody,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = if (isHovered) extendedColors.success else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.height(dimens.space4))
-                Text(
-                    text = session.name,
-                    style = MaterialTheme.typography.monospaceLabelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                subtitle?.let {
+                    Spacer(modifier = Modifier.height(dimens.space4))
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.monospaceLabelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(dimens.space12))
             Text(
@@ -146,8 +159,13 @@ fun SessionListItem(
                     Modifier
                         .align(Alignment.CenterStart)
                         .clip(shapes.radiusSm)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
-                        .width(dimens.space4)
+                        .background(
+                            if (isHovered) {
+                                extendedColors.success.copy(alpha = 0.5f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+                            },
+                        ).width(dimens.space4)
                         .height(dimens.size160 / 4),
             )
             Column(
