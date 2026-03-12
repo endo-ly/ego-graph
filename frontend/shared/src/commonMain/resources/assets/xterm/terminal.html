@@ -121,15 +121,6 @@
                 }
             }
 
-            function notifyCopyResult(success, message) {
-                if (
-                    window.TerminalBridge &&
-                    typeof window.TerminalBridge.onCopyResult === 'function'
-                ) {
-                    window.TerminalBridge.onCopyResult(success, message);
-                }
-            }
-
             // ===== ユーティリティ =====
             function isSocketOpen() {
                 return websocket && websocket.readyState === OPEN_SOCKET_READY_STATE;
@@ -146,30 +137,6 @@
                 if (terminal && typeof terminal.focus === 'function') {
                     terminal.focus();
                 }
-            }
-
-            function getVisibleTerminalText() {
-                if (!terminal || !terminal.buffer || !terminal.buffer.active) {
-                    return '';
-                }
-
-                var buffer = terminal.buffer.active;
-                var startLine = Math.max(buffer.viewportY || 0, 0);
-                var endLine = Math.min(startLine + terminal.rows, buffer.length);
-                var lines = [];
-
-                for (var lineIndex = startLine; lineIndex < endLine; lineIndex++) {
-                    var line = buffer.getLine(lineIndex);
-                    if (!line) {
-                        continue;
-                    }
-                    var text = line.translateToString(true);
-                    if (text && text.trim().length > 0) {
-                        lines.push(text);
-                    }
-                }
-
-                return lines.join('\n');
             }
 
             // キーボード表示時に、入力対象を常に末尾へ寄せる
@@ -542,22 +509,6 @@
                         return;
                     }
                     scrollTerminalByPixels(pixelDelta);
-                },
-                copyVisibleText: function () {
-                    if (!terminal) {
-                        notifyCopyResult(false, 'Terminal not initialized');
-                        return;
-                    }
-                    try {
-                        var text = getVisibleTerminalText();
-                        if (!text || text.trim().length === 0) {
-                            notifyCopyResult(false, 'No visible text to copy');
-                            return;
-                        }
-                        notifyCopyResult(true, text);
-                    } catch (err) {
-                        notifyCopyResult(false, 'Failed to copy: ' + String(err));
-                    }
                 },
             };
 

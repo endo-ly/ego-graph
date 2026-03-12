@@ -1,7 +1,5 @@
 package dev.egograph.shared.core.platform.terminal
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Color
 import android.os.Build
@@ -21,7 +19,6 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.ByteArrayInputStream
@@ -35,22 +32,6 @@ private const val TERMINAL_DARK_BACKGROUND = "#1e1e1e"
 private const val TERMINAL_LIGHT_BACKGROUND = "#FFFFFF"
 private const val MIN_TAP_TOLERANCE_PX = 2f
 private const val MIN_VERTICAL_SCROLL_DELTA_PX = 1f
-
-internal fun toCopyResult(
-    success: Boolean,
-    payload: String,
-    copyToClipboard: (String) -> Unit,
-): CopyResult =
-    if (!success) {
-        CopyResult.Error(payload)
-    } else {
-        try {
-            copyToClipboard(payload)
-            CopyResult.Success(payload)
-        } catch (e: RuntimeException) {
-            CopyResult.Error(e.message ?: "Failed to copy terminal text")
-        }
-    }
 
 private enum class TouchDragDirection {
     UNDETERMINED,
@@ -71,8 +52,7 @@ class AndroidTerminalWebView(
 ) : TerminalWebView {
     private val terminalWebView: WebView by lazy { createWebView() }
     private val connectionStateMutable = MutableStateFlow(false)
-    private val errorsMutable = MutableSharedFlow<String>(replay = 0)
-    private val copyResultsMutable = MutableSharedFlow<CopyResult>(replay = 0)
+    private val errorsMutable = kotlinx.coroutines.flow.MutableSharedFlow<String>(replay = 0)
 
     @Volatile
     private var currentWsUrl: String? = null
@@ -94,12 +74,8 @@ class AndroidTerminalWebView(
     private var hasMoved: Boolean = false
     private var touchDragDirection: TouchDragDirection = TouchDragDirection.UNDETERMINED
 
-    private val clipboardManager: ClipboardManager?
-        get() = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-
     override val connectionState: Flow<Boolean> = connectionStateMutable.asStateFlow()
     override val errors: Flow<String> = errorsMutable
-    override val copyResults: Flow<CopyResult> = copyResultsMutable
 
     /**
      * UI スレッドでの実行を保証する。
@@ -333,11 +309,6 @@ class AndroidTerminalWebView(
     private fun showSoftKeyboard(view: View) {
         val inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
         inputMethodManager?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
-    }
-
-    private fun hideSoftKeyboard(view: View) {
-        val inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-        inputMethodManager?.hideSoftInputFromWindow(view.windowToken, 0)
     }
 
     /**
@@ -576,30 +547,11 @@ class AndroidTerminalWebView(
         focusInputAtBottomInternal(showKeyboard = false)
     }
 
-    override fun setKeyboardVisible(visible: Boolean) {
-        if (visible) {
-            focusInputAtBottomAndShowKeyboard()
-        } else {
-            runOnMainThread {
-                hideSoftKeyboard(terminalWebView)
-            }
-        }
-    }
-
     override fun setTheme(darkMode: Boolean) {
         val backgroundColor = if (darkMode) TERMINAL_DARK_BACKGROUND else TERMINAL_LIGHT_BACKGROUND
         runOnMainThread {
             terminalWebView.setBackgroundColor(Color.parseColor(backgroundColor))
         }
-    }
-
-    override fun copyVisibleText() {
-        executeTerminalApiScript("window.TerminalAPI.copyVisibleText();")
-    }
-
-    private fun copyToClipboard(text: String) {
-        val manager = clipboardManager ?: error("Clipboard unavailable")
-        manager.setPrimaryClip(ClipData.newPlainText("terminal", text))
     }
 
     fun getWebView(): WebView = terminalWebView
@@ -628,22 +580,6 @@ class AndroidTerminalWebView(
             mainHandler.post {
                 isTerminalReady.set(true)
                 connectIfReady()
-            }
-        }
-
-        @JavascriptInterface
-        fun onCopyResult(
-            success: Boolean,
-            message: String,
-        ) {
-            mainHandler.post {
-                copyResultsMutable.tryEmit(
-                    toCopyResult(
-                        success = success,
-                        payload = message,
-                        copyToClipboard = ::copyToClipboard,
-                    ),
-                )
             }
         }
     }
