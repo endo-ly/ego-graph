@@ -6,7 +6,6 @@
 import asyncio
 import json
 import logging
-import math
 from typing import Any
 
 from pydantic import ValidationError
@@ -30,7 +29,6 @@ logger = logging.getLogger(__name__)
 WS_PING_INTERVAL: int = 30  # 秒
 WS_PING_TIMEOUT: int = 20  # 秒
 BUFFER_SIZE: int = 8192  # バイト
-TOUCH_SCROLL_SENSITIVITY_FACTOR: float = 0.5
 
 
 class TerminalWebSocketHandler:
@@ -52,7 +50,6 @@ class TerminalWebSocketHandler:
         self._pty_manager = TmuxAttachManager(session_id)
         self._running = False
         self._tasks: list[asyncio.Task[None]] = []
-        self._scroll_remainder = 0.0
 
     async def handle(self) -> None:
         """WebSocket接続を処理する。
@@ -168,22 +165,10 @@ class TerminalWebSocketHandler:
     async def _handle_scroll(self, message: WSScrollMessage) -> None:
         """スクロールメッセージを処理する。"""
         try:
-            adjusted_lines = self._adjust_scroll_lines(message.lines)
-            if adjusted_lines == 0:
-                return
-            await self._pty_manager.scroll_history(adjusted_lines)
+            await self._pty_manager.route_scroll(message.lines)
         except Exception as e:
             logger.error("Failed to scroll session %s: %s", self._session_id, e)
             await self._send_error("scroll_error", str(e))
-
-    def _adjust_scroll_lines(self, lines: int) -> int:
-        """クライアントのスクロール行数を gateway 側で感度調整する。"""
-        self._scroll_remainder += lines * TOUCH_SCROLL_SENSITIVITY_FACTOR
-        adjusted_lines = math.trunc(self._scroll_remainder)
-        if adjusted_lines == 0:
-            return 0
-        self._scroll_remainder -= adjusted_lines
-        return adjusted_lines
 
     async def _send_to_client(self) -> None:
         """PTYからの出力をクライアントに送信する。"""

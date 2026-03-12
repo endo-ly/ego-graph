@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from gateway.services.pty_manager import TmuxAttachManager
+from gateway.services.pty_manager import (
+    TUI_WHEEL_SENSITIVITY_FACTOR,
+    PaneScrollContext,
+    TmuxAttachManager,
+)
 
 # ============================================================================
 # Fixtures
@@ -502,6 +506,173 @@ class TestScrollHistory:
                 "-X",
                 "cancel",
             )
+
+
+class TestRouteScroll:
+    """route_scrollメソッドのテスト。"""
+
+    @pytest.mark.asyncio
+    async def test_route_scroll_falls_back_to_history_when_context_missing(
+        self, pty_manager
+    ):
+        """tmux状態が取得できない場合は従来の履歴スクロールへ戻ることを確認する。"""
+        pty_manager._get_pane_scroll_context = AsyncMock(return_value=None)
+        pty_manager.scroll_history = AsyncMock()
+
+        await pty_manager.route_scroll(-3)
+
+        pty_manager.scroll_history.assert_awaited_once_with(-3)
+
+    @pytest.mark.asyncio
+    async def test_route_scroll_uses_history_in_copy_mode(self, pty_manager):
+        """copy-mode中は履歴スクロールを優先することを確認する。"""
+        context = PaneScrollContext(
+            pane_in_mode=True,
+            alternate_on=False,
+            mouse_any_flag=False,
+            pane_width=80,
+            pane_height=24,
+        )
+        pty_manager._get_pane_scroll_context = AsyncMock(return_value=context)
+        pty_manager.scroll_history = AsyncMock()
+        pty_manager._send_mouse_wheel = AsyncMock()
+
+        await pty_manager.route_scroll(2)
+
+        pty_manager.scroll_history.assert_awaited_once_with(2)
+        pty_manager._send_mouse_wheel.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_route_scroll_passthroughs_wheel_when_mouse_mode_enabled(
+        self, pty_manager
+    ):
+        """mouse_any_flagが立っている場合はTUIへホイール入力を渡すことを確認する。"""
+        context = PaneScrollContext(
+            pane_in_mode=False,
+            alternate_on=True,
+            mouse_any_flag=True,
+            pane_width=79,
+            pane_height=55,
+        )
+        pty_manager._get_pane_scroll_context = AsyncMock(return_value=context)
+        pty_manager.scroll_history = AsyncMock()
+        pty_manager._send_mouse_wheel = AsyncMock()
+
+        await pty_manager.route_scroll(int(-2 / TUI_WHEEL_SENSITIVITY_FACTOR))
+
+        pty_manager._send_mouse_wheel.assert_awaited_once_with(-2, context)
+        pty_manager.scroll_history.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_route_scroll_accumulates_tui_fractional_steps(self, pty_manager):
+        """TUI 向け感度調整の端数が累積されることを確認する。"""
+        context = PaneScrollContext(
+            pane_in_mode=False,
+            alternate_on=True,
+            mouse_any_flag=True,
+            pane_width=79,
+            pane_height=55,
+        )
+        pty_manager._get_pane_scroll_context = AsyncMock(return_value=context)
+        pty_manager._send_mouse_wheel = AsyncMock()
+
+        await pty_manager.route_scroll(-1)
+        pty_manager._send_mouse_wheel.assert_not_awaited()
+
+        await pty_manager.route_scroll(-1)
+        pty_manager._send_mouse_wheel.assert_awaited_once_with(-1, context)
+
+    @pytest.mark.asyncio
+    async def test_route_scroll_ignores_alternate_screen_without_mouse_support(
+        self, pty_manager
+    ):
+        """alternate screenだがmouse未対応の場合は外側履歴へ落ちないことを確認する。"""
+        context = PaneScrollContext(
+            pane_in_mode=False,
+            alternate_on=True,
+            mouse_any_flag=False,
+            pane_width=80,
+            pane_height=24,
+        )
+        pty_manager._get_pane_scroll_context = AsyncMock(return_value=context)
+        pty_manager.scroll_history = AsyncMock()
+        pty_manager._send_mouse_wheel = AsyncMock()
+
+        await pty_manager.route_scroll(-1)
+
+        pty_manager.scroll_history.assert_not_awaited()
+        pty_manager._send_mouse_wheel.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_route_scroll_resets_tui_remainder_when_leaving_passthrough(
+        self, pty_manager
+    ):
+        """TUI を抜けたら端数が持ち越されないことを確認する。"""
+        passthrough_context = PaneScrollContext(
+            pane_in_mode=False,
+            alternate_on=True,
+            mouse_any_flag=True,
+            pane_width=79,
+            pane_height=55,
+        )
+        normal_context = PaneScrollContext(
+            pane_in_mode=False,
+            alternate_on=False,
+            mouse_any_flag=False,
+            pane_width=79,
+            pane_height=55,
+        )
+        pty_manager._get_pane_scroll_context = AsyncMock(
+            side_effect=[passthrough_context, normal_context, passthrough_context]
+        )
+        pty_manager.scroll_history = AsyncMock()
+        pty_manager._send_mouse_wheel = AsyncMock()
+
+        await pty_manager.route_scroll(-1)
+        await pty_manager.route_scroll(-1)
+        await pty_manager.route_scroll(-1)
+
+        pty_manager.scroll_history.assert_awaited_once_with(-1)
+        pty_manager._send_mouse_wheel.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_send_mouse_wheel_writes_centered_sgr_sequence(self, pty_manager):
+        """ホイール入力が中央座標のSGRシーケンスとしてPTYへ書かれることを確認する。"""
+        context = PaneScrollContext(
+            pane_in_mode=False,
+            alternate_on=True,
+            mouse_any_flag=True,
+            pane_width=79,
+            pane_height=55,
+        )
+        pty_manager._attached = True
+        pty_manager._master_fd = 10
+        pty_manager._write_master = AsyncMock()
+
+        await pty_manager._send_mouse_wheel(-2, context)
+
+        pty_manager._write_master.assert_awaited_once_with(
+            b"\x1b[<64;40;28M\x1b[<64;40;28M"
+        )
+
+    def test_parse_pane_scroll_context_uses_default_size_on_invalid_values(
+        self, pty_manager
+    ):
+        """paneサイズが壊れていても既定サイズへfallbackできることを確認する。"""
+        context = pty_manager._parse_pane_scroll_context("1,0,1,x,y")
+
+        assert context == PaneScrollContext(
+            pane_in_mode=True,
+            alternate_on=False,
+            mouse_any_flag=True,
+            pane_width=80,
+            pane_height=24,
+        )
+
+    def test_adjust_tui_wheel_steps_applies_sensitivity_factor(self, pty_manager):
+        """TUI 向け wheel step が感度係数で間引かれることを確認する。"""
+        assert pty_manager._adjust_tui_wheel_steps(-1) == 0
+        assert pty_manager._adjust_tui_wheel_steps(-1) == -1
 
 
 # ============================================================================
