@@ -422,6 +422,11 @@ class AndroidTerminalWebView(
         }
 
     /**
+     * console message 本文をログ向けにマスクする。
+     */
+    private fun maskConsoleMessage(message: String): String = "[REDACTED length=${message.length}]"
+
+    /**
      * WebChromeClient を構築する。
      */
     private fun createTerminalWebChromeClient(): WebChromeClient =
@@ -429,7 +434,7 @@ class AndroidTerminalWebView(
             override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
                 Log.d(
                     TERMINAL_WEBVIEW_LOG_TAG,
-                    "console[${consoleMessage.messageLevel()}] ${consoleMessage.message()} " +
+                    "console[${consoleMessage.messageLevel()}] ${maskConsoleMessage(consoleMessage.message())} " +
                         "@${consoleMessage.sourceId()}:${consoleMessage.lineNumber()}",
                 )
                 return false
