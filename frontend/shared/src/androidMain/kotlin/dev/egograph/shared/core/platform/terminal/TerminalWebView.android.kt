@@ -1,5 +1,6 @@
 package dev.egograph.shared.core.platform.terminal
 
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Color
 import android.os.Build
@@ -562,6 +563,16 @@ class AndroidTerminalWebView(
         executeTerminalApiScript("window.TerminalAPI.sendKey('$escapedKey');")
     }
 
+    override fun pasteFromClipboard() {
+        val clipboardText = readClipboardText() ?: return
+        if (clipboardText.isEmpty()) {
+            return
+        }
+
+        sendKey(clipboardText)
+        focusInputAtBottom()
+    }
+
     override fun setBottomScrollPadding(paddingPx: Float) {
         val sanitizedPaddingPx = paddingPx.coerceAtLeast(0f)
         val cssPaddingPx = toCssPixels(sanitizedPaddingPx)
@@ -583,6 +594,19 @@ class AndroidTerminalWebView(
         runOnMainThread {
             terminalWebView.setBackgroundColor(Color.parseColor(backgroundColor))
         }
+    }
+
+    /**
+     * クリップボードからテキストを取得する。
+     */
+    private fun readClipboardText(): String? {
+        val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
+        val primaryClip = clipboardManager.primaryClip ?: return null
+        if (primaryClip.itemCount <= 0) {
+            return null
+        }
+
+        return primaryClip.getItemAt(0).coerceToText(context)?.toString()
     }
 
     fun getWebView(): WebView = terminalWebView

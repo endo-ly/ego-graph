@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,10 +55,24 @@ fun TerminalCopyButton(
 }
 
 @Composable
+fun TerminalPasteButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.testTagResourceId(TerminalTestTags.TERMINAL_PASTE_BUTTON),
+    ) {
+        Icon(Icons.Default.ContentPaste, contentDescription = "Paste clipboard")
+    }
+}
+
+@Composable
 fun TerminalFloatingControlPill(
     sessionId: String,
     isConnected: Boolean,
     onBack: () -> Unit,
+    onPaste: () -> Unit,
     onCopy: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -97,6 +112,8 @@ fun TerminalFloatingControlPill(
                 )
             }
             Spacer(modifier = Modifier.width(dimens.space8))
+            TerminalPasteButton(onClick = onPaste)
+            Spacer(modifier = Modifier.width(dimens.space4))
             TerminalCopyButton(onClick = onCopy)
         }
     }

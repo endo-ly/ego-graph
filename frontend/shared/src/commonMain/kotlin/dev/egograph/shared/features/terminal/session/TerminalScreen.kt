@@ -287,6 +287,7 @@ private fun TerminalContent(
             sessionId = agentId,
             isConnected = connectionState && displayError == null,
             onBack = { onClose?.invoke() ?: navigator.pop() },
+            onPaste = { webView.pasteFromClipboard() },
             onCopy = { isCopyModeOpen = true },
             position = floatingControlPosition,
             onPositionChange = { position -> floatingControlPosition = position },

@@ -36,6 +36,7 @@ private val FLOATING_CONTROL_RELOCATION_GAP = 16.dp
  * @param sessionId セッションID
  * @param isConnected 接続状態
  * @param onBack 戻るボタン押下時のコールバック
+ * @param onPaste 貼り付けボタン押下時のコールバック
  * @param onCopy コピーボタン押下時のコールバック
  * @param position 現在のピル位置
  * @param onPositionChange ピル位置が変わった時のコールバック
@@ -47,6 +48,7 @@ internal fun DraggableTerminalFloatingControlPill(
     sessionId: String,
     isConnected: Boolean,
     onBack: () -> Unit,
+    onPaste: () -> Unit,
     onCopy: () -> Unit,
     position: TerminalFloatingControlPosition?,
     onPositionChange: (TerminalFloatingControlPosition) -> Unit,
@@ -92,6 +94,7 @@ internal fun DraggableTerminalFloatingControlPill(
             sessionId = sessionId,
             isConnected = isConnected,
             onBack = onBack,
+            onPaste = onPaste,
             onCopy = onCopy,
             modifier =
                 Modifier

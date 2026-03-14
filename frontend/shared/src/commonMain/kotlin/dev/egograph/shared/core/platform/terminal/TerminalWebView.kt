@@ -38,6 +38,11 @@ interface TerminalWebView {
     fun sendKey(key: String)
 
     /**
+     * クリップボードの内容をターミナルへ貼り付ける。
+     */
+    fun pasteFromClipboard()
+
+    /**
      * Focus terminal input at the latest prompt.
      */
     fun focusInputAtBottom()

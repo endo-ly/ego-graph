@@ -22,4 +22,7 @@ object TerminalTestTags {
 
     /** ターミナル内容をコピーするボタンのタグ */
     const val TERMINAL_COPY_BUTTON = "terminal_copy_button"
+
+    /** クリップボード内容を貼り付けるボタンのタグ */
+    const val TERMINAL_PASTE_BUTTON = "terminal_paste_button"
 }
