@@ -12,6 +12,7 @@ import pandas as pd
 from botocore.exceptions import ClientError
 
 from ingest.compaction import (
+    COMPACTED_ROOT,
     build_compacted_key,
     compact_records,
     dataframe_to_parquet_bytes,
@@ -38,7 +39,6 @@ class SpotifyStorage:
         raw_path: str = "raw/",
         events_path: str = "events/",
         master_path: str = "master/",
-        compacted_path: str = "compacted/",
     ):
         """Storageを初期化する。
 
@@ -50,13 +50,12 @@ class SpotifyStorage:
             raw_path: 生データの保存先プレフィックス
             events_path: イベントデータの保存先プレフィックス
             master_path: マスターデータの保存先プレフィックス
-            compacted_path: compact版データの保存先プレフィックス
         """
         self.bucket_name = bucket_name
         self.raw_path = _normalize_path(raw_path)
         self.events_path = _normalize_path(events_path)
         self.master_path = _normalize_path(master_path)
-        self.compacted_path = _normalize_path(compacted_path)
+        self.compacted_path = COMPACTED_ROOT
 
         self.s3 = boto3.client(
             "s3",

@@ -73,8 +73,6 @@ jobs:
           access_key_id = os.environ["R2_ACCESS_KEY_ID"]
           secret_access_key = os.environ["R2_SECRET_ACCESS_KEY"]
           bucket_name = os.environ["R2_BUCKET_NAME"]
-          compacted_path = os.environ.get("R2_COMPACTED_PATH", "compacted/")
-
           access_key_id = access_key_id.replace("'", "''")
           secret_access_key = secret_access_key.replace("'", "''")
           endpoint_clean = endpoint_url.replace("https://", "").replace("'", "''")
@@ -94,9 +92,8 @@ jobs:
           """)
 
           bucket_clean = bucket_name.replace("'", "''")
-          compacted_clean = compacted_path.replace("'", "''")
-          commits_url = f"s3://{bucket_clean}/{compacted_clean}events/github/commits/**/*.parquet"
-          prs_url = f"s3://{bucket_clean}/{compacted_clean}events/github/pull_requests/**/*.parquet"
+          commits_url = f"s3://{bucket_clean}/compacted/events/github/commits/**/*.parquet"
+          prs_url = f"s3://{bucket_clean}/compacted/events/github/pull_requests/**/*.parquet"
           commits_url_escaped = commits_url.replace("'", "''")
           prs_url_escaped = prs_url.replace("'", "''")
           print(f"🧐 Querying: {commits_url}")

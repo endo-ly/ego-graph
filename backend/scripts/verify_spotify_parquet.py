@@ -18,6 +18,7 @@ from tabulate import tabulate
 sys.path.append(os.getcwd())
 
 from backend.config import BackendConfig
+from backend.infrastructure.database.parquet_paths import COMPACTED_ROOT
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -63,10 +64,18 @@ def verify_r2_data():
         )
 
         # Parquetファイルのパスパターン
-        compacted_root = r2_conf.compacted_path.rstrip("/") + "/"
-        parquet_url = f"s3://{r2_conf.bucket_name}/{compacted_root}events/spotify/plays/**/*.parquet"
-        tracks_url = f"s3://{r2_conf.bucket_name}/{compacted_root}master/spotify/tracks/**/*.parquet"
-        artists_url = f"s3://{r2_conf.bucket_name}/{compacted_root}master/spotify/artists/**/*.parquet"
+        parquet_url = (
+            f"s3://{r2_conf.bucket_name}/{COMPACTED_ROOT}"
+            "events/spotify/plays/**/*.parquet"
+        )
+        tracks_url = (
+            f"s3://{r2_conf.bucket_name}/{COMPACTED_ROOT}"
+            "master/spotify/tracks/**/*.parquet"
+        )
+        artists_url = (
+            f"s3://{r2_conf.bucket_name}/{COMPACTED_ROOT}"
+            "master/spotify/artists/**/*.parquet"
+        )
 
         # 1. 総件数の確認
         try:

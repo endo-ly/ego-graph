@@ -48,7 +48,6 @@ def main() -> None:
         raw_path=r2_conf.raw_path,
         events_path=r2_conf.events_path,
         master_path=r2_conf.master_path,
-        compacted_path=r2_conf.compacted_path,
     )
 
     target_months = resolve_target_months(args.year, args.month)

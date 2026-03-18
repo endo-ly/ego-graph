@@ -20,9 +20,7 @@ def _build_r2_config(**overrides) -> R2Config:
         "raw_path": "raw/",
         "events_path": "events/",
         "master_path": "master/",
-        "compacted_path": "compacted/",
         "local_parquet_root": "/data/parquet",
-        "parquet_source_mode": "prefer_local",
     }
     values.update(overrides)
     return R2Config.model_construct(**values)
@@ -70,53 +68,6 @@ class TestBuildPartitionPaths:
         assert paths == [
             "s3://test-bucket/compacted/events/spotify/plays/year=2024/month=01/data.parquet"
         ]
-
-    def test_r2_only_mode_ignores_local_files(self, tmp_path):
-        config = _build_r2_config(
-            local_parquet_root=str(tmp_path), parquet_source_mode="r2_only"
-        )
-        local_file = (
-            tmp_path
-            / "compacted"
-            / "events"
-            / "spotify"
-            / "plays"
-            / "year=2024"
-            / "month=01"
-            / "data.parquet"
-        )
-        local_file.parent.mkdir(parents=True)
-        local_file.write_bytes(b"test")
-
-        paths = build_partition_paths(
-            config,
-            data_domain="events",
-            dataset_path="spotify/plays",
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 1, 31),
-        )
-
-        assert paths == [
-            "s3://test-bucket/compacted/events/spotify/plays/year=2024/month=01/data.parquet"
-        ]
-
-    def test_local_only_mode_requires_local_file(self, tmp_path):
-        config = _build_r2_config(
-            local_parquet_root=str(tmp_path), parquet_source_mode="local_only"
-        )
-
-        try:
-            build_partition_paths(
-                config,
-                data_domain="events",
-                dataset_path="spotify/plays",
-                start_date=date(2024, 1, 1),
-                end_date=date(2024, 1, 31),
-            )
-        except FileNotFoundError as exc:
-            assert "spotify/plays" in str(exc)
-        else:
-            raise AssertionError("FileNotFoundError was not raised")
 
 
 class TestBuildDatasetGlob:

@@ -40,7 +40,7 @@ Backend サービスは主に 2 つの目的を果たします：
     ```
 2.  `backend/.env` に設定（`.env.example`を参照）:
     - `R2_*` のクレデンシャルを設定（データアクセス用）。
-    - `R2_COMPACTED_PATH`, `LOCAL_PARQUET_ROOT`, `PARQUET_SOURCE_MODE` を必要に応じて設定。
+    - `LOCAL_PARQUET_ROOT` を設定すると、compacted parquet のローカル mirror を優先利用します。
     - `LLM_*` のクレデンシャルを設定（チャット機能に必須）。
     - 本番では `USE_ENV_FILE=false` を指定し、systemd の `EnvironmentFile` からのみ読み込む。
 

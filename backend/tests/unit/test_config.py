@@ -203,8 +203,6 @@ class TestBackendConfig:
         # Assert: R2のみが設定されることを検証（LLMはデフォルト値で作成される）
         assert config.r2 is not None
         assert config.r2.bucket_name == "test-bucket"
-        assert config.r2.compacted_path == "compacted/"
-        assert config.r2.parquet_source_mode == "prefer_local"
         # LLMConfigは必須フィールドがないため常に作成される（APIキーはNone）
 
     def test_from_env_with_llm_and_r2(self, monkeypatch):

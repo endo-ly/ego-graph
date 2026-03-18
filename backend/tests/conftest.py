@@ -56,9 +56,7 @@ def mock_r2_config():
         raw_path="raw/",
         events_path="events/",
         master_path="master/",
-        compacted_path="compacted/",
         local_parquet_root=None,
-        parquet_source_mode="prefer_local",
     )
 
 

@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+COMPACTED_ROOT = "compacted/"
 
 
 def _normalize_path(path: str) -> str:

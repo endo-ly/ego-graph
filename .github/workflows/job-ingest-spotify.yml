@@ -70,8 +70,6 @@ jobs:
           access_key_id = os.environ["R2_ACCESS_KEY_ID"]
           secret_access_key = os.environ["R2_SECRET_ACCESS_KEY"]
           bucket_name = os.environ["R2_BUCKET_NAME"]
-          compacted_path = os.environ.get("R2_COMPACTED_PATH", "compacted/")
-
           conn = duckdb.connect(":memory:")
           conn.execute("INSTALL httpfs; LOAD httpfs;")
           conn.execute(f"""
@@ -85,9 +83,9 @@ jobs:
               );
           """)
 
-          plays_url = f"s3://{bucket_name}/{compacted_path}events/spotify/plays/**/*.parquet"
-          tracks_url = f"s3://{bucket_name}/{compacted_path}master/spotify/tracks/**/*.parquet"
-          artists_url = f"s3://{bucket_name}/{compacted_path}master/spotify/artists/**/*.parquet"
+          plays_url = f"s3://{bucket_name}/compacted/events/spotify/plays/**/*.parquet"
+          tracks_url = f"s3://{bucket_name}/compacted/master/spotify/tracks/**/*.parquet"
+          artists_url = f"s3://{bucket_name}/compacted/master/spotify/artists/**/*.parquet"
           print(f"🧐 Querying: {plays_url}")
 
           try:

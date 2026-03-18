@@ -286,7 +286,6 @@ def run_pipeline(config: Config) -> None:
         raw_path=r2_conf.raw_path,
         events_path=r2_conf.events_path,
         master_path=r2_conf.master_path,
-        compacted_path=r2_conf.compacted_path,
     )
 
     state_key = "state/spotify_ingest_state.json"

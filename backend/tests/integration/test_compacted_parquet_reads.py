@@ -21,7 +21,7 @@ from backend.infrastructure.database.queries import (
 )
 
 
-def _build_config(local_root: Path, mode: str = "prefer_local") -> R2Config:
+def _build_config(local_root: Path) -> R2Config:
     return R2Config.model_construct(
         endpoint_url="https://test.r2.cloudflarestorage.com",
         access_key_id="test_key",
@@ -30,9 +30,7 @@ def _build_config(local_root: Path, mode: str = "prefer_local") -> R2Config:
         raw_path="raw/",
         events_path="events/",
         master_path="master/",
-        compacted_path="compacted/",
         local_parquet_root=str(local_root),
-        parquet_source_mode=mode,
     )
 
 

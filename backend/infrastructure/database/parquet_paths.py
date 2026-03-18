@@ -6,6 +6,8 @@ from pathlib import Path
 
 from backend.config import R2Config
 
+COMPACTED_ROOT = "compacted/"
+
 
 @dataclass(frozen=True)
 class PartitionRef:
@@ -57,9 +59,8 @@ def _build_r2_compacted_file(
     dataset_path: str,
     partition: PartitionRef,
 ) -> str:
-    compacted_path = _normalize_path(config.compacted_path)
     return (
-        f"s3://{config.bucket_name}/{compacted_path}{data_domain}/{dataset_path}/"
+        f"s3://{config.bucket_name}/{COMPACTED_ROOT}{data_domain}/{dataset_path}/"
         f"year={partition.year}/month={partition.month:02d}/data.parquet"
     )
 
@@ -81,18 +82,9 @@ def build_partition_paths(
             if config.local_parquet_root
             else None
         )
-        if (
-            config.parquet_source_mode != "r2_only"
-            and local_path
-            and local_path.exists()
-        ):
+        if local_path and local_path.exists():
             paths.append(str(local_path))
             continue
-
-        if config.parquet_source_mode == "local_only":
-            raise FileNotFoundError(
-                f"Missing local compacted parquet for {dataset_path}: {local_path}"
-            )
 
         paths.append(
             _build_r2_compacted_file(config, data_domain, dataset_path, partition)
@@ -107,20 +99,14 @@ def build_dataset_glob(
     dataset_path: str,
 ) -> str:
     """Build all-data glob for compacted datasets."""
-    if config.parquet_source_mode != "r2_only" and config.local_parquet_root:
+    if config.local_parquet_root:
         local_root = (
             Path(config.local_parquet_root) / "compacted" / data_domain / dataset_path
         )
         if any(local_root.rglob("*.parquet")):
             return str(local_root / "**" / "*.parquet")
-        if config.parquet_source_mode == "local_only":
-            raise FileNotFoundError(
-                "Missing local compacted parquet dataset for "
-                f"{dataset_path}: {local_root}"
-            )
 
-    compacted_path = _normalize_path(config.compacted_path)
     return (
-        f"s3://{config.bucket_name}/{compacted_path}{data_domain}/"
+        f"s3://{config.bucket_name}/{COMPACTED_ROOT}{data_domain}/"
         f"{dataset_path}/**/*.parquet"
     )

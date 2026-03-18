@@ -152,7 +152,6 @@ WorkingDirectory=/opt/egograph/repo
 EnvironmentFile=/opt/egograph/repo/backend/.env
 Environment=USE_ENV_FILE=false
 Environment=LOCAL_PARQUET_ROOT=/opt/egograph/data/parquet
-Environment=PARQUET_SOURCE_MODE=prefer_local
 ExecStartPre=/root/.local/bin/uv run python backend/scripts/sync_compacted_parquet.py --root /opt/egograph/data/parquet
 ExecStart=/root/.local/bin/uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
 Restart=always
