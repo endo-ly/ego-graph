@@ -114,7 +114,7 @@ DuckDBは標準ではローカルファイルしか読み込めません。
 
 - HTTP/HTTPS経由でリモートのファイルを読み込む
 - S3互換ストレージ（R2、AWS S3、MinIOなど）に直接アクセスする
-- 読み込んだファイルをローカルに保存せず、メモリ上でクエリできる
+- compacted mirror 未同期時に R2 compacted parquet へフォールバックできる
 
 ```bash
 uv run python -c "import duckdb; conn = duckdb.connect(); conn.execute('INSTALL httpfs;'); conn.execute('LOAD httpfs;'); print('httpfs installed successfully')"
@@ -130,6 +130,8 @@ uv run python -c "import duckdb; conn = duckdb.connect(); print(conn.execute(\"S
 
 systemdで常駐化し、障害時は自動復旧させる。
 `WorkingDirectory` と `.env` のパスは固定で運用する。
+backend は local mirror を優先して compacted parquet を読み込む。
+起動前に compacted mirror を同期するため、`ExecStartPre` を追加する。
 `/etc/systemd/system/egograph-backend.service`:
 
 作成と編集:
@@ -149,6 +151,9 @@ Type=simple
 WorkingDirectory=/opt/egograph/repo
 EnvironmentFile=/opt/egograph/repo/backend/.env
 Environment=USE_ENV_FILE=false
+Environment=LOCAL_PARQUET_ROOT=/opt/egograph/data/parquet
+Environment=PARQUET_SOURCE_MODE=prefer_local
+ExecStartPre=/root/.local/bin/uv run python backend/scripts/sync_compacted_parquet.py --root /opt/egograph/data/parquet
 ExecStart=/root/.local/bin/uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=10
@@ -172,6 +177,14 @@ sudo systemctl daemon-reload
 sudo systemctl enable egograph-backend
 sudo systemctl start egograph-backend
 sudo systemctl status egograph-backend
+```
+
+### 5.1 定期 sync
+
+local mirror を追従させるため、cron か systemd timer で定期 sync を実行する。
+
+```bash
+*/30 * * * * cd /opt/egograph/repo && /root/.local/bin/uv run python backend/scripts/sync_compacted_parquet.py --root /opt/egograph/data/parquet
 ```
 
 ## 6. GitHub Actions で main をデプロイ

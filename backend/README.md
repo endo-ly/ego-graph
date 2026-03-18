@@ -6,14 +6,14 @@
 
 Backend サービスは主に 2 つの目的を果たします：
 
-1.  **Semantic Layer**: Cloudflare R2 に保存された Parquet ファイルを DuckDB を使用してクエリする「ヘッドレス BI」レイヤーを提供します。
+1.  **Semantic Layer**: Cloudflare R2 上の compacted Parquet、またはそのローカル mirror を DuckDB でクエリする「ヘッドレス BI」レイヤーを提供します。
 2.  **Agent Runtime**: ユーザーのクエリを処理し、ツールを実行する LLM エージェント（FastAPI）をホストします。
 
 ## Architecture
 
 - **Runtime**: Python 3.12+ / FastAPI
 - **Database**:
-  - **DuckDB**: インメモリ（`:memory:`）で実行されるステートレス設計。R2 から直接 Parquet を読み取ります。
+  - **DuckDB**: インメモリ（`:memory:`）で実行されるステートレス設計。`compacted/events` / `compacted/master` を読み取ります。
 - **AI/LLM**:
   - OpenAI, Anthropic, OpenRouter をサポート。
   - データアクセスのための MCP ライクなツールインターフェースを実装。
@@ -40,6 +40,7 @@ Backend サービスは主に 2 つの目的を果たします：
     ```
 2.  `backend/.env` に設定（`.env.example`を参照）:
     - `R2_*` のクレデンシャルを設定（データアクセス用）。
+    - `R2_COMPACTED_PATH`, `LOCAL_PARQUET_ROOT`, `PARQUET_SOURCE_MODE` を必要に応じて設定。
     - `LLM_*` のクレデンシャルを設定（チャット機能に必須）。
     - 本番では `USE_ENV_FILE=false` を指定し、systemd の `EnvironmentFile` からのみ読み込む。
 
@@ -57,7 +58,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 
 ### System
 
-- `GET /health`: DuckDB および R2 への接続を確認します。
+- `GET /health`: DuckDB と compacted Parquet の読取り可否を確認します。
 
 ### Data Access
 
@@ -79,4 +80,7 @@ uv run pytest backend/tests
 
 # 特定のテストファイルを実行
 uv run pytest backend/tests/test_api.py
+
+# compacted parquet の local mirror を同期
+uv run python backend/scripts/sync_compacted_parquet.py --root data/parquet
 ```

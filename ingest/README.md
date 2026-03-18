@@ -17,13 +17,19 @@ Providers (API) -> Collector -> Transform -> Storage -> Data Lake (R2)
 
 - **Collector**: API から生データを取得します。
 - **Transform**: データをクレンジングし、スキーマにマッピングします。
-- **Storage**: Parquet（分析用）および JSON（監査用 Raw データ）ファイルを R2 に書き込みます。
+- **Storage**: Parquet（正本 / compact版）および JSON（監査用 Raw データ）ファイルを R2 に書き込みます。
 
 ### Data Lake Schema (R2)
 
 - **Events**: `s3://egograph/events/spotify/plays/year=YYYY/month=MM/*.parquet`
   - 年月でパーティショニングされています。
-  - DuckDB での分析に最適化されています。
+  - ingest の append-only 正本です。
+- **Master**: `s3://egograph/master/spotify/{tracks,artists}/year=YYYY/month=MM/*.parquet`
+  - 参照系データの append-only 正本です。
+- **Compacted Events**: `s3://egograph/compacted/events/<provider>/<dataset>/year=YYYY/month=MM/data.parquet`
+  - backend の読み込み対象です。
+- **Compacted Master**: `s3://egograph/compacted/master/<provider>/<dataset>/year=YYYY/month=MM/data.parquet`
+  - master 系の読み込み対象です。
 - **Raw**: `s3://egograph/raw/spotify/recently_played/YYYY/MM/DD/*.json`
   - 監査/再生用のオリジナルの API レスポンス。
 - **State**: `s3://egograph/state/*.json`
@@ -51,11 +57,19 @@ Providers (API) -> Collector -> Transform -> Storage -> Data Lake (R2)
 ```bash
 # 手動での取り込み実行 (Spotify)
 uv run python -m ingest.spotify.main
+
+# 当月の compact 版を生成 (Spotify)
+uv run python -m ingest.spotify.compact
+
+# 当月の compact 版を生成 (GitHub)
+uv run python -m ingest.github.compact
 ```
 
 利用可能なモジュール:
 
 - `ingest.spotify.main`: Spotify から最近の再生履歴を取得します。
+- `ingest.spotify.compact`: Spotify の events/master を月次 compact 化します。
+- `ingest.github.compact`: GitHub の events を月次 compact 化します。
 
 ## Automation
 
@@ -63,6 +77,7 @@ uv run python -m ingest.spotify.main
 
 - `.github/workflows/job-ingest-spotify.yml`
 - スケジュール: 1 日 2 回 (02:00 UTC, 14:00 UTC)。
+- ingest 完了後に当月の compact 版を再生成します。
 
 ## Testing
 

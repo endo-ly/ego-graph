@@ -63,9 +63,10 @@ def verify_r2_data():
         )
 
         # Parquetファイルのパスパターン
-        parquet_url = f"s3://{r2_conf.bucket_name}/{r2_conf.events_path}spotify/plays/**/*.parquet"
-        tracks_url = f"s3://{r2_conf.bucket_name}/{r2_conf.master_path}spotify/tracks/**/*.parquet"
-        artists_url = f"s3://{r2_conf.bucket_name}/{r2_conf.master_path}spotify/artists/**/*.parquet"
+        compacted_root = r2_conf.compacted_path.rstrip("/") + "/"
+        parquet_url = f"s3://{r2_conf.bucket_name}/{compacted_root}events/spotify/plays/**/*.parquet"
+        tracks_url = f"s3://{r2_conf.bucket_name}/{compacted_root}master/spotify/tracks/**/*.parquet"
+        artists_url = f"s3://{r2_conf.bucket_name}/{compacted_root}master/spotify/artists/**/*.parquet"
 
         # 1. 総件数の確認
         try:
