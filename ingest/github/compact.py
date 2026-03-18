@@ -10,11 +10,25 @@ from ingest.settings import IngestSettings
 logger = logging.getLogger(__name__)
 
 
+def _valid_month(value: str) -> int:
+    month = int(value)
+    if month < 1 or month > 12:
+        raise argparse.ArgumentTypeError("month must be between 1 and 12")
+    return month
+
+
+def _validate_target_args(args: argparse.Namespace) -> None:
+    if (args.year is None) != (args.month is None):
+        raise SystemExit("Both --year and --month must be specified together")
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--year", type=int, default=None)
-    parser.add_argument("--month", type=int, default=None)
-    return parser.parse_args()
+    parser.add_argument("--month", type=_valid_month, default=None)
+    args = parser.parse_args()
+    _validate_target_args(args)
+    return args
 
 
 def main() -> None:
@@ -38,21 +52,31 @@ def main() -> None:
     )
 
     target_months = resolve_target_months(args.year, args.month)
+    failures: list[str] = []
     for year, month in target_months:
-        storage.compact_month(
-            dataset_path="github/commits",
-            year=year,
-            month=month,
-            dedupe_key="commit_event_id",
-            sort_by="committed_at_utc",
-        )
-        storage.compact_month(
-            dataset_path="github/pull_requests",
-            year=year,
-            month=month,
-            dedupe_key="pr_event_id",
-            sort_by="updated_at_utc",
-        )
+        for dataset_path, dedupe_key, sort_by in (
+            ("github/commits", "commit_event_id", "committed_at_utc"),
+            ("github/pull_requests", "pr_event_id", "updated_at_utc"),
+        ):
+            try:
+                storage.compact_month(
+                    dataset_path=dataset_path,
+                    year=year,
+                    month=month,
+                    dedupe_key=dedupe_key,
+                    sort_by=sort_by,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "GitHub compaction failed: dataset=%s year=%d month=%02d error=%s",
+                    dataset_path,
+                    year,
+                    month,
+                    exc,
+                )
+                failures.append(f"{dataset_path}:{year}-{month:02d}")
+    if failures:
+        raise RuntimeError(f"GitHub compaction failed for: {', '.join(failures)}")
     logger.info("GitHub compaction finished for %s", target_months)
 
 

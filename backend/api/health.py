@@ -59,6 +59,9 @@ async def health_check(
             "data_available": data_exists,
         }
 
+    except FileNotFoundError as e:
+        logger.warning("Health check local parquet not found: %s", e)
+        return {"status": "error", "error": str(e)}
     except Exception as e:
         logger.exception("Health check failed")
         return {"status": "error", "error": str(e)}

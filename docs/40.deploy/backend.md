@@ -184,7 +184,7 @@ sudo systemctl status egograph-backend
 local mirror を追従させるため、cron か systemd timer で定期 sync を実行する。
 
 ```bash
-*/30 * * * * cd /opt/egograph/repo && /root/.local/bin/uv run python backend/scripts/sync_compacted_parquet.py --root /opt/egograph/data/parquet
+*/30 * * * * cd /opt/egograph/repo && flock -n /tmp/egograph-sync.lock /root/.local/bin/uv run python backend/scripts/sync_compacted_parquet.py --root /opt/egograph/data/parquet >> /var/log/egograph-sync.log 2>&1
 ```
 
 ## 6. GitHub Actions で main をデプロイ

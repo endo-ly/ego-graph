@@ -1,10 +1,13 @@
 """Compaction helpers for monthly parquet outputs."""
 
+import logging
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_path(path: str) -> str:
@@ -39,8 +42,15 @@ def compact_records(
     if dedupe_key not in df.columns:
         raise ValueError(f"Missing dedupe key column: {dedupe_key}")
 
-    if sort_by and sort_by in df.columns:
-        df = df.sort_values(sort_by)
+    if sort_by:
+        if sort_by in df.columns:
+            df = df.sort_values(sort_by)
+        else:
+            logger.warning(
+                "sort_by column '%s' not found during compaction. columns=%s",
+                sort_by,
+                list(df.columns),
+            )
 
     return df.drop_duplicates(subset=[dedupe_key], keep="last").reset_index(drop=True)
 
@@ -88,6 +98,8 @@ def read_parquet_records_from_prefix(
 
     for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
         for obj in page.get("Contents", []):
+            if not obj["Key"].endswith(".parquet"):
+                continue
             response = s3_client.get_object(Bucket=bucket_name, Key=obj["Key"])
             frames.append(pd.read_parquet(BytesIO(response["Body"].read())))
 

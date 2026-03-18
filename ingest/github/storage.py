@@ -496,11 +496,15 @@ class GitHubWorklogStorage:
             year=year,
             month=month,
         )
-        self.s3.put_object(
-            Bucket=self.bucket_name,
-            Key=key,
-            Body=dataframe_to_parquet_bytes(compacted_df),
-            ContentType="application/octet-stream",
-        )
+        try:
+            self.s3.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=dataframe_to_parquet_bytes(compacted_df),
+                ContentType="application/octet-stream",
+            )
+        except ClientError:
+            logger.exception("Failed to save compacted parquet to %s", key)
+            return None
         logger.info("Saved compacted parquet to %s", key)
         return key

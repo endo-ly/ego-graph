@@ -5,6 +5,7 @@ LLM APIとバックエンドサーバー固有の設定を追加します。
 
 import logging
 import os
+from typing import Literal
 
 from pydantic import BaseModel, Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,6 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # 環境変数で .env ファイルの使用を制御（デフォルトは使用）
 USE_ENV_FILE = os.getenv("USE_ENV_FILE", "true").lower() in ("true", "1", "yes")
 BACKEND_ENV_FILES = ["backend/.env"] if USE_ENV_FILE else []
+ParquetSourceMode = Literal["prefer_local", "local_only", "r2_only"]
 
 
 class R2Config(BaseModel):
@@ -26,7 +28,7 @@ class R2Config(BaseModel):
     master_path: str = "master/"
     compacted_path: str = "compacted/"
     local_parquet_root: str | None = None
-    parquet_source_mode: str = "prefer_local"
+    parquet_source_mode: ParquetSourceMode = "prefer_local"
 
 
 PROVIDERS_CONFIG = {
@@ -208,7 +210,7 @@ class R2Settings(BaseSettings):
     master_path: str = Field("master/", alias="R2_MASTER_PATH")
     compacted_path: str = Field("compacted/", alias="R2_COMPACTED_PATH")
     local_parquet_root: str | None = Field(None, alias="LOCAL_PARQUET_ROOT")
-    parquet_source_mode: str = Field(
+    parquet_source_mode: ParquetSourceMode = Field(
         "prefer_local",
         alias="PARQUET_SOURCE_MODE",
     )

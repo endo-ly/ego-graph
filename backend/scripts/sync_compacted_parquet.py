@@ -2,9 +2,11 @@
 
 import argparse
 import logging
+import os
 from pathlib import Path
 
 import boto3
+from botocore.exceptions import ClientError
 
 from backend.config import BackendConfig
 
@@ -43,12 +45,24 @@ def main() -> None:
             key = obj["Key"]
             relative_path = Path(key)
             destination = local_root / relative_path
+            tmp_destination = destination.with_suffix(destination.suffix + ".tmp")
             destination.parent.mkdir(parents=True, exist_ok=True)
-            s3.download_file(config.r2.bucket_name, key, str(destination))
-            downloaded += 1
+            try:
+                s3.download_file(config.r2.bucket_name, key, str(tmp_destination))
+                os.replace(tmp_destination, destination)
+                downloaded += 1
+            except ClientError:
+                logger.exception("Failed to sync compacted parquet: %s", key)
+                if tmp_destination.exists():
+                    tmp_destination.unlink()
+                continue
 
     logger.info("Downloaded %d compacted parquet files into %s", downloaded, local_root)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
     main()

@@ -10,11 +10,25 @@ from ingest.spotify.storage import SpotifyStorage
 logger = logging.getLogger(__name__)
 
 
+def _valid_month(value: str) -> int:
+    month = int(value)
+    if month < 1 or month > 12:
+        raise argparse.ArgumentTypeError("month must be between 1 and 12")
+    return month
+
+
+def _validate_target_args(args: argparse.Namespace) -> None:
+    if (args.year is None) != (args.month is None):
+        raise SystemExit("Both --year and --month must be specified together")
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--year", type=int, default=None)
-    parser.add_argument("--month", type=int, default=None)
-    return parser.parse_args()
+    parser.add_argument("--month", type=_valid_month, default=None)
+    args = parser.parse_args()
+    _validate_target_args(args)
+    return args
 
 
 def main() -> None:
@@ -38,31 +52,33 @@ def main() -> None:
     )
 
     target_months = resolve_target_months(args.year, args.month)
+    failures: list[str] = []
     for year, month in target_months:
-        storage.compact_month(
-            data_domain="events",
-            dataset_path="spotify/plays",
-            year=year,
-            month=month,
-            dedupe_key="play_id",
-            sort_by="played_at_utc",
-        )
-        storage.compact_month(
-            data_domain="master",
-            dataset_path="spotify/tracks",
-            year=year,
-            month=month,
-            dedupe_key="track_id",
-            sort_by="updated_at",
-        )
-        storage.compact_month(
-            data_domain="master",
-            dataset_path="spotify/artists",
-            year=year,
-            month=month,
-            dedupe_key="artist_id",
-            sort_by="updated_at",
-        )
+        for data_domain, dataset_path, dedupe_key, sort_by in (
+            ("events", "spotify/plays", "play_id", "played_at_utc"),
+            ("master", "spotify/tracks", "track_id", "updated_at"),
+            ("master", "spotify/artists", "artist_id", "updated_at"),
+        ):
+            try:
+                storage.compact_month(
+                    data_domain=data_domain,
+                    dataset_path=dataset_path,
+                    year=year,
+                    month=month,
+                    dedupe_key=dedupe_key,
+                    sort_by=sort_by,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Spotify compaction failed: dataset=%s year=%d month=%02d error=%s",
+                    dataset_path,
+                    year,
+                    month,
+                    exc,
+                )
+                failures.append(f"{dataset_path}:{year}-{month:02d}")
+    if failures:
+        raise RuntimeError(f"Spotify compaction failed for: {', '.join(failures)}")
     logger.info("Spotify compaction finished for %s", target_months)
 
 
