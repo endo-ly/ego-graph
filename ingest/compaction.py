@@ -1,6 +1,7 @@
 """Compaction helpers for monthly parquet outputs."""
 
 import logging
+import re
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any
@@ -9,6 +10,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 COMPACTED_ROOT = "compacted/"
+_YEAR_MONTH_PATTERN = re.compile(r"year=(\d{4})/month=(\d{2})/")
 
 
 def _normalize_path(path: str) -> str:
@@ -109,3 +111,29 @@ def read_parquet_records_from_prefix(
 
     combined = pd.concat(frames, ignore_index=True)
     return combined.to_dict(orient="records")
+
+
+def discover_available_months(
+    s3_client: Any,
+    bucket_name: str,
+    source_prefix: str,
+) -> list[tuple[int, int]]:
+    """Discover available year/month partitions under an R2 prefix."""
+    paginator = s3_client.get_paginator("list_objects_v2")
+    months: set[tuple[int, int]] = set()
+
+    for page in paginator.paginate(Bucket=bucket_name, Prefix=source_prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if not key.endswith(".parquet"):
+                continue
+            match = _YEAR_MONTH_PATTERN.search(key)
+            if match is None:
+                logger.debug(
+                    "Skipping parquet key without year/month partition: %s",
+                    key,
+                )
+                continue
+            months.add((int(match.group(1)), int(match.group(2))))
+
+    return sorted(months)

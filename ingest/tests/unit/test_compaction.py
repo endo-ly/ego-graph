@@ -7,6 +7,7 @@ import pandas as pd
 from ingest.compaction import (
     build_compacted_key,
     compact_records,
+    discover_available_months,
     resolve_target_months,
 )
 
@@ -90,3 +91,49 @@ class TestResolveTargetMonths:
         now = datetime(2024, 1, 10, tzinfo=timezone.utc)
 
         assert resolve_target_months(now=now) == [(2023, 12), (2024, 1)]
+
+
+class TestDiscoverAvailableMonths:
+    """discover_available_months tests."""
+
+    def test_returns_sorted_unique_partitions_from_parquet_keys(self):
+        class DummyPaginator:
+            def paginate(self, **_: object):
+                yield {
+                    "Contents": [
+                        {
+                            "Key": (
+                                "events/spotify/plays/"
+                                "year=2024/month=02/file-a.parquet"
+                            )
+                        },
+                        {
+                            "Key": (
+                                "events/spotify/plays/"
+                                "year=2024/month=01/file-b.parquet"
+                            )
+                        },
+                        {
+                            "Key": (
+                                "events/spotify/plays/"
+                                "year=2024/month=02/file-c.parquet"
+                            )
+                        },
+                        {
+                            "Key": "events/spotify/plays/not-a-partition/file.txt"
+                        },
+                    ]
+                }
+
+        class DummyS3Client:
+            def get_paginator(self, name: str):
+                assert name == "list_objects_v2"
+                return DummyPaginator()
+
+        months = discover_available_months(
+            DummyS3Client(),
+            bucket_name="egograph",
+            source_prefix="events/spotify/plays/",
+        )
+
+        assert months == [(2024, 1), (2024, 2)]

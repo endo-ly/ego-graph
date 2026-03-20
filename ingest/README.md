@@ -58,6 +58,9 @@ Providers (API) -> Collector -> Transform -> Storage -> Data Lake (R2)
 # 手動での取り込み実行 (Spotify)
 uv run python -m ingest.spotify.main
 
+# 初回 bootstrap 用に workflow 対象の compact を一括生成
+uv run python -m ingest.bootstrap_compact
+
 # 当月の compact 版を生成 (Spotify)
 uv run python -m ingest.spotify.compact
 
@@ -68,8 +71,22 @@ uv run python -m ingest.github.compact
 利用可能なモジュール:
 
 - `ingest.spotify.main`: Spotify から最近の再生履歴を取得します。
+- `ingest.bootstrap_compact`: workflow 管理対象 provider の compact 版を R2 上の全対象月について一括生成します。
 - `ingest.spotify.compact`: Spotify の events/master を月次 compact 化します。
 - `ingest.github.compact`: GitHub の events を月次 compact 化します。
+
+## Initial Bootstrap Note
+
+`ingest.bootstrap_compact` は `backend/.env` を自動では読みません。
+初回手動実行時は、`R2_*` 環境変数をシェルに読み込んでから実行してください。
+
+```bash
+set -a
+source <(grep '^R2_' backend/.env)
+set +a
+
+uv run python -m ingest.bootstrap_compact
+```
 
 ## Automation
 
