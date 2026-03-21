@@ -7,7 +7,6 @@ import asyncio
 import json
 import logging
 import re
-import subprocess
 from urllib.parse import urlparse
 
 import anyio
@@ -24,7 +23,11 @@ from gateway.config import (
 )
 from gateway.dependencies import get_config, verify_gateway_token
 from gateway.domain.models import SessionStatus, TerminalSnapshotResponse
-from gateway.infrastructure.tmux import list_sessions, session_exists
+from gateway.infrastructure.tmux import (
+    get_active_pane_metadata,
+    list_sessions,
+    session_exists,
+)
 from gateway.services.pty_manager import TmuxAttachManager
 from gateway.services.websocket_handler import TerminalWebSocketHandler
 from gateway.services.ws_token_store import terminal_ws_token_store
@@ -33,20 +36,6 @@ logger = logging.getLogger(__name__)
 
 AUTH_TIMEOUT_SECONDS = 10
 WEBVIEW_ALLOWED_ORIGINS = {"null", "file://", "file:///"}
-
-
-def _parse_pane_metadata(stdout: str) -> tuple[str | None, str | None]:
-    """tmux list-panes 出力から pane_title / pane_current_path を抽出する。"""
-    for raw_line in stdout.splitlines():
-        line = raw_line.rstrip("\r")
-        if not line:
-            continue
-        title, separator, current_path = line.partition("\t")
-        if not separator:
-            return (title or None, None)
-        return (title or None, current_path or None)
-
-    return (None, None)
 
 
 async def get_sessions(request: Request) -> JSONResponse:
@@ -436,20 +425,10 @@ async def _build_session_response(session_id: str, session) -> dict:
         "current_path": None,
     }
 
-    # tmuxペインのメタデータを取得
-    try:
-        result = subprocess.run(
-            ["tmux", "list-panes", "-t", session_id, "-F", "#{pane_title}\t#{pane_current_path}"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            title, current_path = _parse_pane_metadata(result.stdout)
-            response["title"] = title
-            response["current_path"] = current_path
-    except Exception as e:
-        logger.debug("Failed to get pane metadata for %s: %s", session_id, e)
+    response["title"], response["current_path"] = await anyio.to_thread.run_sync(
+        get_active_pane_metadata,
+        session_id,
+    )
 
     # プレビュースナップショットの取得を試みる
     try:

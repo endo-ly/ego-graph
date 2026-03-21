@@ -12,7 +12,6 @@ from starlette.exceptions import HTTPException
 from gateway.api.terminal import (
     _build_session_response,
     _extract_preview_lines,
-    _parse_pane_metadata,
     get_session,
     get_sessions,
 )
@@ -223,11 +222,12 @@ class TestBuildSessionResponse:
     @pytest.mark.asyncio
     async def test_keeps_current_path_when_pane_title_is_blank(self, mock_session):
         """pane title が空でも current_path を title と取り違えないことを確認する."""
-        mock_completed = MagicMock(returncode=0, stdout="\t/root/workspace/ego-graph\n")
-
         with (
             patch("gateway.api.terminal.verify_gateway_token"),
-            patch("gateway.api.terminal.subprocess.run", return_value=mock_completed),
+            patch(
+                "gateway.api.terminal.get_active_pane_metadata",
+                return_value=(None, "/root/workspace/ego-graph"),
+            ),
             patch("gateway.api.terminal.TmuxAttachManager") as mock_manager_class,
         ):
             mock_manager = MagicMock()
@@ -238,22 +238,6 @@ class TestBuildSessionResponse:
 
             assert response["title"] is None
             assert response["current_path"] == "/root/workspace/ego-graph"
-
-
-class TestParsePaneMetadata:
-    """_parse_pane_metadata 関数のテスト."""
-
-    def test_returns_title_and_path_when_both_exist(self):
-        title, current_path = _parse_pane_metadata("Claude Code\t/root/workspace/ego-graph\n")
-
-        assert title == "Claude Code"
-        assert current_path == "/root/workspace/ego-graph"
-
-    def test_preserves_blank_title_with_path(self):
-        title, current_path = _parse_pane_metadata("\t/root/workspace/ego-graph\n")
-
-        assert title is None
-        assert current_path == "/root/workspace/ego-graph"
 
 
 # ============================================================================
@@ -277,7 +261,11 @@ class TestGetSessions:
             mock_sessions = [
                 Session(name="agent-0001", last_activity=now, created_at=now),
             ]
-            mock_run_sync.return_value = mock_sessions
+            mock_run_sync.side_effect = lambda func, *args: (
+                mock_sessions
+                if getattr(func, "__name__", "") == "list_sessions"
+                else ("Claude Code", "/root/workspace/ego-graph")
+            )
             mock_manager = MagicMock()
             mock_manager.capture_snapshot = AsyncMock(
                 return_value=b"$ echo hello\nhello\n$ "
@@ -319,7 +307,11 @@ class TestGetSession:
             mock_sessions = [
                 Session(name="agent-0001", last_activity=now, created_at=now),
             ]
-            mock_run_sync.return_value = mock_sessions
+            mock_run_sync.side_effect = lambda func, *args: (
+                mock_sessions
+                if getattr(func, "__name__", "") == "list_sessions"
+                else ("Claude Code", "/root/workspace/ego-graph")
+            )
             mock_manager = MagicMock()
             mock_manager.capture_snapshot = AsyncMock(
                 return_value=b"Preview content\nLine 2"

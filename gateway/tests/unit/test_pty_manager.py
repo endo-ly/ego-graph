@@ -1,6 +1,7 @@
 """PTYマネージャーの単体テスト。"""
 
 import asyncio
+import math
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -587,7 +588,7 @@ class TestRouteScroll:
         pty_manager.scroll_history = AsyncMock()
         pty_manager._send_mouse_wheel = AsyncMock()
 
-        await pty_manager.route_scroll(int(-2 / TUI_WHEEL_SENSITIVITY_FACTOR))
+        await pty_manager.route_scroll(math.floor(-2 / TUI_WHEEL_SENSITIVITY_FACTOR))
 
         pty_manager._send_mouse_wheel.assert_awaited_once_with(-2, context)
         pty_manager.scroll_history.assert_not_awaited()
@@ -604,6 +605,12 @@ class TestRouteScroll:
         )
         pty_manager._get_pane_scroll_context = AsyncMock(return_value=context)
         pty_manager._send_mouse_wheel = AsyncMock()
+
+        await pty_manager.route_scroll(-1)
+        pty_manager._send_mouse_wheel.assert_not_awaited()
+
+        await pty_manager.route_scroll(-1)
+        pty_manager._send_mouse_wheel.assert_not_awaited()
 
         await pty_manager.route_scroll(-1)
         pty_manager._send_mouse_wheel.assert_not_awaited()
@@ -700,6 +707,8 @@ class TestRouteScroll:
 
     def test_adjust_tui_wheel_steps_applies_sensitivity_factor(self, pty_manager):
         """TUI 向け wheel step が感度係数で間引かれることを確認する。"""
+        assert pty_manager._adjust_tui_wheel_steps(-1) == 0
+        assert pty_manager._adjust_tui_wheel_steps(-1) == 0
         assert pty_manager._adjust_tui_wheel_steps(-1) == 0
         assert pty_manager._adjust_tui_wheel_steps(-1) == -1
 

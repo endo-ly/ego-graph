@@ -11,6 +11,7 @@ import pytest
 
 from gateway.infrastructure.tmux import (
     _parse_tmux_timestamp,
+    get_active_pane_metadata,
     list_sessions,
     session_exists,
 )
@@ -288,6 +289,57 @@ class TestSessionExists:
 
             # Assert: False が返されること
             assert exists is False
+
+
+class TestGetActivePaneMetadata:
+    """get_active_pane_metadata 関数のテスト。"""
+
+    def test_returns_active_pane_title_and_path(self) -> None:
+        """複数 pane があっても active pane の情報を返すことを検証します。"""
+        with patch("subprocess.run") as mock_run:
+            result = Mock()
+            result.stdout = (
+                "0\tother title\t/tmp/other\n"
+                "1\tClaude Code\t/root/workspace/ego-graph\n"
+            )
+            mock_run.return_value = result
+
+            title, current_path = get_active_pane_metadata("agent-0001")
+
+            assert title == "Claude Code"
+            assert current_path == "/root/workspace/ego-graph"
+
+    def test_preserves_blank_title_for_active_pane(self) -> None:
+        """active pane のタイトルが空でも current_path が保持されることを検証します。"""
+        with patch("subprocess.run") as mock_run:
+            result = Mock()
+            result.stdout = "1\t\t/root/workspace/ego-graph\n"
+            mock_run.return_value = result
+
+            title, current_path = get_active_pane_metadata("agent-0001")
+
+            assert title is None
+            assert current_path == "/root/workspace/ego-graph"
+
+    def test_falls_back_to_first_pane_when_active_flag_missing(self) -> None:
+        """active pane が見つからない場合は先頭 pane の情報へフォールバックすることを検証します。"""
+        with patch("subprocess.run") as mock_run:
+            result = Mock()
+            result.stdout = (
+                "0\tClaude Code\t/root/workspace/ego-graph\n"
+                "0\tOther\t/tmp/other\n"
+            )
+            mock_run.return_value = result
+
+            title, current_path = get_active_pane_metadata("agent-0001")
+
+            assert title == "Claude Code"
+            assert current_path == "/root/workspace/ego-graph"
+
+    def test_returns_none_pair_on_tmux_failure(self) -> None:
+        """tmux 実行に失敗した場合は None ペアを返すことを検証します。"""
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="tmux", timeout=5)):
+            assert get_active_pane_metadata("agent-0001") == (None, None)
 
 
 class TestListSessionsTimeoutHandling:

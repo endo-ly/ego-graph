@@ -191,3 +191,46 @@ def session_exists(session_name: str) -> bool:
         return False
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+
+
+def get_active_pane_metadata(session_name: str) -> tuple[str | None, str | None]:
+    """指定セッションのアクティブ pane から title と current_path を取得する。"""
+    try:
+        result = subprocess.run(
+            [
+                "tmux",
+                "list-panes",
+                "-t",
+                session_name,
+                "-F",
+                "#{pane_active}\t#{pane_title}\t#{pane_current_path}",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=TMUX_COMMAND_TIMEOUT_SECONDS,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+        logger.debug("Failed to list tmux panes for %s: %s", session_name, e)
+        return (None, None)
+
+    fallback: tuple[str | None, str | None] | None = None
+    for raw_line in result.stdout.splitlines():
+        if not raw_line:
+            continue
+
+        pane_active, separator, remainder = raw_line.partition("\t")
+        if not separator:
+            continue
+
+        title, separator, current_path = remainder.partition("\t")
+        if not separator:
+            current_path = ""
+
+        metadata = (title or None, current_path or None)
+        if fallback is None:
+            fallback = metadata
+        if pane_active == "1":
+            return metadata
+
+    return fallback or (None, None)
