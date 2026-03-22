@@ -7,6 +7,7 @@ from typing import Any
 
 import boto3
 
+from ingest.browser_history.storage import BrowserHistoryStorage
 from ingest.compaction import discover_available_months
 from ingest.github.storage import GitHubWorklogStorage
 from ingest.settings import IngestSettings
@@ -29,7 +30,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--provider",
-        choices=("all", "spotify", "github"),
+        choices=("all", "spotify", "github", "browser_history"),
         default="all",
         help="Compact only the selected provider (default: all).",
     )
@@ -160,6 +161,49 @@ def _compact_github(
     return failures
 
 
+def _compact_browser_history(
+    s3_client: Any,
+    bucket_name: str,
+    events_path: str,
+    storage: BrowserHistoryStorage,
+) -> list[str]:
+    failures: list[str] = []
+    dataset = DatasetSpec(
+        "events",
+        "browser_history/visits",
+        "event_id",
+        "ingested_at_utc",
+    )
+
+    months = _discover_dataset_months(
+        s3_client,
+        bucket_name,
+        events_path,
+        dataset,
+    )
+    logger.info(
+        "Bootstrap compact target months discovered: "
+        "provider=browser_history dataset=%s months=%s",
+        dataset.dataset_path,
+        months,
+    )
+    for year, month in months:
+        try:
+            storage.compact_month(year=year, month=month)
+        except Exception as exc:
+            logger.exception(
+                "Bootstrap browser_history compaction failed: "
+                "dataset=%s year=%d month=%02d error=%s",
+                dataset.dataset_path,
+                year,
+                month,
+                exc,
+            )
+            failures.append(f"browser_history:{dataset.dataset_path}:{year}-{month:02d}")
+
+    return failures
+
+
 def main() -> None:
     """Bootstrap compacted parquet generation for all configured providers."""
     args = _parse_args()
@@ -212,6 +256,25 @@ def main() -> None:
                 bucket_name=r2_conf.bucket_name,
                 events_path=r2_conf.events_path,
                 storage=github_storage,
+            )
+        )
+
+    if args.provider in ("all", "browser_history"):
+        browser_history_storage = BrowserHistoryStorage(
+            endpoint_url=r2_conf.endpoint_url,
+            access_key_id=r2_conf.access_key_id,
+            secret_access_key=r2_conf.secret_access_key.get_secret_value(),
+            bucket_name=r2_conf.bucket_name,
+            raw_path=r2_conf.raw_path,
+            events_path=r2_conf.events_path,
+            master_path=r2_conf.master_path,
+        )
+        failures.extend(
+            _compact_browser_history(
+                s3_client=s3_client,
+                bucket_name=r2_conf.bucket_name,
+                events_path=r2_conf.events_path,
+                storage=browser_history_storage,
             )
         )
 

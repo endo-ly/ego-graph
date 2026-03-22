@@ -6,7 +6,12 @@ from unittest.mock import Mock
 import pytest
 from pydantic import SecretStr
 
-from ingest.bootstrap_compact import _compact_github, _compact_spotify, main
+from ingest.bootstrap_compact import (
+    _compact_browser_history,
+    _compact_github,
+    _compact_spotify,
+    main,
+)
 from ingest.config import Config, DuckDBConfig, R2Config
 
 
@@ -99,6 +104,41 @@ class TestCompactGitHub:
         assert storage.compact_month.call_count == 3
 
 
+class TestCompactBrowserHistory:
+    """_compact_browser_history tests."""
+
+    def test_collects_failures_and_continues(self, monkeypatch):
+        s3_client = object()
+        storage = Mock()
+        storage.compact_month.side_effect = [None, RuntimeError("boom")]
+
+        discovered_months = {
+            ("events/", "events", "browser_history/visits"): [(2024, 1), (2024, 2)],
+        }
+
+        def mock_discover(s3, bucket_name, root_prefix, dataset):
+            assert s3 is s3_client
+            assert bucket_name == "egograph"
+            return discovered_months[
+                (root_prefix, dataset.data_domain, dataset.dataset_path)
+            ]
+
+        monkeypatch.setattr(
+            "ingest.bootstrap_compact._discover_dataset_months",
+            mock_discover,
+        )
+
+        failures = _compact_browser_history(
+            s3_client=s3_client,
+            bucket_name="egograph",
+            events_path="events/",
+            storage=storage,
+        )
+
+        assert failures == ["browser_history:browser_history/visits:2024-02"]
+        assert storage.compact_month.call_count == 2
+
+
 class TestMain:
     """main tests."""
 
@@ -117,6 +157,7 @@ class TestMain:
         )
         spotify_compact = Mock(return_value=[])
         github_compact = Mock(return_value=[])
+        browser_history_compact = Mock(return_value=[])
         monkeypatch.setattr(
             "ingest.bootstrap_compact._compact_spotify",
             spotify_compact,
@@ -125,13 +166,19 @@ class TestMain:
             "ingest.bootstrap_compact._compact_github",
             github_compact,
         )
+        monkeypatch.setattr(
+            "ingest.bootstrap_compact._compact_browser_history",
+            browser_history_compact,
+        )
         monkeypatch.setattr("ingest.bootstrap_compact.SpotifyStorage", Mock())
         monkeypatch.setattr("ingest.bootstrap_compact.GitHubWorklogStorage", Mock())
+        monkeypatch.setattr("ingest.bootstrap_compact.BrowserHistoryStorage", Mock())
 
         main()
 
         spotify_compact.assert_called_once()
         github_compact.assert_not_called()
+        browser_history_compact.assert_not_called()
 
     def test_raises_when_any_provider_fails(self, monkeypatch):
         monkeypatch.setattr(
@@ -154,8 +201,13 @@ class TestMain:
             "ingest.bootstrap_compact._compact_github",
             Mock(return_value=[]),
         )
+        monkeypatch.setattr(
+            "ingest.bootstrap_compact._compact_browser_history",
+            Mock(return_value=[]),
+        )
         monkeypatch.setattr("ingest.bootstrap_compact.SpotifyStorage", Mock())
         monkeypatch.setattr("ingest.bootstrap_compact.GitHubWorklogStorage", Mock())
+        monkeypatch.setattr("ingest.bootstrap_compact.BrowserHistoryStorage", Mock())
 
         with pytest.raises(RuntimeError, match="spotify:spotify/plays:2024-01"):
             main()
