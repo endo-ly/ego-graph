@@ -2,6 +2,7 @@ import type { ExtensionSettings, SyncStatus } from "../shared/types.js";
 
 const SETTINGS_KEY = "settings";
 const STATUS_KEY = "sync_status";
+let syncStatusLock: Promise<void> = Promise.resolve();
 
 function getStorageArea(storageArea: chrome.storage.StorageArea = chrome.storage.local) {
   return storageArea;
@@ -46,31 +47,37 @@ export async function setSuccessfulSync(
   timestamp: string,
   storageArea: chrome.storage.StorageArea = chrome.storage.local
 ): Promise<void> {
-  const current = await getSyncStatus(storageArea);
-  await saveSyncStatus(
-    {
-      ...current,
-      lastAttemptedSyncAt: new Date().toISOString(),
-      lastSuccessfulSyncAt: timestamp,
-      lastResult: "success",
-      lastErrorMessage: undefined
-    },
-    storageArea
-  );
+  syncStatusLock = syncStatusLock.then(async () => {
+    const current = await getSyncStatus(storageArea);
+    await saveSyncStatus(
+      {
+        ...current,
+        lastAttemptedSyncAt: new Date().toISOString(),
+        lastSuccessfulSyncAt: timestamp,
+        lastResult: "success",
+        lastErrorMessage: undefined
+      },
+      storageArea
+    );
+  });
+  return syncStatusLock;
 }
 
 export async function setFailedSync(
   message: string,
   storageArea: chrome.storage.StorageArea = chrome.storage.local
 ): Promise<void> {
-  const current = await getSyncStatus(storageArea);
-  await saveSyncStatus(
-    {
-      ...current,
-      lastAttemptedSyncAt: new Date().toISOString(),
-      lastResult: "error",
-      lastErrorMessage: message
-    },
-    storageArea
-  );
+  syncStatusLock = syncStatusLock.then(async () => {
+    const current = await getSyncStatus(storageArea);
+    await saveSyncStatus(
+      {
+        ...current,
+        lastAttemptedSyncAt: new Date().toISOString(),
+        lastResult: "error",
+        lastErrorMessage: message
+      },
+      storageArea
+    );
+  });
+  return syncStatusLock;
 }
