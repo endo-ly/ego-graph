@@ -25,7 +25,7 @@
 | 05 | Calendar（カレンダー） | 未作成 | 構造化ログ | Phase 1 |
 | 06 | Note（メモ） | 未作成 | 非構造化データ | Phase 2 |
 | 07 | Email | 未作成 | 非構造化データ | Phase 2 |
-| 08 | Browser History | 未作成 | 時系列・行動履歴 | Phase 3 |
+| 08 | Browser History | [08_browser_history.md](./08_browser_history.md) | 時系列・行動履歴 | Phase 3 |
 | 09 | Location | 未作成 | 時系列・行動履歴 | Phase 3 |
 
 ---

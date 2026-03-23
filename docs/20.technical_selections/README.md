@@ -14,7 +14,6 @@ EgoGraphの各コンポーネントにおける技術選定の詳細と比較検
 | [02_frontend.md](./02_frontend.md) | フロントエンド技術選定（Capacitor + React + Vite + shadcn/ui） |
 | [03_chat_history_storage.md](./03_chat_history_storage.md) | チャット履歴の永続化（DuckDBローカル保存の選定理由） |
 | [04_youtube_history_collection.md](./04_youtube_history_collection.md) | YouTube視聴履歴収集（Playwright + MyActivity スクレイピング選定理由） |
-| [06_browser_history_event_shaping.md](./06_browser_history_event_shaping.md) | Browser History の raw / page view 分離と 2 秒畳み込みの選定理由 |
 
 ---
 
