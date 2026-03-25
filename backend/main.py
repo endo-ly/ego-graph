@@ -12,6 +12,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from backend.api import (
     browser_history,
+    browser_history_data,
     chat,
     data,
     github,
@@ -99,6 +100,7 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     # ルーターの登録
     app.include_router(health.router)
     app.include_router(data.router)
+    app.include_router(browser_history_data.router)
     app.include_router(github.router)
     app.include_router(browser_history.router)
     # YouTubeルーターは一時非推奨 (2025-02-04)

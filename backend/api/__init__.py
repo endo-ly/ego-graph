@@ -1,5 +1,23 @@
 """FastAPI routers."""
 
-from . import browser_history, chat, data, health, system_prompts
+from . import (
+    browser_history,
+    browser_history_data,
+    chat,
+    data,
+    github,
+    health,
+    system_prompts,
+    threads,
+)
 
-__all__ = ["browser_history", "chat", "data", "health", "system_prompts"]
+__all__ = [
+    "browser_history",
+    "browser_history_data",
+    "chat",
+    "data",
+    "github",
+    "health",
+    "system_prompts",
+    "threads",
+]

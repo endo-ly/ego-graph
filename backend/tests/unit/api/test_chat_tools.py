@@ -692,6 +692,8 @@ class TestChatToolsEndpoint:
         # Spotifyツール
         assert any(t["name"] == "get_top_tracks" for t in tools)
         assert any(t["name"] == "get_listening_stats" for t in tools)
+        assert any(t["name"] == "get_page_views" for t in tools)
+        assert any(t["name"] == "get_top_domains" for t in tools)
 
         # YouTubeツールは一時非推奨 (2025-02-04) ため含まれない
         assert not any(t["name"] == "get_watch_history" for t in tools)

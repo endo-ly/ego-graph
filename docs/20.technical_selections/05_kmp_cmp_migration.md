@@ -345,7 +345,7 @@ fun ChatScreen() {
 
 - [移行計画詳細](../../.sisyphus/plans/kmp-cmp-migration.md) - タスク breakdown
 - [開発環境構築ガイド](../../.sisyphus/drafts/dev-environment-setup.md) - Linux CLI環境セットアップ
-- [既存フロントエンド技術選定](./02_frontend.md) - 移行前の技術選定記録
+- [既存フロントエンド技術選定](https://github.com/endo-ava/egograph-frontend-capacitor-legacy/blob/main/docs/20.technical_selections/02_frontend.md) - 移行前の技術選定記録
 - [システムアーキテクチャ](../10.architecture/1001_system_architecture.md)
 - [KMP公式ドキュメント](https://kotlinlang.org/docs/multiplatform.html)
 - [Compose Multiplatform](https://www.jetbrains.com/lp/compose-multiplatform/)

@@ -1,7 +1,9 @@
 """データ API スキーマ。
 
-Spotify データ API のレスポンスモデルを定義します。
+Spotify などのデータ API レスポンスモデルを定義します。
 """
+
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -92,3 +94,25 @@ class TopChannelResponse(BaseModel):
     channel_name: str
     video_count: int
     total_seconds: int
+
+
+class PageViewResponse(BaseModel):
+    """Browser History page view レスポンス。"""
+
+    page_view_id: str
+    started_at_utc: datetime
+    ended_at_utc: datetime
+    url: str
+    title: str | None = None
+    browser: str
+    profile: str
+    transition: str | None = None
+    visit_span_count: int
+
+
+class TopDomainResponse(BaseModel):
+    """Browser History top domains レスポンス。"""
+
+    domain: str
+    page_view_count: int
+    unique_urls: int

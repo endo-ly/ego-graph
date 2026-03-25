@@ -10,7 +10,9 @@ from backend.api.schemas.browser_history import (
 from backend.api.schemas.chat import ChatRequest, ChatResponse, ToolInfo, ToolsResponse
 from backend.api.schemas.data import (
     ListeningStatsResponse,
+    PageViewResponse,
     TopChannelResponse,
+    TopDomainResponse,
     TopTrackResponse,
     WatchHistoryResponse,
     WatchingStatsResponse,
@@ -46,8 +48,10 @@ __all__ = [
     # Data API スキーマ
     "TopTrackResponse",
     "ListeningStatsResponse",
+    "PageViewResponse",
     "WatchHistoryResponse",
     "WatchingStatsResponse",
+    "TopDomainResponse",
     "TopChannelResponse",
     # GitHub API スキーマ
     "PullRequestResponse",

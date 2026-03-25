@@ -32,7 +32,6 @@ ego-graph/
 ├── backend/               # FastAPI サーバー（uv workspace メンバー）
 ├── gateway/               # Terminal Gateway（uv workspace メンバー）
 ├── frontend/              # KMP Android アプリ（Gradle）
-├── frontend-capacitor/    # React + Capacitor アプリ（旧版、参照用）
 │
 ├── docs/                  # プロジェクトドキュメント
 ├── .github/workflows/     # CI/CD ワークフロー
@@ -48,6 +47,10 @@ ego-graph/
 | **backend/**   | Agent API・データアクセス   | FastAPI, DuckDB, LLM (DeepSeek/OpenAI)                        | VPS/GCP (常駐サーバー)    |
 | **gateway/**   | Terminal Gateway・tmux 接続 | Starlette, Uvicorn, WebSocket, FCM                            | tmux (LXC)                |
 | **frontend/**  | チャット UI・Terminal UI    | Kotlin 2.2.21, Compose Multiplatform, MVVM (StateFlow + Channel) | Android (Gradle)          |
+
+旧 React + Capacitor フロントエンドはモノレポから分離され、
+[`endo-ava/egograph-frontend-capacitor-legacy`](https://github.com/endo-ava/egograph-frontend-capacitor-legacy)
+で保守されています。
 
 ---
 

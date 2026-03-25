@@ -49,7 +49,7 @@ MVVM (StateFlow + Channel) - Kotlin Multiplatform + Compose Multiplatform
 - Tech Stack: Kotlin 2.2.21, Compose Multiplatform 1.9.0, Ktor 3.3.3, Voyager 1.1.0-beta03, Kermit
 - Testing: kotlin-test, Turbine, MockK, Ktor MockEngine
 
-- 注意：`frontend-capacitor`は旧バージョンのため無視してください
+- 注意：旧 React + Capacitor フロントエンドは別 repo `endo-ava/egograph-frontend-capacitor-legacy` へ移行済みのため、このモノレポでは無視してください
 
 ### gateway (Terminal GW)
 

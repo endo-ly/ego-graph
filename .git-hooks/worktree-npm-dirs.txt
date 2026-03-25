@@ -3,4 +3,4 @@
 # - パスはリポジトリルートからの相対パスで指定します
 
 # 現在は未使用のため、worktree 作成時には npm install を実行しない
-# frontend-capacitor
+# legacy frontend は外部 repo へ移行済み: https://github.com/endo-ava/egograph-frontend-capacitor-legacy

@@ -3,6 +3,11 @@
 DuckDB接続管理とクエリヘルパー関数を提供します。
 """
 
+from backend.infrastructure.database.browser_history_queries import (
+    BrowserHistoryQueryParams,
+    get_page_views,
+    get_top_domains,
+)
 from backend.infrastructure.database.chat_connection import (
     ChatDuckDBConnection,
     create_chat_tables,
@@ -35,6 +40,10 @@ __all__ = [
     "DuckDBConnection",
     "ChatDuckDBConnection",
     "create_chat_tables",
+    # Browser History
+    "BrowserHistoryQueryParams",
+    "get_page_views",
+    "get_top_domains",
     # Spotify
     "QueryParams",
     "execute_query",

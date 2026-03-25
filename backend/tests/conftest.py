@@ -270,6 +270,93 @@ def youtube_with_sample_data(duckdb_conn, tmp_path):
     yield wrapper
 
 
+class BrowserHistoryConnectionWrapper:
+    """Browser History用DuckDB接続のラッパー。"""
+
+    def __init__(self, conn, page_views_parquet_path: str):
+        self._conn = conn
+        self.test_page_views_parquet_path = page_views_parquet_path
+
+    def __getattr__(self, name):
+        """属性アクセスを内部の接続オブジェクトに委譲。"""
+        return getattr(self._conn, name)
+
+
+@pytest.fixture
+def browser_history_with_sample_data(duckdb_conn, tmp_path):
+    """サンプルBrowser History Parquetデータを持つDuckDB。"""
+    page_views_data = pd.DataFrame(
+        {
+            "page_view_id": [
+                "pv_1",
+                "pv_2",
+                "pv_3",
+                "pv_4",
+                "pv_5",
+            ],
+            "started_at_utc": pd.to_datetime(
+                [
+                    "2026-03-20 10:00:00+00:00",
+                    "2026-03-20 10:05:00+00:00",
+                    "2026-03-21 08:00:00+00:00",
+                    "2026-03-21 08:10:00+00:00",
+                    "2026-03-22 12:00:00+00:00",
+                ],
+                utc=True,
+            ),
+            "ended_at_utc": pd.to_datetime(
+                [
+                    "2026-03-20 10:00:01+00:00",
+                    "2026-03-20 10:05:03+00:00",
+                    "2026-03-21 08:00:00+00:00",
+                    "2026-03-21 08:10:02+00:00",
+                    "2026-03-22 12:00:04+00:00",
+                ],
+                utc=True,
+            ),
+            "url": [
+                "https://github.com/owner/repo/pull/79",
+                "https://github.com/owner/repo/pulls",
+                "https://docs.python.org/3/library/pathlib.html",
+                "https://github.com/owner/repo/issues/80",
+                "https://news.ycombinator.com/item?id=1",
+            ],
+            "title": [
+                "PR 79",
+                "Pull Requests",
+                "pathlib",
+                "Issue 80",
+                "HN",
+            ],
+            "browser": ["edge", "edge", "edge", "brave", "edge"],
+            "profile": ["Default", "Default", "Work", "Default", "Default"],
+            "source_device": [
+                "home-pc",
+                "home-pc",
+                "home-pc",
+                "home-pc",
+                "home-pc",
+            ],
+            "transition": ["link", "reload", "typed", "link", "typed"],
+            "visit_span_count": [2, 3, 1, 1, 4],
+            "synced_at_utc": pd.to_datetime(
+                ["2026-03-22 12:30:00+00:00"] * 5,
+                utc=True,
+            ),
+            "ingested_at_utc": pd.to_datetime(
+                ["2026-03-22 12:31:00+00:00"] * 5, utc=True
+            ),
+        }
+    )
+
+    parquet_path = tmp_path / "browser_history_page_views.parquet"
+    page_views_data.to_parquet(parquet_path)
+
+    wrapper = BrowserHistoryConnectionWrapper(duckdb_conn, str(parquet_path))
+
+    yield wrapper
+
+
 # ========================================
 # R2（S3）モックフィクスチャ
 # ========================================

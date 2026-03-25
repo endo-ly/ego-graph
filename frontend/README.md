@@ -136,5 +136,6 @@ export KEY_PASSWORD="your-password"
 
 ## 旧バージョン（React + Capacitor）
 
-React 版のコードは `../frontend-capacitor/` に保存されています（参照用）。
-新規開発はすべて KMP 版で行ってください。
+React + Capacitor 版はモノレポから分離され、
+[`endo-ava/egograph-frontend-capacitor-legacy`](https://github.com/endo-ava/egograph-frontend-capacitor-legacy)
+で保守されています。新規開発はすべて KMP 版で行ってください。

@@ -1,14 +1,23 @@
 """ツールレジストリの構築ヘルパー。"""
 
 from backend.config import R2Config
+from backend.domain.tools.browser_history.page_views import (
+    GetPageViewsTool,
+    GetTopDomainsTool,
+)
 from backend.domain.tools.github.worklog import (
     GetActivityStatsTool,
     GetCommitsTool,
     GetPullRequestsTool,
-    GetRepoSummaryStatsTool,
     GetRepositoriesTool,
+    GetRepoSummaryStatsTool,
 )
 from backend.domain.tools.spotify.stats import GetListeningStatsTool, GetTopTracksTool
+from backend.infrastructure.repositories import (
+    BrowserHistoryRepository,
+    GitHubRepository,
+    SpotifyRepository,
+)
 
 # YouTubeツールは一時非推奨 (2025-02-04)
 # from backend.domain.tools.youtube.stats import (
@@ -16,8 +25,6 @@ from backend.domain.tools.spotify.stats import GetListeningStatsTool, GetTopTrac
 #     GetWatchHistoryTool,
 #     GetWatchingStatsTool,
 # )
-from backend.infrastructure.repositories import GitHubRepository, SpotifyRepository
-
 # YouTubeツールは一時非推奨
 # from backend.infrastructure.repositories import YouTubeRepository
 from backend.usecases.tools.registry import ToolRegistry
@@ -34,6 +41,10 @@ def build_tool_registry(r2_config: R2Config | None) -> ToolRegistry:
     spotify_repository = SpotifyRepository(r2_config)
     tool_registry.register(GetTopTracksTool(spotify_repository))
     tool_registry.register(GetListeningStatsTool(spotify_repository))
+
+    browser_history_repository = BrowserHistoryRepository(r2_config)
+    tool_registry.register(GetPageViewsTool(browser_history_repository))
+    tool_registry.register(GetTopDomainsTool(browser_history_repository))
 
     # GitHubツール
     github_repository = GitHubRepository(r2_config)

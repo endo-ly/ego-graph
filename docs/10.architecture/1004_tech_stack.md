@@ -119,8 +119,6 @@
 - **テスト**: kotlin-test, Turbine, MockK, Ktor MockEngine
 - **実行環境**: モバイル（Android）
 
-詳細: [フロントエンド設計書](./frontend/frontend-design.md)
-
 ---
 
 ## 6. CI/CD
