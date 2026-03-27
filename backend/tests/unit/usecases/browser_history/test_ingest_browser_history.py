@@ -6,6 +6,7 @@ import pytest
 from backend.usecases.browser_history.ingest_browser_history import (
     BrowserHistoryUseCaseError,
     build_browser_history_storage,
+    compact_ingested_browser_history,
     ingest_browser_history,
 )
 from ingest.browser_history.pipeline import BrowserHistoryPipelineResult
@@ -39,6 +40,7 @@ def test_ingest_calls_pipeline_once(mock_r2_config):
         raw_saved=False,
         events_saved=False,
         received_at=datetime(2026, 3, 22, 12, 0, tzinfo=timezone.utc),
+        compaction_targets=(),
     )
 
     with patch(
@@ -58,3 +60,33 @@ def test_ingest_wraps_pipeline_exception(mock_r2_config):
     ):
         with pytest.raises(BrowserHistoryUseCaseError, match="boom"):
             ingest_browser_history(_payload(), mock_r2_config)
+
+
+def test_compact_ingested_browser_history_calls_ingest_helper(mock_r2_config):
+    with (
+        patch(
+            "backend.usecases.browser_history.ingest_browser_history.build_browser_history_storage"
+        ) as mock_build_storage,
+        patch(
+            "backend.usecases.browser_history.ingest_browser_history.compact_browser_history_targets"
+        ) as mock_compact,
+    ):
+        compact_ingested_browser_history(mock_r2_config, ((2026, 3),))
+
+    mock_build_storage.assert_called_once_with(mock_r2_config)
+    mock_compact.assert_called_once_with(mock_build_storage.return_value, ((2026, 3),))
+
+
+def test_compact_ingested_browser_history_skips_when_no_targets(mock_r2_config):
+    with (
+        patch(
+            "backend.usecases.browser_history.ingest_browser_history.build_browser_history_storage"
+        ) as mock_build_storage,
+        patch(
+            "backend.usecases.browser_history.ingest_browser_history.compact_browser_history_targets"
+        ) as mock_compact,
+    ):
+        compact_ingested_browser_history(mock_r2_config, ())
+
+    mock_build_storage.assert_not_called()
+    mock_compact.assert_not_called()

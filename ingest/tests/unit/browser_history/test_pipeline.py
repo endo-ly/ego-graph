@@ -41,6 +41,7 @@ def test_pipeline_success_path():
     assert result.accepted == 1
     assert result.raw_saved is True
     assert result.events_saved is True
+    assert result.compaction_targets == ((2026, 3),)
     storage.save_state.assert_called_once()
 
 
@@ -73,4 +74,5 @@ def test_pipeline_returns_accepted_count_for_empty_sync():
     assert result.accepted == 0
     assert result.raw_saved is False
     assert result.events_saved is False
+    assert result.compaction_targets == ()
     storage.save_state.assert_called_once()

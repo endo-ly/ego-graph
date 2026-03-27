@@ -3,6 +3,7 @@
 import argparse
 import logging
 
+from ingest.browser_history.compaction import compact_browser_history_targets
 from ingest.browser_history.storage import BrowserHistoryStorage
 from ingest.compaction import resolve_target_months
 from ingest.settings import IngestSettings
@@ -45,24 +46,15 @@ def main() -> None:
         master_path=r2_conf.master_path,
     )
 
-    failures: list[str] = []
-    for year, month in resolve_target_months(args.year, args.month):
-        try:
-            storage.compact_month(year=year, month=month)
-        except Exception as exc:
-            logger.exception(
-                "Browser history compaction failed: year=%d month=%02d error=%s",
-                year,
-                month,
-                exc,
-            )
-            failures.append(f"browser_history/page_views:{year}-{month:02d}")
-
-    if failures:
-        joined_failures = ", ".join(failures)
-        raise RuntimeError(
-            f"Browser history compaction failed for: {joined_failures}"
+    targets = resolve_target_months(args.year, args.month)
+    for year, month in targets:
+        logger.info(
+            "Compacting browser history dataset for year=%d month=%02d",
+            year,
+            month,
         )
+
+    compact_browser_history_targets(storage, targets)
 
 
 if __name__ == "__main__":

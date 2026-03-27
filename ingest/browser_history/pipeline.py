@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from ingest.browser_history.compaction import collect_compaction_targets
 from ingest.browser_history.schema import (
     BrowserHistoryIngestState,
     BrowserHistoryPayload,
@@ -21,6 +22,7 @@ class BrowserHistoryPipelineResult:
     raw_saved: bool
     events_saved: bool
     received_at: datetime
+    compaction_targets: tuple[tuple[int, int], ...] = ()
 
 
 def run_browser_history_pipeline(
@@ -44,7 +46,11 @@ def run_browser_history_pipeline(
             raise RuntimeError("Failed to save raw browser history payload")
         raw_saved = True
 
-    rows = transform_payload_to_page_view_rows(payload, ingested_at=normalized_received_at)
+    rows = transform_payload_to_page_view_rows(
+        payload,
+        ingested_at=normalized_received_at,
+    )
+    compaction_targets = collect_compaction_targets(rows)
     events_saved = False
     if rows:
         monthly_rows: dict[tuple[int, int], list[dict[str, object]]] = defaultdict(list)
@@ -86,4 +92,5 @@ def run_browser_history_pipeline(
         raw_saved=raw_saved,
         events_saved=events_saved,
         received_at=normalized_received_at,
+        compaction_targets=compaction_targets,
     )

@@ -7,6 +7,11 @@ import pandas as pd
 from pydantic import SecretStr
 
 from backend.config import R2Config
+from backend.infrastructure.database.browser_history_queries import (
+    BrowserHistoryQueryParams,
+    get_page_views,
+    get_top_domains,
+)
 from backend.infrastructure.database.github_queries import (
     GitHubQueryParams,
     get_activity_stats,
@@ -165,3 +170,63 @@ def test_github_queries_read_local_compacted_parquet(duckdb_conn, tmp_path):
     assert len(commits) == 2
     assert activity[0]["period"] == "2024-01-01"
     assert summary[0]["owner"] == "test_owner"
+
+
+def test_browser_history_queries_read_local_compacted_parquet(duckdb_conn, tmp_path):
+    local_root = tmp_path / "mirror"
+    browser_dir = (
+        local_root
+        / "compacted"
+        / "events"
+        / "browser_history"
+        / "page_views"
+        / "year=2026"
+        / "month=03"
+    )
+    browser_dir.mkdir(parents=True)
+
+    pd.DataFrame(
+        {
+            "page_view_id": ["pv_1", "pv_2", "pv_3"],
+            "started_at_utc": pd.to_datetime(
+                [
+                    "2026-03-20 10:00:00",
+                    "2026-03-20 11:00:00",
+                    "2026-03-21 09:00:00",
+                ]
+            ),
+            "ended_at_utc": pd.to_datetime(
+                [
+                    "2026-03-20 10:02:00",
+                    "2026-03-20 11:03:00",
+                    "2026-03-21 09:01:00",
+                ]
+            ),
+            "url": [
+                "https://github.com/openai/openai-python",
+                "https://github.com/openai/openai-cookbook",
+                "https://news.ycombinator.com/item?id=1",
+            ],
+            "title": ["Repo 1", "Repo 2", "HN"],
+            "browser": ["edge", "edge", "chrome"],
+            "profile": ["Default", "Default", "Work"],
+            "transition": ["link", "link", "typed"],
+            "visit_span_count": [1, 1, 1],
+        }
+    ).to_parquet(browser_dir / "data.parquet")
+
+    params = BrowserHistoryQueryParams(
+        conn=duckdb_conn,
+        bucket="test-bucket",
+        events_path="events/",
+        start_date=date(2026, 3, 20),
+        end_date=date(2026, 3, 21),
+        r2_config=_build_config(local_root),
+    )
+
+    page_views = get_page_views(params, browser="edge", profile="Default", limit=10)
+    top_domains = get_top_domains(params, limit=10)
+
+    assert [row["page_view_id"] for row in page_views] == ["pv_2", "pv_1"]
+    assert top_domains[0]["domain"] == "github.com"
+    assert top_domains[0]["page_view_count"] == 2

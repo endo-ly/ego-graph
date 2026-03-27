@@ -1,12 +1,20 @@
 """Browser history ingest usecase."""
 
+import logging
+
 from backend.config import R2Config
+from ingest.browser_history.compaction import (
+    CompactionTarget,
+    compact_browser_history_targets,
+)
 from ingest.browser_history.pipeline import (
     BrowserHistoryPipelineResult,
     run_browser_history_pipeline,
 )
 from ingest.browser_history.schema import BrowserHistoryPayload
 from ingest.browser_history.storage import BrowserHistoryStorage
+
+logger = logging.getLogger(__name__)
 
 
 class BrowserHistoryUseCaseError(Exception):
@@ -36,3 +44,18 @@ def ingest_browser_history(
         return run_browser_history_pipeline(payload, storage)
     except Exception as exc:
         raise BrowserHistoryUseCaseError(str(exc)) from exc
+
+
+def compact_ingested_browser_history(
+    r2_config: R2Config,
+    targets: tuple[CompactionTarget, ...],
+) -> None:
+    """ingest 済み browser history の対象月を compact する。"""
+    if not targets:
+        logger.info(
+            "Skipping browser history compaction because no targets were produced"
+        )
+        return
+
+    storage = build_browser_history_storage(r2_config)
+    compact_browser_history_targets(storage, targets)
