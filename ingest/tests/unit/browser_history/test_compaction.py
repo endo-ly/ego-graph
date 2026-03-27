@@ -38,5 +38,15 @@ def test_compact_browser_history_targets_wraps_storage_errors():
     with pytest.raises(
         RuntimeError,
         match="Browser history compaction failed for 2026-03",
-    ):
+    ) as exc_info:
         compact_browser_history_targets(storage, [(2026, 3)])
+
+    assert exc_info.value.__cause__ is not None
+
+
+def test_compact_browser_history_targets_handles_empty_targets():
+    storage = MagicMock()
+
+    compact_browser_history_targets(storage, [])
+
+    storage.compact_month.assert_not_called()

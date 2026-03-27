@@ -46,10 +46,15 @@ def main() -> None:
         master_path=r2_conf.master_path,
     )
 
-    compact_browser_history_targets(
-        storage,
-        resolve_target_months(args.year, args.month),
-    )
+    targets = resolve_target_months(args.year, args.month)
+    for year, month in targets:
+        logger.info(
+            "Compacting browser history dataset for year=%d month=%02d",
+            year,
+            month,
+        )
+
+    compact_browser_history_targets(storage, targets)
 
 
 if __name__ == "__main__":

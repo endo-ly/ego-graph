@@ -63,11 +63,12 @@ async def ingest_browser_history_endpoint(
             validated_request.model_dump(mode="python")
         )
         result = ingest_browser_history(payload, config.r2)
-        background_tasks.add_task(
-            _trigger_browser_history_compaction,
-            config,
-            result.compaction_targets,
-        )
+        if result.compaction_targets:
+            background_tasks.add_task(
+                _trigger_browser_history_compaction,
+                config,
+                result.compaction_targets,
+            )
         return BrowserHistoryIngestResponse(
             sync_id=result.sync_id,
             accepted=result.accepted,
