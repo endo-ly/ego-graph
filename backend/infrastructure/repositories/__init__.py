@@ -8,17 +8,17 @@ from backend.infrastructure.repositories.browser_history_repository import (
 )
 from backend.infrastructure.repositories.github_repository import GitHubRepository
 from backend.infrastructure.repositories.spotify_repository import SpotifyRepository
-from backend.infrastructure.repositories.thread_repository_impl import (
+from backend.infrastructure.repositories.thread_repository import (
     AddMessageParams,
-    DuckDBThreadRepository,
+    ThreadRepository,
 )
 from backend.infrastructure.repositories.youtube_repository import YouTubeRepository
 
 __all__ = [
     "AddMessageParams",
     "BrowserHistoryRepository",
-    "DuckDBThreadRepository",
     "GitHubRepository",
     "SpotifyRepository",
+    "ThreadRepository",
     "YouTubeRepository",
 ]

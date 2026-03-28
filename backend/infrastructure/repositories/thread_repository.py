@@ -1,14 +1,13 @@
-"""DuckDB Thread Repository Implementation.
+"""Thread Repository Implementation.
 
-スレッド管理のリポジトリ実装を提供します。
+SQLiteを使用したスレッド管理のリポジトリ実装を提供します。
 """
 
 import logging
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
-
-import duckdb
 
 from backend.constants import DEFAULT_THREAD_LIST_LIMIT
 from backend.domain.models.thread import (
@@ -32,21 +31,21 @@ class AddMessageParams:
     model_name: str | None = None
 
 
-class DuckDBThreadRepository:
-    """DuckDBを使用したスレッドリポジトリの実装。
+class ThreadRepository:
+    """SQLiteを使用したスレッドリポジトリの実装。
 
     チャット履歴のスレッドとメッセージに対するCRUD操作を提供します。
-    すべてのメソッドはDuckDB接続を使用し、トランザクション管理を行います。
+    すべてのメソッドはSQLite接続を使用し、トランザクション管理を行います。
 
     Attributes:
-        conn: DuckDBコネクション
+        _conn: SQLiteコネクション
     """
 
-    def __init__(self, conn: duckdb.DuckDBPyConnection):
-        """DuckDBThreadRepositoryを初期化します。
+    def __init__(self, conn: sqlite3.Connection):
+        """ThreadRepositoryを初期化します。
 
         Args:
-            conn: DuckDBコネクション
+            conn: SQLiteコネクション
         """
         self._conn = conn
 
@@ -55,19 +54,18 @@ class DuckDBThreadRepository:
             threads.thread_id,
             threads.user_id,
             threads.title,
-            arg_max(messages.content, messages.created_at) AS preview,
-            COUNT(messages.message_id) AS message_count,
+            (
+                SELECT content FROM messages m2
+                WHERE m2.thread_id = threads.thread_id
+                ORDER BY m2.created_at DESC
+                LIMIT 1
+            ) AS preview,
+            (SELECT COUNT(*) FROM messages WHERE messages.thread_id = threads.thread_id)
+                AS message_count,
             threads.created_at,
             threads.last_message_at
         FROM threads
-        LEFT JOIN messages ON messages.thread_id = threads.thread_id
         WHERE threads.user_id = ?
-        GROUP BY
-            threads.thread_id,
-            threads.user_id,
-            threads.title,
-            threads.created_at,
-            threads.last_message_at
         ORDER BY threads.last_message_at DESC
         LIMIT ? OFFSET ?
         """
@@ -85,10 +83,10 @@ class DuckDBThreadRepository:
             Thread: 作成されたスレッドオブジェクト
 
         Raises:
-            duckdb.Error: データベース操作に失敗した場合
+            sqlite3.Error: データベース操作に失敗した場合
         """
         thread_id = str(uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).isoformat()
 
         # タイトルは初回メッセージの先頭N文字
         title = first_message_content[:THREAD_TITLE_MAX_LENGTH]
@@ -116,8 +114,8 @@ class DuckDBThreadRepository:
             title=title,
             preview=title,
             message_count=0,
-            created_at=now,
-            last_message_at=now,
+            created_at=datetime.fromisoformat(now),
+            last_message_at=datetime.fromisoformat(now),
         )
 
     def add_message(self, params: AddMessageParams) -> ThreadMessage:
@@ -132,10 +130,10 @@ class DuckDBThreadRepository:
             ThreadMessage: 追加されたメッセージオブジェクト
 
         Raises:
-            duckdb.Error: データベース操作に失敗した場合
+            sqlite3.Error: データベース操作に失敗した場合
         """
         message_id = str(uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).isoformat()
 
         try:
             # メッセージを追加
@@ -186,7 +184,7 @@ class DuckDBThreadRepository:
             user_id=params.user_id,
             role=params.role,
             content=params.content,
-            created_at=now,
+            created_at=datetime.fromisoformat(now),
             model_name=params.model_name,
         )
 
@@ -200,7 +198,7 @@ class DuckDBThreadRepository:
             Thread | None: スレッドオブジェクト（存在しない場合はNone）
 
         Raises:
-            duckdb.Error: データベース操作に失敗した場合
+            sqlite3.Error: データベース操作に失敗した場合
         """
         result = self._conn.execute(
             """
@@ -208,19 +206,22 @@ class DuckDBThreadRepository:
                 threads.thread_id,
                 threads.user_id,
                 threads.title,
-                arg_max(messages.content, messages.created_at) AS preview,
-                COUNT(messages.message_id) AS message_count,
+                (
+                    SELECT content FROM messages m2
+                    WHERE m2.thread_id = threads.thread_id
+                    ORDER BY m2.created_at DESC
+                    LIMIT 1
+                ) AS preview,
+                (
+                    SELECT COUNT(*)
+                    FROM messages
+                    WHERE messages.thread_id = threads.thread_id
+                )
+                    AS message_count,
                 threads.created_at,
                 threads.last_message_at
             FROM threads
-            LEFT JOIN messages ON messages.thread_id = threads.thread_id
             WHERE threads.thread_id = ?
-            GROUP BY
-                threads.thread_id,
-                threads.user_id,
-                threads.title,
-                threads.created_at,
-                threads.last_message_at
             """,
             (thread_id,),
         )
@@ -231,15 +232,7 @@ class DuckDBThreadRepository:
             return None
 
         logger.debug("Retrieved thread: thread_id=%s", thread_id)
-        return Thread(
-            thread_id=row[0],
-            user_id=row[1],
-            title=row[2],
-            preview=row[3][:THREAD_PREVIEW_MAX_LENGTH] if row[3] else None,
-            message_count=row[4],
-            created_at=row[5].replace(tzinfo=timezone.utc),
-            last_message_at=row[6].replace(tzinfo=timezone.utc),
-        )
+        return self._map_row_to_thread(row)
 
     def get_threads(
         self, user_id: str, limit: int = DEFAULT_THREAD_LIST_LIMIT, offset: int = 0
@@ -257,17 +250,7 @@ class DuckDBThreadRepository:
             tuple[list[Thread], int]: (スレッドのリスト, 総件数) のタプル
 
         Raises:
-            duckdb.Error: データベース操作に失敗した場合
-
-        Note:
-            パフォーマンス最適化の検討:
-            現在、message_countは毎回COUNT(messages.message_id)で集計しています。
-            スレッド数が多く、各スレッドに大量のメッセージがある場合、
-            threadsテーブルにmessage_countカラムを追加し非正規化することで
-            クエリパフォーマンスを改善できる可能性があります。
-            ただし、その場合はメッセージ追加時にthreadsテーブルも更新する
-            必要があり、実装の複雑さとトレードオフになります。
-            現時点（MVP段階）では、この実装で十分な性能が得られています。
+            sqlite3.Error: データベース操作に失敗した場合
         """
         total = self._get_thread_count(user_id)
         result = self._conn.execute(
@@ -315,8 +298,8 @@ class DuckDBThreadRepository:
             title=row[2],
             preview=row[3][:THREAD_PREVIEW_MAX_LENGTH] if row[3] else None,
             message_count=row[4],
-            created_at=row[5].replace(tzinfo=timezone.utc),
-            last_message_at=row[6].replace(tzinfo=timezone.utc),
+            created_at=datetime.fromisoformat(row[5]),
+            last_message_at=datetime.fromisoformat(row[6]),
         )
 
     def get_messages(self, thread_id: str) -> list[ThreadMessage]:
@@ -331,7 +314,7 @@ class DuckDBThreadRepository:
             list[ThreadMessage]: メッセージのリスト（時系列順）
 
         Raises:
-            duckdb.Error: データベース操作に失敗した場合
+            sqlite3.Error: データベース操作に失敗した場合
         """
         result = self._conn.execute(
             """
@@ -350,7 +333,7 @@ class DuckDBThreadRepository:
                 user_id=row[2],
                 role=row[3],
                 content=row[4],
-                created_at=row[5].replace(tzinfo=timezone.utc),
+                created_at=datetime.fromisoformat(row[5]),
                 model_name=row[6],
             )
             for row in result.fetchall()
