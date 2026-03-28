@@ -142,7 +142,7 @@ s3://ego-graph/
   ├── raw/github/
   │   └── {timestamp}.json
   └── state/
-      └── github_ingest_state.json
+      └── github_worklog_ingest_state.json
 ```
 
 ### 5.2 保存パス例
@@ -150,7 +150,7 @@ s3://ego-graph/
 - **Commits**: `s3://ego-graph/events/github/commits/year=2024/month=01/abc123.parquet`
 - **Pull Requests**: `s3://ego-graph/events/github/pull_requests/year=2024/month=01/def456.parquet`
 - **Raw**: `s3://ego-graph/raw/github/2024-01-01T120000.json`
-- **State**: `s3://ego-graph/state/github_ingest_state.json`
+- **State**: `s3://ego-graph/state/github_worklog_ingest_state.json`
 
 ## 6. 検索・活用シナリオ
 
@@ -184,7 +184,7 @@ s3://ego-graph/
 
 - **ワークフロー**: `job-ingest-github.yml`
 - **実行タイミング**: Cron (1日1回: 15:00 UTC = 00:00 JST 深夜)
-- **増分取り込み**: R2 内のカーソル (`state/github_ingest_state.json`) で管理
+- **増分取り込み**: R2 内のカーソル (`state/github_worklog_ingest_state.json`) で管理
 
 ### 11.2 ディレクトリ構成
 
