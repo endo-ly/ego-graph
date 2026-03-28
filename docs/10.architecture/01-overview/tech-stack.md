@@ -8,10 +8,10 @@
 
 | コンポーネント | 言語/FW     | パッケージマネージャー | 主要ライブラリ                        |
 | -------------- | ----------- | ---------------------- | ------------------------------------- |
-| **ingest/**    | Python 3.13 | uv                     | Spotipy, DuckDB, boto3, pyarrow       |
+| **ingest/**    | Python 3.13 | uv                     | Spotipy, requests, DuckDB, boto3, pyarrow |
 | **backend/**   | Python 3.13 | uv                     | FastAPI, Uvicorn, DuckDB              |
 | **gateway/**   | Python 3.13 | uv                     | Starlette, Uvicorn, WebSocket, FCM    |
-| **frontend/**  | Kotlin 2.2.21  | Gradle                 | Compose Multiplatform, MVIKotlin, FCM |
+| **frontend/**  | Kotlin 2.2.21  | Gradle                 | Compose Multiplatform, Voyager, Koin, Ktor, FCM |
 
 - **Python Workspace**: uv で ingest, backend, gateway を一元管理
 - **Frontend**: Kotlin Multiplatform (Gradle)
@@ -50,9 +50,10 @@
 ## 2. Ingest Pipeline（データ収集）
 
 - **Language**: Python 3.13
-- **実行環境**: GitHub Actions（定期実行: 1日2回）
+- **実行環境**: GitHub Actions（定期実行: GitHub 1日1回、Spotify 5回/日）
 - **主要ライブラリ**:
   - `spotipy`: Spotify API クライアント
+  - `requests`: HTTP クライアント（GitHub API 用）
   - `pyarrow`: Parquet ファイル作成
   - `boto3`: R2 アップロード
   - `duckdb`: データ変換・検証
@@ -97,7 +98,7 @@
   - FCM によるタスク完了/入力要求通知
   - EgoGraph Backend からは独立したサービス
 
-詳細: [Terminal Gateway 要件定義](../00.project/features/mobile_terminal_gateway.md)
+詳細: [Terminal Gateway 要件定義](../../00.requirements/mobile_terminal_gateway.md)
 
 ---
 
@@ -107,14 +108,16 @@
 - **Language**: Kotlin 2.2.21
 - **Mobile Runtime**: Native Android
 - **UI System**: Material3 (Compose)
-- **State Management**: MVIKotlin
+- **Navigation**: Voyager 1.1.0-beta03
+- **State Management**: StateFlow + Channel (MVVM パターン)
+- **DI**: Koin 4.0.0
+- **HTTP Client**: Ktor 3.3.3
 - **Terminal UI**: xterm.js (WebView), xterm-addon-fit
 - **Push Notification**: Firebase Cloud Messaging (FCM)
 - **音声入力**: Android SpeechRecognizer
-- **テスト**: Kotest, Turbine
+- **Logging**: Kermit
+- **テスト**: kotlin-test, Turbine, MockK, Ktor MockEngine
 - **実行環境**: モバイル（Android）
-
-詳細: [フロントエンド技術選定](https://github.com/endo-ava/egograph-frontend-capacitor-legacy/blob/main/docs/20.technical_selections/02_frontend.md)
 
 ---
 
@@ -128,7 +131,8 @@
 | `ci-ingest.yml`          | `ingest/**`   | Ingest テスト・Lint     |
 | `ci-gateway.yml`         | `gateway/**`  | Gateway テスト・Lint    |
 | `ci-frontend.yml`        | `frontend/**` | Frontend テスト (JUnit) |
-| `job-ingest-spotify.yml` | Cron (1日2回) | Spotify データ収集      |
+| `job-ingest-spotify.yml` | Cron (5回/日) | Spotify データ収集      |
+| `job-ingest-github.yml`  | Cron (1日1回) | GitHub データ収集       |
 
 ### テストツール
 

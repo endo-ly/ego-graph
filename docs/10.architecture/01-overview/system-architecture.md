@@ -1,10 +1,10 @@
 # システムアーキテクチャ
 
-## 1. 全体構成図
+## 全体構成図
 
-### 1.1 Architecture Overview
+### Architecture Overview
 
-![Architecture Diagram](./diagrams/architecture_diagram.png)
+![Architecture Diagram](../diagrams/architecture_diagram.png)
 
 軽量サーバー（e2-micro等）での稼働を前提とし、メモリ負荷の高いベクトル検索を **Qdrant Cloud** にオフロードする構成。
 データの取り込み（Ingestion）は **GitHub Actions** で定期実行し、サーバー負荷を最小化する。
@@ -83,7 +83,7 @@ flowchart TB
 
 > **Note**: Last.fm 連携は一時停止中。
 
-### 1.2 Detailed Flow
+### Detailed Flow
 
 ```mermaid
 flowchart TB
@@ -96,18 +96,18 @@ flowchart TB
     end
 
     subgraph "External Server (VPS/GCP)"
-        Agent[Agent API （FastAPI）]
+        Agent[Agent API (FastAPI)]
         DuckDB[(DuckDB Engine)]
         Gateway[Terminal Gateway\n(Starlette)]
         Tmux[(tmux Sessions)]
     end
 
     subgraph "Storage"
-        R2{Object Storage\n（Cloudflare R2）}
+        R2{Object Storage\n(Cloudflare R2)}
     end
 
     subgraph "Managed Services"
-        Qdrant[Qdrant Cloud\n（Vector DB）]
+        Qdrant[Qdrant Cloud\n(Vector DB)]
         FCM[Firebase Cloud Messaging\n(FCM)]
     end
 
@@ -137,9 +137,9 @@ flowchart TB
 
 ---
 
-## 2. コンポーネント詳細
+## コンポーネント詳細
 
-### 2.1 Ingestion Layer (GitHub Actions)
+### Ingestion Layer (GitHub Actions)
 
 - **Role**: 定期的なデータ収集と加工。
 - **Workflow**:
@@ -149,7 +149,7 @@ flowchart TB
     - **Cloudflare R2**: 「正本」としてParquet/Rawファイルを保存。
     - **Qdrant**: 検索用ベクトルインデックスを更新。
 
-### 2.2 Storage Layer
+### Storage Layer
 
 - **Object Storage (Cloudflare R2)**:
   - **正本 (Original)**。すべての事実データとドキュメントの実体を保持。
@@ -157,7 +157,7 @@ flowchart TB
 - **Semantic Data (Qdrant)**:
   - 意味検索用のインデックスのみを保持。
 
-### 2.3 Analysis Layer (Dual Engine)
+### Analysis Layer (Dual Engine)
 
 - **DuckDB**: **「事実」の集計 & 台帳管理**。
   - 例: 「去年、何回再生した？」「あのドキュメントどこ？」
@@ -166,7 +166,7 @@ flowchart TB
   - 例: 「悲しい時に聴いた曲は？」
   - 高速なベクトル検索を提供。
 
-### 2.4 Application Layer (Agent)
+### Application Layer (Agent)
 
 ユーザーの問いかけに対し、ツールを使い分けて回答を作る。
 
@@ -175,7 +175,7 @@ flowchart TB
   - `query_analytics(sql)`: 数値的な集計や台帳参照。
   - `search_vectors(query_text)`: 意味的なインデックス検索。
 
-### 2.5 Terminal Gateway
+### Terminal Gateway
 
 モバイル端末からの tmux セッション接続とプッシュ通知を担当する独立サービス。
 
@@ -187,7 +187,7 @@ flowchart TB
   - Bearer Token 認証
 - **Framework**: Starlette + Uvicorn (ASGI)
 
-### 2.6 Client Layer (Frontend)
+### Client Layer (Frontend)
 
 ユーザーとのインターフェース。
 
@@ -196,9 +196,9 @@ flowchart TB
 
 ---
 
-## 3. データフロー (Search & Retrieval)
+## データフロー (Search & Retrieval)
 
-### 3.1 書き込み (Ingestion by GitHub Actions)
+### 書き込み (Ingestion by GitHub Actions)
 
 1.  **Fetch**: ActionsがAPI等からRawデータ（JSON）を取得。
 2.  **Transform**: 共通スキーマ（Unified Schema）に変換。
@@ -208,7 +208,7 @@ flowchart TB
 
 > **Note**: サーバー側のDuckDBは、R2上の更新されたファイルを読み取る（メタデータ更新はサーバー起動時や定期タスクで行う、あるいはActionsからトリガーする）。
 
-### 3.2 読み取り (Search Pattern)
+### 読み取り (Search Pattern)
 
 #### A. ドキュメントRAG (doc_chunks)
 
@@ -229,21 +229,21 @@ flowchart TB
 
 ---
 
-## 4. スケーラビリティと制限
+## スケーラビリティと制限
 
-### 4.1 データ量
+### データ量
 
 - **DuckDB**: 数億行〜TB級のParquetファイルでも、単一ノードで十分に高速処理可能。
 - **メモリ**: Aggregationなどの重い処理も、DuckDBの "Out-of-core" 処理により、メモリ容量を超えてもディスク（Temp領域）を使って実行できる。
 
-### 4.2 同時実行性
+### 同時実行性
 
 - **Read**: 複数のAgentプロセス（Worker）からの同時読み取りは可能（Parquetファイルベースであれば）。
 - **Write**: GitHub Actionsによるバッチ書き込みが主のため、サーバー側のロック競合は最小限。
 
 ---
 
-## 5. セキュリティ
+## セキュリティ
 
 - **認証**: 実装しない（ローカル/個人利用前提）。
 - **データ保護**: 必要であれば、Parquetファイルの暗号化や、ファイルシステムレベルでのアクセス権限設定を行う。

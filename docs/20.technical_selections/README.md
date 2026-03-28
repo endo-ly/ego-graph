@@ -10,10 +10,10 @@ EgoGraphの各コンポーネントにおける技術選定の詳細と比較検
 
 | ドキュメント | 内容 |
 |---|---|
-| [01_embedding.md](./01_embedding.md) | Embedding戦略の詳細（Nomic Embed選定理由、比較） |
-| [02_frontend.md](https://github.com/endo-ava/egograph-frontend-capacitor-legacy/blob/main/docs/20.technical_selections/02_frontend.md) | フロントエンド技術選定（Capacitor + React + Vite + shadcn/ui） |
-| [03_chat_history_storage.md](./03_chat_history_storage.md) | チャット履歴の永続化（DuckDBローカル保存の選定理由） |
-| [04_youtube_history_collection.md](./04_youtube_history_collection.md) | YouTube視聴履歴収集（Playwright + MyActivity スクレイピング選定理由） |
+| [embedding](./embedding.md) | Embedding戦略の詳細（Nomic Embed選定理由、比較） |
+| [chat-history-storage](./chat-history-storage.md) | チャット履歴の永続化（DuckDBローカル保存の選定理由） |
+| [youtube-history-collection](./youtube-history-collection.md) | YouTube視聴履歴収集（Playwright + MyActivity スクレイピング選定理由） |
+| [kmp-cmp-migration](./kmp-cmp-migration.md) | Kotlin Multiplatform / Compose Multiplatform 移行記録 |
 
 ---
 
@@ -27,5 +27,5 @@ EgoGraphの各コンポーネントにおける技術選定の詳細と比較検
 
 ## 関連ドキュメント
 
-- [技術スタック概要](../10.architecture/1004_tech_stack.md)
+- [技術スタック概要](../10.architecture/01-overview/tech-stack.md)
 - [システムアーキテクチャ](../10.architecture/)

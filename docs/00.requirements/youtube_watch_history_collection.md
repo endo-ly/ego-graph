@@ -331,7 +331,7 @@ updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ## 10. Reference
 
 ### 技術選定ドキュメント
-- [YouTube視聴履歴収集の技術選定](../../20.technical_selections/04_youtube_history_collection.md)
+- [YouTube視聴履歴収集の技術選定](../../20.technical_selections/youtube-history-collection.md)
 
 ### 参考実装
 - `ingest/spotify/`: Spotify収集パイプライン（アーキテクチャの参考）

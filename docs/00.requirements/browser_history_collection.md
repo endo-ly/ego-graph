@@ -459,4 +459,4 @@ ingest/
 - YouTube 動画単位の分析は、`watch?v=...` のような URL を後段で抽出することでかなり対応可能
 - ただし browser history は「ページ訪問履歴」であり、「再生イベントそのもの」ではない
 - 受信口は現時点では `backend` に置くが、将来的に独立サービスへ移してもよいように責務を限定して実装する
-- raw JSON と page view parquet の責務分離、および 2 秒クラスタリングの判断理由は [08_browser_history.md](../../10.architecture/ingest/08_browser_history.md) を参照
+- raw JSON と page view parquet の責務分離、および 2 秒クラスタリングの判断理由は [browser-history.md](../10.architecture/03-ingest/browser-history.md) を参照

@@ -1,8 +1,4 @@
----
-title: LLMモデル選択機能
-created: 2026-01-12
-status: draft
----
+# 要件定義: LLMモデル選択機能
 
 ## 1. Summary
 

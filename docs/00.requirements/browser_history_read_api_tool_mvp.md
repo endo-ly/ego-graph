@@ -213,7 +213,7 @@ GET /v1/data/browser-history/top-domains?start_date=2026-03-01&end_date=2026-03-
 ## 10. Reference
 
 - [browser_history_collection.md](./browser_history_collection.md)
-- [08_browser_history.md](../../10.architecture/ingest/08_browser_history.md)
+- [browser-history.md](../10.architecture/03-ingest/browser-history.md)
 - [data.py](../../../backend/api/data.py)
 - [stats.py](../../../backend/domain/tools/spotify/stats.py)
 - [history.ts](../../../browser-extension/chromium-history/src/background/history.ts)
