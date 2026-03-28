@@ -87,7 +87,7 @@
 - **主要ライブラリ**:
   - `websockets`: WebSocket 通信（端末入出力）
   - `firebase-admin`: FCM プッシュ通知
-  - `duckdb`: プッシュトークン永続化（SQLite）
+  - `sqlite3`: プッシュトークン永続化
   - `pydantic`: データモデル定義
   - `pydantic-settings`: 環境変数管理
 - **認証方式**: Bearer Token（環境変数照合）
