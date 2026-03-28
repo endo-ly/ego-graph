@@ -564,8 +564,6 @@ curl -X POST http://localhost:8001/v1/push/webhook \
    "
    ```
 
-   旧 DuckDB ファイルを使っていた環境では、Issue77 以降は `gateway.db` を SQLite として再作成してください。
-
 3. **FCM初期化を確認**
    ```bash
    tmux capture-pane -p -t egograph-gateway | grep "Firebase"
