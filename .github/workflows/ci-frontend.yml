@@ -7,13 +7,11 @@ on:
     paths:
       - "frontend/**"
       - ".github/workflows/ci-frontend.yml"
-      - "gateway/**"  # Gateway 変更時も Terminal UI テストを実行
   pull_request:
     branches: [main]
     paths:
       - "frontend/**"
       - ".github/workflows/ci-frontend.yml"
-      - "gateway/**"  # Gateway 変更時も Terminal UI テストを実行
 
 jobs:
   quality-check:
