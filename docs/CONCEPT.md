@@ -57,6 +57,7 @@ Python (uv workspace) + Kotlin Multiplatform のモノレポ構成です。
 ego-graph/
 ├── ingest/                # データ収集ワーカー（uv workspace メンバー）
 ├── backend/               # Agent API（uv workspace メンバー）
+├── gateway/               # Terminal Gateway（uv workspace メンバー）
 ├── frontend/              # KMP Android アプリ（Gradle）
 ├── docs/                  # プロジェクトドキュメント
 ├── maestro/               # E2E テスト（Maestro）
@@ -64,6 +65,3 @@ ego-graph/
 ├── pyproject.toml         # Python workspace 設定
 └── uv.lock                # Python 依存関係ロック
 ```
-
-terminal/runtime の実行基盤は 2026-03 時点で **Plexus** 側へ移管済みであり、
-EgoGraph モノレポには含めない。

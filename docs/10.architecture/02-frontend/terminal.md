@@ -1,10 +1,42 @@
 # Terminal 機能設計
 
-このファイルは frontend 側に残っている terminal UI の設計メモである。
-ただし、対応する terminal/runtime 実装は 2026-03 時点で **Plexus** 側へ移管済み。
+## 画面構成
 
-## 現在の扱い
+セッション一覧画面（AgentListScreen）+ ターミナル画面（TerminalScreen）
 
-- `frontend/**` の terminal UI 実装はこの repo に残っている
-- 接続先 runtime の詳細設計、API 契約、運用手順は Plexus 側で管理する
-- このドキュメントをもとに EgoGraph 側 server runtime を追加する前提では使わない
+---
+
+## AgentListScreen: セッション一覧
+
+### 起動時
+
+1. Gateway APIからアクティブなtmuxセッション一覧を取得
+2. セッション名、ID、ステータスを表示
+
+### 操作
+
+- セッション選択 → TerminalScreenへ遷移（セッションIDを渡す）
+- リフレッシュボタン → セッション一覧を再取得
+- Gateway設定ボタン → GatewaySettings画面へ遷移
+
+---
+
+## TerminalScreen: ターミナルセッション
+
+### 接続フロー
+
+1. 画面表示時、WebSocket URLとAPIキーを設定から取得
+2. WebView内のxterm.jsがWebSocket接続を確立
+3. 接続状態を監視（Flow<Boolean>）
+4. 切断時は自動再接続を試みる
+
+### キーボード対応
+
+- ソフトウェアキーボード表示時、画面下部に入力欄へフォーカス
+- `SpecialKeysBar` で特殊キー送信: Ctrl, Alt, Tab, Esc, 矢印キー
+- これらはモバイルで通常入力できないキーを補完
+
+### エラーハンドリング
+
+- 接続エラー時、ヘッダーにエラーメッセージを表示
+- Gateway URL/キーが未設定の場合はGatewaySettingsへ誘導
