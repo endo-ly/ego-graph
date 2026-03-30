@@ -46,6 +46,7 @@ env/
 .env.local
 .env.*.local
 .env.production
+egopulse/egopulse.local.toml
 
 # Spotify credentials cache (contains access_token and refresh_token)
 .cache
@@ -115,3 +116,4 @@ gateway/firebase-service-account.json
 .worktree-setup.log
 
 docs/00.project/plan/
+target/
