@@ -16,7 +16,7 @@
   - `egopulse` 単体起動で local TUI が開く。
   - TUI から session 一覧表示、新規 session 作成、既存 session 再開ができる。
   - TUI 内で継続会話ができ、Issue 2 の persistent agent core をそのまま利用する。
-  - `egopulse.toml` を自動探索して読み込める。
+  - `egopulse.config.yaml` を自動探索して読み込める。
   - `ask` と `chat --session ...` は開発者向け入口として残す。
 - 期待する挙動：
   - config が見つかれば `egopulse` 単体で起動可能。
@@ -32,7 +32,7 @@
 ## 4. Scope
 - 今回やる（MVP）：
   - local TUI
-  - `egopulse.toml` 自動読込
+  - `egopulse.config.yaml` 自動読込
   - session 一覧 / 新規 / 再開
   - 起動時エラー案内改善
   - README / runbook 更新
@@ -51,17 +51,17 @@
 | Step | MVP（最低限） | Nice to have |
 |---|---|---|
 | 起動する | `egopulse` で TUI が開く | 前回利用 session の自動選択 |
-| 設定を読む | `egopulse.toml` を自動読込 | `~/.config/egopulse/config.toml` 探索 |
+| 設定を読む | `egopulse.config.yaml` を自動読込 | `~/.config/egopulse/config.yaml` 探索 |
 | session を選ぶ | 一覧から再開 / 新規作成 | 検索 / 並び替え |
 | 会話する | 継続会話できる | ショートカット / 補助コマンド |
 | 再開する | 再起動後に同じ session を再開できる | session rename / archive |
 
 ## 6. Acceptance Criteria
-- Given `egopulse.toml` が存在する, When `egopulse` を起動する, Then local TUI が開く。
+- Given `egopulse.config.yaml` が存在する, When `egopulse` を起動する, Then local TUI が開く。
 - Given 既存 session がある, When TUI からその session を選ぶ, Then 過去履歴を踏まえて継続会話できる。
 - Given session が存在しない, When TUI から新規開始する, Then 新しい session が作られて保存される。
 - Given プロセスを再起動する, When 同じ session を選ぶ, Then SQLite に保存された履歴から再開できる。
-- Given config が存在しない, When `egopulse` を起動する, Then `egopulse.toml` の作り方が分かるメッセージが出る。
+- Given config が存在しない, When `egopulse` を起動する, Then `egopulse.config.yaml` の作り方が分かるメッセージが出る。
 
 ## 7. 例外・境界
 - 失敗時（通信/保存/権限）：LLM / SQLite / config 読込エラーは TUI から分かる形で表示する。
@@ -73,7 +73,7 @@
 - Performance：session 一覧表示はローカルで体感待ちが少ないこと。
 - Reliability：Issue 2 の resume/persistence を壊さないこと。
 - Usability：`egopulse` 単体起動で基本操作に入れること。
-- Security/Privacy：自動読込対象は `egopulse.toml` のみとし、`.env` や `egopulse.local.toml` の自動読込は行わない。
+- Security/Privacy：自動読込対象は `egopulse.config.yaml` のみとし、`.env` や `egopulse.local.yaml` の自動読込は行わない。
 - Constraints（技術/期限/外部APIなど）：MicroClaw copy-first 方針を維持し、local surface だけにスコープを限定する。
 
 ## 9. RAID (Risks, Assumptions, Issues, Dependencies)

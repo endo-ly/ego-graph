@@ -46,7 +46,8 @@ env/
 .env.local
 .env.*.local
 .env.production
-egopulse/egopulse.local.toml
+egopulse/egopulse.local.yaml
+egopulse/egopulse.config.yaml
 .egopulse/
 *.db-wal
 *.db-shm
