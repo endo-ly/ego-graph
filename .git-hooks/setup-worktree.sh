@@ -109,6 +109,7 @@ readonly -a DEFAULT_COPY_FILES=(
     "frontend/.env"
     "frontend-capacitor/.env"
     "frontend/androidApp/google-services.json"
+    "egopulse/egopulse.toml"
 )
 
 readonly -a DEFAULT_NPM_DIRS=(

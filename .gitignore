@@ -47,6 +47,9 @@ env/
 .env.*.local
 .env.production
 egopulse/egopulse.local.toml
+.egopulse/
+*.db-wal
+*.db-shm
 
 # Spotify credentials cache (contains access_token and refresh_token)
 .cache
