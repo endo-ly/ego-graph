@@ -233,6 +233,8 @@ sudo nano /etc/systemd/system/egograph-pipelines.service
 ```
 
 起動前に `egograph/pipelines/.env` を作成する。
+`.env.example` はユーザー固有値を中心に載せており、
+未記載のスケジューラ/バッチサイズ等はコード既定値を使う。
 
 ```bash
 sudo cp /opt/egograph/repo/egograph/pipelines/.env.example /opt/egograph/repo/egograph/pipelines/.env

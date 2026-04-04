@@ -1,3 +1,10 @@
+"""service orchestration の E2E 結合テスト。
+
+`tests/ingest/integration/**` は source pipeline + storage の統合を検証する。
+この階層では FastAPI ingest API + Dispatcher + Executor + fake S3 をまとめて通し、
+service オーケストレーション境界の結合を検証する。
+"""
+
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread

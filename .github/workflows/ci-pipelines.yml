@@ -1,4 +1,4 @@
-name: Test Ingestion
+name: Test Pipelines
 
 on:
   workflow_dispatch:
@@ -39,5 +39,5 @@ jobs:
       #   if: always()
       #   with:
       #     token: ${{ secrets.CODECOV_TOKEN }}
-      #     file: ./ingest/coverage.xml
+      #     file: ./egograph/pipelines/coverage.xml
       #     fail_ci_if_error: false

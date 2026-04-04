@@ -106,7 +106,7 @@
 | ワークフロー             | トリガー      | 用途                    |
 | ------------------------ | ------------- | ----------------------- |
 | `ci-backend.yml`         | `backend/**`  | Backend テスト・Lint    |
-| `ci-ingest.yml`          | `pipelines/**` | Pipelines テスト・Lint  |
+| `ci-pipelines.yml`       | `pipelines/**` | Pipelines テスト・Lint  |
 | `ci-frontend.yml`        | `frontend/**` | Frontend テスト (JUnit) |
 | `deploy-backend.yml`     | `main` push   | backend/pipelines デプロイ |
 

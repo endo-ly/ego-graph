@@ -84,6 +84,7 @@ uv sync
 
 ```bash
 # 環境変数テンプレートを作成
+# `.env.example` はユーザー固有値を中心に載せており、未記載の設定はコード既定値を使う
 cp egograph/pipelines/.env.example egograph/pipelines/.env
 
 # 常駐サービス起動
@@ -233,7 +234,7 @@ cd frontend && ./gradlew ktlintFormat
 GitHub Actions でコンポーネント別に自動テストが実行されます。
 
 - **ci-backend.yml**: `egograph/backend/` の変更時
-- **ci-ingest.yml**: `egograph/pipelines/` の変更時
+- **ci-pipelines.yml**: `egograph/pipelines/` の変更時
 - **ci-frontend.yml**: `frontend/` の変更時
 - **deploy-backend.yml**: `main` push で backend/pipelines をデプロイ
 

@@ -56,13 +56,9 @@ class SpotifySettings(_RuntimeBaseSettings):
     client_id: str = Field(..., alias="SPOTIFY_CLIENT_ID")
     client_secret: SecretStr = Field(..., alias="SPOTIFY_CLIENT_SECRET")
     refresh_token: SecretStr = Field(..., alias="SPOTIFY_REFRESH_TOKEN")
-    redirect_uri: str = Field(
-        "http://127.0.0.1:8888/callback",
-        alias="SPOTIFY_REDIRECT_URI",
-    )
-    scope: str = Field(
-        "user-read-recently-played playlist-read-private playlist-read-collaborative",
-        alias="SPOTIFY_SCOPE",
+    redirect_uri: str = "http://127.0.0.1:8888/callback"
+    scope: str = (
+        "user-read-recently-played playlist-read-private playlist-read-collaborative"
     )
 
     def to_config(self) -> SpotifyConfig:
@@ -84,12 +80,9 @@ class GitHubWorklogSettings(_RuntimeBaseSettings):
     )
     github_login: str = Field(..., alias="GITHUB_LOGIN")
     target_repos: list[str] | None = Field(None, alias="GITHUB_TARGET_REPOS")
-    backfill_days: int = Field(365, alias="GITHUB_BACKFILL_DAYS")
-    fetch_commit_details: bool = Field(True, alias="GITHUB_FETCH_COMMIT_DETAILS")
-    max_commit_detail_requests_per_repo: int = Field(
-        200,
-        alias="GITHUB_MAX_COMMIT_DETAIL_REQUESTS_PER_REPO",
-    )
+    backfill_days: int = 365
+    fetch_commit_details: bool = True
+    max_commit_detail_requests_per_repo: int = 200
 
     def to_config(self) -> GitHubWorklogConfig:
         return GitHubWorklogConfig(
@@ -127,10 +120,10 @@ class YouTubeSettings(_RuntimeBaseSettings):
 class EmbeddingSettings(_RuntimeBaseSettings):
     """埋め込みモデル設定。"""
 
-    model_name: str = Field("cl-nagoya/ruri-v3-310m", alias="EMBEDDING_MODEL_NAME")
-    batch_size: int = Field(32, alias="EMBEDDING_BATCH_SIZE")
-    device: str | None = Field(None, alias="EMBEDDING_DEVICE")
-    expected_dimension: int = Field(768, alias="EMBEDDING_DIMENSION")
+    model_name: str = "cl-nagoya/ruri-v3-310m"
+    batch_size: int = 32
+    device: str | None = None
+    expected_dimension: int = 768
 
     def to_config(self) -> EmbeddingConfig:
         return EmbeddingConfig(
@@ -146,12 +139,9 @@ class QdrantSettings(_RuntimeBaseSettings):
 
     url: str = Field(..., alias="QDRANT_URL")
     api_key: SecretStr = Field(..., alias="QDRANT_API_KEY")
-    collection_name: str = Field(
-        "egograph_spotify_ruri",
-        alias="QDRANT_COLLECTION_NAME",
-    )
-    vector_size: int = Field(768, alias="QDRANT_VECTOR_SIZE")
-    batch_size: int = Field(1000, alias="QDRANT_BATCH_SIZE")
+    collection_name: str = "egograph_spotify_ruri"
+    vector_size: int = 768
+    batch_size: int = 1000
 
     def to_config(self) -> QdrantConfig:
         return QdrantConfig(
@@ -170,9 +160,9 @@ class R2Settings(_RuntimeBaseSettings):
     access_key_id: str = Field(..., alias="R2_ACCESS_KEY_ID")
     secret_access_key: SecretStr = Field(..., alias="R2_SECRET_ACCESS_KEY")
     bucket_name: str = Field("egograph", alias="R2_BUCKET_NAME")
-    raw_path: str = Field("raw/", alias="R2_RAW_PATH")
-    events_path: str = Field("events/", alias="R2_EVENTS_PATH")
-    master_path: str = Field("master/", alias="R2_MASTER_PATH")
+    raw_path: str = "raw/"
+    events_path: str = "events/"
+    master_path: str = "master/"
     local_parquet_root: str | None = Field(
         "data/parquet",
         alias="LOCAL_PARQUET_ROOT",
@@ -194,7 +184,7 @@ class R2Settings(_RuntimeBaseSettings):
 class DuckDBSettings(_RuntimeBaseSettings):
     """DuckDB設定。"""
 
-    db_path: str = Field("data/analytics.duckdb", alias="DUCKDB_PATH")
+    db_path: str = "data/analytics.duckdb"
 
     def to_config(self, r2_config: R2Config | None) -> DuckDBConfig:
         return DuckDBConfig(db_path=self.db_path, r2=r2_config)
