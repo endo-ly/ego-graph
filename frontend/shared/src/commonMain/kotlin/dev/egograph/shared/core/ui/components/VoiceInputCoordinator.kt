@@ -7,8 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import dev.egograph.shared.core.platform.terminal.createPermissionUtil
-import dev.egograph.shared.core.platform.terminal.createSpeechRecognizer
+import dev.egograph.shared.core.platform.voice.createPermissionUtil
+import dev.egograph.shared.core.platform.voice.createSpeechRecognizer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest

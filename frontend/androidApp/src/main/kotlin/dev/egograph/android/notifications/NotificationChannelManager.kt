@@ -13,9 +13,9 @@ import androidx.core.content.getSystemService
  * Android 13 (API 33) 以降、POST_NOTIFICATIONSパーミッションも必要です。
  */
 object NotificationChannelManager {
-    private const val CHANNEL_ID = "egograph_terminal"
-    private const val CHANNEL_NAME = "Terminal Notifications"
-    private const val CHANNEL_DESCRIPTION = "Notifications for terminal events"
+    private const val CHANNEL_ID = "egograph_notifications"
+    private const val CHANNEL_NAME = "EgoGraph Notifications"
+    private const val CHANNEL_DESCRIPTION = "General app notifications"
 
     /**
      * 通知チャンネルを作成する
