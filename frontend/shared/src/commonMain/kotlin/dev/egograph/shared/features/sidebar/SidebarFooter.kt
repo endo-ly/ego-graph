@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
@@ -30,7 +29,6 @@ import dev.egograph.shared.core.ui.theme.EgoGraphThemeTokens
 fun SidebarFooter(
     onNewChatClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    onTerminalClick: () -> Unit,
     onSystemPromptClick: () -> Unit,
 ) {
     val dimens = EgoGraphThemeTokens.dimens
@@ -55,14 +53,6 @@ fun SidebarFooter(
             onClick = onSystemPromptClick,
             contentDescription = "System prompt",
             testTag = "system_prompt_button",
-            modifier = Modifier.weight(1f),
-        )
-
-        FooterIconButton(
-            icon = Icons.Outlined.Computer,
-            onClick = onTerminalClick,
-            contentDescription = "Terminal",
-            testTag = "terminal_button",
             modifier = Modifier.weight(1f),
         )
 

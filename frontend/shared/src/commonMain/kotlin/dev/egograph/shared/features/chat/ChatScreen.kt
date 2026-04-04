@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -45,7 +44,6 @@ import kotlinx.serialization.Transient
  */
 class ChatScreen(
     @Transient private val onOpenSidebar: () -> Unit = {},
-    @Transient private val onOpenTerminal: () -> Unit = {},
     @Transient private val onNewChat: () -> Unit = {},
 ) : Screen {
     @Composable
@@ -104,7 +102,6 @@ class ChatScreen(
             ) {
                 ChatTopActions(
                     onOpenSidebar = onOpenSidebar,
-                    onOpenTerminal = onOpenTerminal,
                     onNewChat = onNewChat,
                     modifier =
                         Modifier
@@ -141,7 +138,6 @@ class ChatScreen(
 @Composable
 private fun ChatTopActions(
     onOpenSidebar: () -> Unit,
-    onOpenTerminal: () -> Unit,
     onNewChat: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -163,13 +159,6 @@ private fun ChatTopActions(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        CompactActionButton(
-            onClick = onOpenTerminal,
-            icon = Icons.Outlined.Computer,
-            contentDescription = "Terminal",
-            testTag = "chat_terminal_button",
-        )
-        Spacer(modifier = Modifier.width(dimens.space8))
         CompactActionButton(
             onClick = onNewChat,
             icon = Icons.Default.Add,
