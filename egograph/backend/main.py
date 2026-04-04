@@ -11,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from backend.api import (
-    browser_history,
     browser_history_data,
     chat,
     data,
@@ -102,7 +101,6 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     app.include_router(data.router)
     app.include_router(browser_history_data.router)
     app.include_router(github.router)
-    app.include_router(browser_history.router)
     # YouTubeルーターは一時非推奨 (2025-02-04)
     # app.include_router(youtube.router)
     app.include_router(chat.router)

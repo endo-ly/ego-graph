@@ -4,7 +4,7 @@
 
 - やりたいこと: Windows PC 上の Chromium 系ブラウザ拡張から訪問履歴を収集し、EgoGraph の Data Lake に保存する
 - 理由: ブラウザ行動履歴を Spotify や YouTube と同じく個人データ基盤へ統合し、時系列分析や後続の LLM/MCP 活用につなげるため
-- 対象: Edge / Brave を主対象、Chrome を互換対象とする個人用ローカル導入の Chromium 拡張 + ミニPC側 ingest endpoint
+- 対象: Edge / Brave を主対象、Chrome を互換対象とする個人用ローカル導入の Chromium 拡張 + ミニPC側 Pipelines ingest endpoint
 - 優先: 高。MVP では訪問履歴の確実な蓄積を最優先とし、YouTube 専用の二次利用は後続に回す
 
 ---
@@ -49,12 +49,13 @@
 - 配信方式は at-least-once を前提とし、重複吸収はサーバ側でも扱えるようにする
 
 #### 3.3 ミニPC側の受信
-- 受信口は現行 `backend` に HTTP endpoint として追加する
-- ただし責務上は将来独立可能な `browser history ingest endpoint` として扱う
+- 受信口は `pipelines` に HTTP endpoint として置く
+- `backend` は Browser History 書き込み口を持たず、読み取り API に集中する
 - Tailscale / Tailscale Serve 経由で Windows PC から到達可能とする
 - 認証は共有 `Bearer token` によるシンプルな方式とする
-- `backend` は認証・バリデーション・リクエスト受付を担当し、変換と保存の中核ロジックは `ingest/browser_history` に寄せる
-- `backend` は `ingest` のロジックを呼び出すオーケストレーターとして振る舞い、保存ロジックを二重実装しない
+- `pipelines` は認証・バリデーション・リクエスト受付・変換・保存を担当し、
+  受信直後に `browser_history_compact_workflow` を enqueue する
+- `backend` proxy 互換は設けず、拡張機能は `pipelines` を直接叩く
 
 #### 3.4 永続化
 - 受信 payload は raw JSON として保存する
@@ -71,7 +72,7 @@
 
 #### 3.6 将来拡張の余地
 - YouTube 動画 URL のみを二次抽出して別 schema / dataset に保存できるようにする
-- compact / 再処理 / local mirror sync は将来 `jobs` サービス側へ広げられるようにする
+- compact / 再処理 / local mirror sync は `pipelines` の workflow として扱う
 - データ参照 API は将来的に MCP / Skill へ置き換え可能な構造を維持する
 
 ### 期待する挙動
@@ -136,7 +137,7 @@
 - Chrome 互換性を考慮した実装
 - 起動時差分同期
 - `Bearer token` 認証
-- `backend` 上の受信 endpoint
+- `pipelines` 上の受信 endpoint
 - raw JSON / page view parquet 保存
 - `sync_id` ベースの最小同期状態管理
 - `browser`, `profile`, `source_device` を含むイベントスキーマ設計
@@ -148,7 +149,7 @@
 - 厳密な定時バッチ送信
 - YouTube 専用 dataset への分離
 - ブックマーク、検索語、ダウンロード、滞在時間の収集
-- jobs サービス本体の実装
+- 汎用 workflow platform 化
 
 ### 次回以降（あれば）
 - Chrome 実機での互換検証
@@ -188,7 +189,7 @@
 
 ### AC3: ミニPC側の保存
 **Given** 拡張から有効な payload が送信される  
-**When** ingest endpoint がリクエストを受ける  
+**When** `pipelines` の ingest endpoint がリクエストを受ける  
 **Then** raw JSON が R2 に保存される  
 **And** page view parquet が R2 に append-only で保存される  
 **And** `sync_id` 単位で処理状態を追跡できる
@@ -229,7 +230,7 @@
 
 ### 既存データとの整合（互換/移行）
 - 新規データソースとして追加するため既存互換は不要
-- 将来 `backend` のデータアクセス責務を縮小しても、ingest endpoint は残せるようにする
+- `backend` に旧 write endpoint を残さず、拡張機能の送信先を `pipelines` へ一本化する
 
 ---
 
@@ -271,12 +272,12 @@
 - 自宅 Windows PC からミニPCへ Tailscale で到達できる
 
 ### Issue
-- 将来 `jobs` サービスが導入された際の compact / 再処理責務の分離は別 Issue で詰める必要がある
-- `backend` の将来像が chat/runtime 中心に変わる可能性がある
+- `pipelines` 側の run 管理・再試行・ログ保持は別設計に沿って継続拡張する必要がある
+- `backend` は chat/read API 中心の境界へ寄せる
 
 ### Dependency
 - Chromium `history` API
-- 現行 `backend` の HTTP 受信基盤
+- `pipelines` の HTTP 受信基盤
 - R2 保存基盤
 - local mirror sync の既存パターン
 
@@ -433,14 +434,13 @@ browser-extension/
 
 backend/
 ├── api/
-│   └── browser_history.py
+│   └── browser_history_data.py
 ├── api/schemas/
-│   └── browser_history.py
+│   └── data.py
 └── usecases/
-    └── browser_history/
-        └── ingest_browser_history.py
+    └── tools/
 
-ingest/
+pipelines/
 └── browser_history/
     ├── storage.py
     ├── transform.py
@@ -449,7 +449,7 @@ ingest/
 
 - Chromium 拡張は `frontend/` 配下には置かず、ルート直下の独立パッケージとして扱う
 - これにより KMP フロントエンドと責務を分離し、将来のローカル配布やストア公開に備えやすくする
-- 実行時は `backend` が入口となり、`ingest/browser_history` の変換・保存ロジックを呼び出す
+- 実行時は `pipelines` が入口となり、Browser History の変換・保存・compact enqueue を担当する
 
 ---
 
@@ -457,5 +457,5 @@ ingest/
 
 - YouTube 動画単位の分析は、`watch?v=...` のような URL を後段で抽出することでかなり対応可能
 - ただし browser history は「ページ訪問履歴」であり、「再生イベントそのもの」ではない
-- 受信口は現時点では `backend` に置くが、将来的に独立サービスへ移してもよいように責務を限定して実装する
+- 受信口は `pipelines` に置き、`backend` は read/query API のみに限定する
 - raw JSON と page view parquet の責務分離、および 2 秒クラスタリングの判断理由は [browser-history.md](../10.architecture/03-ingest/browser-history.md) を参照

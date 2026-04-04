@@ -37,10 +37,10 @@ uv sync
 uv run playwright install chromium
 
 # アカウント1の Cookie エクスポート
-uv run python egograph/ingest/google_activity/scripts/export_cookies.py --account account1
+uv run python egograph/pipelines/sources/google_activity/scripts/export_cookies.py --account account1
 
 # (オプション) アカウント2がある場合
-uv run python egograph/ingest/google_activity/scripts/export_cookies.py --account account2
+uv run python egograph/pipelines/sources/google_activity/scripts/export_cookies.py --account account2
 ```
 
 スクリプトを実行するとブラウザが起動します：
@@ -80,7 +80,7 @@ GOOGLE_COOKIE_ACCOUNT1=./cookies_account1.json
 ### 手動実行 (ローカル)
 
 ```bash
-uv run python -m egograph.ingest.google_activity.main
+uv run python -m pipelines.sources.google_activity.main
 ```
 
 ### 自動実行 (GitHub Actions)
@@ -88,7 +88,7 @@ uv run python -m egograph.ingest.google_activity.main
 ワークフロー: `.github/workflows/job-ingest-google-youtube.yml`
 
 - **スケジュール**: 毎日 04:00 (UTC)
-- **トリガー**: `egograph/ingest/google_activity/**` の変更時にも実行
+- **トリガー**: `egograph/pipelines/sources/google_activity/**` の変更時にも実行
 - **動作**: 
   - 設定された全アカウント (`account1`, `account2`...) を順次処理
   - エラー発生時も他のアカウントの処理は継続 (Isolation)

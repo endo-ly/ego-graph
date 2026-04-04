@@ -3,10 +3,6 @@
 API用のリクエスト/レスポンススキーマを定義します。
 """
 
-from backend.api.schemas.browser_history import (
-    BrowserHistoryIngestRequest,
-    BrowserHistoryIngestResponse,
-)
 from backend.api.schemas.chat import ChatRequest, ChatResponse, ToolInfo, ToolsResponse
 from backend.api.schemas.data import (
     ListeningStatsResponse,
@@ -59,9 +55,6 @@ __all__ = [
     "RepositoryResponse",
     "ActivityStatsResponse",
     "RepoSummaryStatsResponse",
-    # Browser History API スキーマ
-    "BrowserHistoryIngestRequest",
-    "BrowserHistoryIngestResponse",
     # Models API スキーマ
     "ModelsResponse",
     "LLMModel",

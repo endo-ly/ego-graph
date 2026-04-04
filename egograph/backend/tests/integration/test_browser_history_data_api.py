@@ -83,3 +83,23 @@ class TestTopDomainsEndpoint:
         )
 
         assert response.status_code == 422
+
+
+class TestBrowserHistoryIngestEndpoint:
+    """backend から Browser History 書き込み口が削除されていることを確認する。"""
+
+    def test_post_ingest_browser_history_is_not_exposed(self, test_client):
+        response = test_client.post(
+            "/v1/ingest/browser-history",
+            json={
+                "sync_id": "2f4377e4-8c80-4ef4-a6bb-7f9350dbd6cf",
+                "source_device": "home-windows-pc",
+                "browser": "edge",
+                "profile": "Default",
+                "synced_at": "2026-03-22T12:00:00Z",
+                "items": [],
+            },
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 404

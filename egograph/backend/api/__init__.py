@@ -1,7 +1,6 @@
 """FastAPI routers."""
 
 from . import (
-    browser_history,
     browser_history_data,
     chat,
     data,
@@ -12,7 +11,6 @@ from . import (
 )
 
 __all__ = [
-    "browser_history",
     "browser_history_data",
     "chat",
     "data",

@@ -5,11 +5,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'egograph/ingest/**'
+      - 'egograph/pipelines/**'
   pull_request:
     branches: [main]
     paths:
-      - 'egograph/ingest/**'
+      - 'egograph/pipelines/**'
 
 jobs:
   test:
@@ -31,8 +31,7 @@ jobs:
 
       - name: Run tests
         run: |
-          cd egograph/ingest
-          uv run pytest tests/ -v --cov=ingest --cov-report=xml --cov-report=term
+          uv run pytest egograph/pipelines/tests -v --cov=pipelines --cov-report=xml --cov-report=term
 
       # Future: Enable Codecov when needed (requires CODECOV_TOKEN in GitHub Secrets)
       # - name: Upload coverage

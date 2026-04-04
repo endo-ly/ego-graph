@@ -103,7 +103,7 @@
 | ワークフロー             | トリガー      | 用途                    |
 | ------------------------ | ------------- | ----------------------- |
 | `ci-backend.yml`         | `backend/**`  | Backend テスト・Lint    |
-| `ci-ingest.yml`          | `ingest/**`   | Ingest テスト・Lint     |
+| `ci-ingest.yml`          | `pipelines/**` | Pipelines テスト・Lint  |
 | `ci-frontend.yml`        | `frontend/**` | Frontend テスト (JUnit) |
 | `job-ingest-spotify.yml` | Cron (5回/日) | Spotify データ収集      |
 | `job-ingest-github.yml`  | Cron (1日1回) | GitHub データ収集       |

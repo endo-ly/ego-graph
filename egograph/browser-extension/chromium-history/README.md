@@ -1,10 +1,10 @@
 # Chromium History Extension
 
-Chromium MV3 拡張機能。Edge / Brave / Chrome のブラウザ履歴を EgoGraph バックエンドに同期します。
+Chromium MV3 拡張機能。Edge / Brave / Chrome のブラウザ履歴を EgoGraph Pipelines Service に同期します。
 
 ## 概要
 
-このブラウザ拡張機能は、Chromium 系ブラウザの閲覧履歴を収集し、EgoGraph バックエンドに送信して個人データを一元管理します。ネットワーク障害時のデータ損失を防ぐため、カーソルベースの増分同期を実装しています。
+このブラウザ拡張機能は、Chromium 系ブラウザの閲覧履歴を収集し、EgoGraph Pipelines Service に送信して個人データを一元管理します。ネットワーク障害時のデータ損失を防ぐため、カーソルベースの増分同期を実装しています。
 
 ## 機能
 
@@ -42,14 +42,14 @@ Chromium MV3 拡張機能。Edge / Brave / Chrome のブラウザ履歴を EgoGr
 │                                  │  │ 2. 前回のカーソルを取得  │ │
 │                                  │  │ 3. 履歴を収集           │ │
 │                                  │  │ 4. ペイロードを構築     │ │
-│                                  │  │ 5. バックエンドへ POST  │ │
+│                                  │  │ 5. Pipelines へ POST    │ │
 │                                  │  │ 6. カーソルを更新       │ │
 │                                  │  └─────────────────────────┘ │
 └──────────────────────────────────┼──────────────────────────────┘
                                    │
                                    ▼
                         ┌─────────────────────┐
-                        │   EgoGraph Backend  │
+                        │ EgoGraph Pipelines  │
                         │  POST /v1/ingest/   │
                         │  browser-history    │
                         └─────────────────────┘
@@ -60,7 +60,7 @@ Chromium MV3 拡張機能。Edge / Brave / Chrome のブラウザ履歴を EgoGr
 ### 前提条件
 
 - Chromium 系ブラウザ（Chrome、Edge、Brave）
-- 起動中の EgoGraph バックエンドサーバー
+- 起動中の EgoGraph Pipelines Service
 
 ### 方法 1: GitHub Actions の Artifact からダウンロード（推奨）
 
@@ -106,8 +106,8 @@ npm run build
 
 | フィールド  | 説明                                    | 例                              |
 | ----------- | --------------------------------------- | ------------------------------- |
-| Server URL  | EgoGraph バックエンドのベース URL       | `http://localhost:8000`         |
-| X-API-Key   | バックエンド認証用の API キー           | `your-api-key-here`             |
+| Pipelines Service URL | EgoGraph Pipelines Service のベース URL | `http://localhost:8001`         |
+| X-API-Key   | Pipelines Service 認証用の API キー     | `your-api-key-here`             |
 | Browser ID  | ブラウザタイプ（ドロップダウンから選択）| `chrome`, `edge`, `brave`       |
 | Device ID   | このデバイスを識別するユニークな ID     | `laptop-main`, `work-pc`        |
 | Profile     | ブラウザプロファイル名                  | `default`, `work`, `personal`   |
@@ -187,7 +187,7 @@ X-API-Key: {xApiKey}
 
 - この拡張機能は `chrome.history` API が返す visit をそのまま近い形で収集します
 - 同一 URL に対して短時間で複数の visit が発生することがあります。特に `link` と `reload` が短い間隔で並ぶケースは正常です
-- バックエンドでは受信 payload を raw JSON として保存しつつ、`events` には 2 秒以内の同一 URL 連続 visit を畳んだ `page view` を保存します
+- Pipelines Service では受信 payload を raw JSON として保存しつつ、`events` には 2 秒以内の同一 URL 連続 visit を畳んだ `page view` を保存します
 
 ### レスポンス
 
@@ -215,9 +215,9 @@ X-API-Key: {xApiKey}
 
 ### ネットワークエラー
 
-- バックエンドサーバーが起動していてアクセス可能か確認
+- Pipelines Service が起動していてアクセス可能か確認
 - `host_permissions` がサーバー URL を許可しているか確認
-- ローカル開発の場合、バックエンドで CORS が設定されているか確認
+- ローカル開発の場合、Pipelines Service で CORS が設定されているか確認
 
 ### 同期状態のリセット
 
@@ -247,7 +247,7 @@ chromium-history/
 │   │   ├── index.html      # オプションページ UI
 │   │   └── main.ts         # オプションページロジック
 │   └── shared/
-│       ├── api.ts          # バックエンド API クライアント
+│       ├── api.ts          # Pipelines Service API クライアント
 │       └── types.ts        # TypeScript 型定義
 └── tests/
     ├── history.test.ts     # 履歴収集テスト
@@ -287,7 +287,7 @@ npm run test
 
 - **API キーの保存**: X-API-Key は `chrome.storage.local` に保存され、拡張機能からのみアクセス可能です
 - **履歴アクセス**: この拡張機能は閲覧履歴を読み取るために `history` 権限が必要です
-- **データ送信**: すべてのデータは設定されたバックエンドに送信されます。本番環境では HTTPS を使用してください
+- **データ送信**: すべてのデータは設定された Pipelines Service に送信されます。本番環境では HTTPS を使用してください
 - **外部トラッキングなし**: この拡張機能はサードパーティサービスにデータを送信しません
 
 ## 権限
@@ -296,7 +296,7 @@ npm run test
 | ---------- | ------------------------------ |
 | `history`  | 同期のためのブラウザ履歴の読み取り |
 | `storage`  | 設定と同期状態の保存            |
-| `<all_urls>` | 任意のバックエンド URL へのリクエストを許可（設定可能） |
+| `<all_urls>` | 任意の Pipelines Service URL へのリクエストを許可（設定可能） |
 
 ## ライセンス
 

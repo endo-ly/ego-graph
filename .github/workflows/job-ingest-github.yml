@@ -1,9 +1,7 @@
 name: GitHub Worklog Ingestion to R2 Data Lake
 
 on:
-  schedule:
-    # 1日1回実行（深夜）
-    - cron: '0 15 * * *'  # 15:00 UTC = 00:00 JST (深夜)
+  # 定期実行は常駐 pipelines サービスへ移管したため、この workflow は手動fallback専用。
   workflow_dispatch:
 
 jobs:
@@ -44,7 +42,7 @@ jobs:
           [ -n "$GITHUB_PAT" ] || { echo "EGOGRAPH_GITHUB_PAT secret is required"; exit 1; }
           [ -n "$GITHUB_LOGIN" ] || { echo "EGOGRAPH_GITHUB_LOGIN secret is required"; exit 1; }
 
-          uv run python -m egograph.ingest.github.main
+          uv run python -c "from pipelines.sources.github.pipeline import run_github_ingest; run_github_ingest()"
 
       - name: Compact GitHub parquet datasets
         env:
@@ -54,7 +52,7 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           LOG_LEVEL: INFO
         run: |
-          uv run python -m egograph.ingest.github.compact
+          uv run python -c "from pipelines.sources.github.pipeline import run_github_compact; run_github_compact()"
 
       - name: Verify Compact Parquet Data Integrity (R2)
         if: success()

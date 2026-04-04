@@ -1,13 +1,7 @@
 name: Spotify Data Ingestion to R2 Data Lake
 
 on:
-  schedule:
-    # 深夜帯を薄くしつつ、日中帯を細かく収集する（50曲以上の取りこぼしを防ぐ）
-    - cron: '0 22 * * *'  # 22:00 UTC = 07:00 JST
-    - cron: '0 2 * * *'   # 02:00 UTC = 11:00 JST
-    - cron: '0 6 * * *'   # 06:00 UTC = 15:00 JST
-    - cron: '0 10 * * *'  # 10:00 UTC = 19:00 JST
-    - cron: '0 14 * * *'  # 14:00 UTC = 23:00 JST
+  # 定期実行は常駐 pipelines サービスへ移管したため、この workflow は手動fallback専用。
   workflow_dispatch:
 
 jobs:
@@ -44,7 +38,7 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           LOG_LEVEL: INFO
         run: |
-          uv run python -m egograph.ingest.spotify.main
+          uv run python -c "from pipelines.sources.spotify.pipeline import run_spotify_ingest; run_spotify_ingest()"
 
       - name: Compact Spotify parquet datasets
         env:
@@ -54,7 +48,7 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           LOG_LEVEL: INFO
         run: |
-          uv run python -m egograph.ingest.spotify.compact
+          uv run python -c "from pipelines.sources.spotify.pipeline import run_spotify_compact; run_spotify_compact()"
 
       - name: Verify Compact Parquet Data Integrity (R2)
         if: success()

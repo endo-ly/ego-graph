@@ -1,13 +1,13 @@
-# Backend Deploy (LXC + Tailscale)
+# Backend / Pipelines Deploy (LXC + Tailscale)
 
-本番バックエンドを Proxmox LXC (Ubuntu) にデプロイする手順。
+本番バックエンドと Pipelines Service を Proxmox LXC (Ubuntu) にデプロイする手順。
 Tailscale HTTPS を使用し、リバースプロキシは省略する。
 ローカルファースト運用のため、外部公開は前提にしない。
 
 ## 1. LXC 構成
 
 軽量構成でも安定稼働できるよう、LLM推論は外部API前提でCPU/メモリを抑える。
-この構成は個人運用の常駐APIを想定したバランス。
+この構成は個人運用の常駐APIと常駐ジョブランナーを同居させる想定のバランス。
 
 - Name: `egograph-prod`
 - OS: Ubuntu 24.04 LTS
@@ -51,7 +51,9 @@ sudo systemctl enable --now tailscaled
 sudo tailscale up --hostname=egograph-prod
 ```
 
-HTTPS は `tailscale serve` を使用:
+HTTPS は `tailscale serve` を使用する。
+backend の読み取り/チャット API と pipelines の管理・ingest API は別プロセスなので、
+必要に応じて公開ポートまたは公開ホストを分ける。
 
 ```bash
 sudo tailscale serve --bg http://127.0.0.1:8000
@@ -128,20 +130,18 @@ uv run python -c "import duckdb; conn = duckdb.connect(); print(conn.execute(\"S
 
 ## 5. systemd 常駐
 
-systemdで常駐化し、障害時は自動復旧させる。
+systemdで `backend` と `pipelines` を別プロセス常駐化し、障害時は自動復旧させる。
 `WorkingDirectory` と `.env` のパスは固定で運用する。
 
-管理するunitは以下の3つ
+管理するunitは以下の2つ
 
 - `egograph-backend.service`
-  - FastAPI 本体
-  - 起動前に 1 回だけ parquet sync を実行する
-- `egograph-parquet-sync.service`
-  - compacted parquet を R2 から local mirror に同期する one-shot job
-- `egograph-parquet-sync.timer`
-  - 上の sync service を 6 時間ごとに起動する scheduler
+  - 読み取り/チャット API を提供する FastAPI 本体
+  - `pipelines` 停止中でも起動できるよう、hard dependency は張らない
+- `egograph-pipelines.service`
+  - ingest / compact / local mirror sync を実行する常駐 service
+  - 内部の APScheduler が定期実行を担うため systemd timer は使わない
 
-backend の起動前に compacted mirror を同期するため、`ExecStartPre` を追加する。
 `/etc/systemd/system/egograph-backend.service`:
 
 作成と編集:
@@ -162,7 +162,6 @@ WorkingDirectory=/opt/egograph/repo
 EnvironmentFile=/opt/egograph/repo/backend/.env
 Environment=USE_ENV_FILE=false
 Environment=LOCAL_PARQUET_ROOT=/opt/egograph/data/parquet
-ExecStartPre=/usr/bin/flock -n /tmp/egograph-sync.lock /root/.local/bin/uv run python -m backend.scripts.sync_compacted_parquet --root /opt/egograph/data/parquet
 ExecStart=/root/.local/bin/uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=10
@@ -188,89 +187,74 @@ sudo systemctl start egograph-backend
 sudo systemctl status egograph-backend
 ```
 
-### 5.1 parquet sync service
+### 5.1 pipelines service
 
-local mirror の更新は backend 本体とは分けて `systemd` で管理する。
-`egograph-backend.service` は起動前に1回同期し、定期同期は別 service + timer で実行する。
-backend 起動前の同期と、timer からの定期同期の両方で同じコマンドを使う。
+ingest / compact / local mirror sync の定期実行と Browser History 受信 API は
+`pipelines` が担当する。
+backend は `LOCAL_PARQUET_ROOT` に local mirror がなければ R2 compacted parquet へ
+フォールバックして起動できるため、`egograph-pipelines.service` への hard dependency は
+設定しない。
 
-`/etc/systemd/system/egograph-parquet-sync.service`:
+`/etc/systemd/system/egograph-pipelines.service`:
 
 ```ini
 [Unit]
-Description=EgoGraph Parquet Sync
+Description=EgoGraph Pipelines Service
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=oneshot
+Type=simple
 WorkingDirectory=/opt/egograph/repo
-EnvironmentFile=/opt/egograph/repo/backend/.env
+EnvironmentFile=/opt/egograph/repo/pipelines/.env
 Environment=USE_ENV_FILE=false
 Environment=LOCAL_PARQUET_ROOT=/opt/egograph/data/parquet
-ExecStart=/usr/bin/flock -n /tmp/egograph-sync.lock /root/.local/bin/uv run python -m backend.scripts.sync_compacted_parquet --root /opt/egograph/data/parquet
+ExecStart=/root/.local/bin/uv run python -m pipelines.main serve --host 127.0.0.1 --port 8001
+Restart=always
+RestartSec=10
 User=root
 Group=root
-```
-
-作成:
-
-```bash
-sudo touch /etc/systemd/system/egograph-parquet-sync.service
-sudo nano /etc/systemd/system/egograph-parquet-sync.service
-```
-
-手動実行確認:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl start egograph-parquet-sync
-sudo systemctl status egograph-parquet-sync
-journalctl -u egograph-parquet-sync.service -n 100 --no-pager
-```
-
-### 5.2 parquet sync timer
-
-ingest は 1 日数回なので、local mirror の定期同期は 6 時間ごとで十分とする。
-
-`/etc/systemd/system/egograph-parquet-sync.timer`:
-
-```ini
-[Unit]
-Description=Run EgoGraph Parquet Sync every 6 hours
-
-[Timer]
-OnBootSec=10m
-OnUnitActiveSec=6h
-Unit=egograph-parquet-sync.service
-Persistent=true
 
 [Install]
-WantedBy=timers.target
+WantedBy=multi-user.target
 ```
 
 作成:
 
 ```bash
-sudo touch /etc/systemd/system/egograph-parquet-sync.timer
-sudo nano /etc/systemd/system/egograph-parquet-sync.timer
+sudo touch /etc/systemd/system/egograph-pipelines.service
+sudo nano /etc/systemd/system/egograph-pipelines.service
 ```
 
-有効化:
+起動前に `pipelines/.env` を作成:
+
+```bash
+sudo nano /opt/egograph/repo/pipelines/.env
+```
+
+起動確認:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable egograph-parquet-sync.timer
-sudo systemctl start egograph-parquet-sync.timer
-sudo systemctl list-timers --all | grep egograph-parquet-sync
+sudo systemctl enable egograph-pipelines
+sudo systemctl start egograph-pipelines
+sudo systemctl status egograph-pipelines
+journalctl -u egograph-pipelines.service -n 100 --no-pager
 ```
 
-ログ確認:
+### 5.2 Pipelines API / CLI の疎通確認
+
+CLI で workflow と run 状態を確認する。
+主要コマンドはエージェント運用しやすいよう `--json` 出力を使う。
 
 ```bash
-journalctl -u egograph-parquet-sync.service -f
-journalctl -u egograph-parquet-sync.timer -f
+cd /opt/egograph/repo
+uv run python -m pipelines.main workflow list --json
+uv run python -m pipelines.main run list --json
 ```
+
+Browser History 拡張機能の送信先 `Server URL` は backend ではなく
+`egograph-pipelines.service` 側の URL を設定する。
 
 ## 6. GitHub Actions で main をデプロイ
 
@@ -357,6 +341,7 @@ git fetch origin main
 git reset --hard origin/main
 uv sync
 sudo systemctl restart egograph-backend
+sudo systemctl restart egograph-pipelines
 ```
 
 **注意**: `git reset --hard` はローカルの変更を破棄します。本番環境での直接変更は推奨しません。

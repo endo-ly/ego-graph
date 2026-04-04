@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock /app/
 COPY egograph/backend /app/egograph/backend
-COPY egograph/ingest /app/egograph/ingest
+COPY egograph/pipelines /app/egograph/pipelines
 
 RUN uv sync --all-packages --frozen
 
