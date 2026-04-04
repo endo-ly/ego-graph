@@ -6,6 +6,7 @@ data class PermissionResult(
 
 interface PermissionUtil {
     suspend fun requestRecordAudioPermission(): PermissionResult
+
     fun hasRecordAudioPermission(): Boolean
 }
 

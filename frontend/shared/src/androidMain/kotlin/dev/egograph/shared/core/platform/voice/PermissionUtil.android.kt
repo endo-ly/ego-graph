@@ -10,8 +10,6 @@ import kotlin.coroutines.resume
 
 actual fun createPermissionUtil(): PermissionUtil =
     object : PermissionUtil {
-        private var permissionLauncher: androidx.activity.result.ActivityResultLauncher<String>? = null
-
         override suspend fun requestRecordAudioPermission(): PermissionResult =
             suspendCancellableCoroutine { continuation ->
                 val activity =
@@ -31,11 +29,10 @@ actual fun createPermissionUtil(): PermissionUtil =
                         }
                     }
 
-                permissionLauncher = launcher
                 launcher.launch(Manifest.permission.RECORD_AUDIO)
 
                 continuation.invokeOnCancellation {
-                    permissionLauncher?.unregister()
+                    launcher.unregister()
                 }
             }
 
