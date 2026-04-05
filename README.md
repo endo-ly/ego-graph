@@ -1,271 +1,128 @@
-# EgoGraph
+<p align="center">
+  <img src="./docs/assets/readme/hero.png" width="600">
+</p>
 
-**Personal Data Warehouse in a File.**
-DuckDB を用いた、プライバシー重視・サーバーレスな個人ログ分析 RAG システム。
+<p align="center">
+  <strong>Personal Data Warehouse × AI Agent Runtime</strong><br>
+  散在する個人データを一箇所に集約し、自分自身の文脈を理解するAIエージェントを構築する
+</p>
 
-## 概要
+## Why EgoGraph
 
-EgoGraph は、個人のデジタルライフログ（Spotify, Web, Bank, etc.）をローカルファイル（Parquet/DuckDB）に集約し、**高速な SQL 分析** と **ベクトル検索** を提供するエージェントシステムです。
+個人のデジタルデータは数多くのサービスに分散している。「去年の夏によく聴いていた曲は？」「あの技術記事をいつ読んだっけ？」といった問いに答えるには、各サービスを個別に開いて探すしかない。また、汎用的なAIに質問しても、ユーザー個人のデータにはアクセスできないため答えることができない。
 
-## 特徴
+EgoGraphは、この課題を「データの統合」と「AIエージェントによる活用」の2層で解決する。
 
-- **Hybrid Architecture**: **DuckDB** (分析) と **Qdrant** (検索) のベストミックス構成。
-- **Data Enrichment**: 外部 API と連携し、個人のログに豊かなコンテキストを付与。
-- **Cost Effective**: 安価な VPS と無料のマネージドサービスで動作する、個人に最適な設計。
-- **Mobile First**: スマホからいつでも自分のデータにアクセス・対話可能。
-
-## System Architecture
-
-![Architecture Diagram](./docs/10.architecture/diagrams/architecture_diagram.png)
-
-詳細: [システムアーキテクチャ](./docs/10.architecture/01-overview/system-architecture.md)
-
----
-
-## モノレポ構成
-
-このプロジェクトは、Python (uv workspace) + Kotlin Multiplatform のモノレポです。
-
-```text
-ego-graph/
-├── egograph/                # EgoGraph: データ収集＆提供
-│   ├── backend/             #   FastAPI サーバー（uv workspace メンバー）
-│   ├── pipelines/           #   ジョブ管理 + データ収集サービス（uv workspace メンバー）
-│   └── browser-extension/   #   ブラウザ履歴収集（Chrome拡張）
-├── egopulse/                # EgoPulse: Rust runtime foundation（Cargo workspace メンバー）
-├── frontend/                # KMP Android アプリ（Gradle）
-│   └── maestro/             #   E2Eテスト
-│
-├── docs/                    # プロジェクトドキュメント
-├── .github/workflows/       # CI/CD ワークフロー
-├── pyproject.toml           # Python workspace 設定
-├── Cargo.toml               # Rust workspace 設定
-└── uv.lock                  # Python 依存関係ロック
-```
-
-### コンポーネント概要
-
-| コンポーネント | 役割                        | 技術スタック                                                  | 実行環境                  |
-| -------------- | --------------------------- | ------------------------------------------------------------- | ------------------------- |
-| **egograph/pipelines/** | データ収集・変換・保存・ジョブ管理 | Python 3.12+, FastAPI, APScheduler, SQLite, DuckDB, boto3 | 常駐サービス |
-| **egograph/backend/**   | Agent API・データアクセス   | FastAPI, DuckDB, LLM (DeepSeek/OpenAI)                        | VPS/GCP (常駐サーバー)    |
-| **egopulse/**  | Rust runtime foundation     | Rust, Tokio, Reqwest, Clap                                    | Local/Server (常駐予定)   |
-| **frontend/**  | チャット UI・Terminal UI    | Kotlin 2.2.21, Compose Multiplatform, MVVM (StateFlow + Channel) | Android (Gradle)          |
-
-旧 React + Capacitor フロントエンドはモノレポから分離され、
-[`endo-ava/egograph-frontend-capacitor-legacy`](https://github.com/endo-ava/egograph-frontend-capacitor-legacy)
-で保守されています。
-
----
+- **データ層（EgoGraph）**: 各種サービスからデータを定期収集し、Parquetファイルとして一元管理する。一度集めればDuckDBで自由にクエリできるため、データをエクスポートして死蔵させることはない。
+- **エージェント層（EgoPulse）** — LLM Agent が EgoGraph の蓄積データにツール経由でアクセスし、個人の文脈に基づいた回答を返す。TUI / Web / Discord / Telegram のいずれからでも同じデータにアクセスできる
 
 ## Quick Start
 
-### 前提条件
+### Prerequisites
 
-- **Python**: 3.12+ ([uv](https://github.com/astral-sh/uv) 推奨)
-- **Rust/Cargo**: stable toolchain（EgoPulse ビルド用）
-- **JDK**: 17+ (Android アプリビルド用)
-- **Android SDK**: API 34 (Android アプリビルド用)
-- **環境変数**: 各コンポーネント配下の `.env.example` を参考に `.env` を作成
+| Component | Requirement |
+|-----------|-------------|
+| Python | 3.12+（[uv](https://github.com/astral-sh/uv) 推奨） |
+| Rust | stable（EgoPulse ビルド用） |
+| JDK | 17+（Android アプリビルド用・任意） |
 
-### 1. 全体セットアップ
+### 1. Clone & Setup
 
 ```bash
-# uv のインストール（未インストールの場合）
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Python 依存関係の同期（egograph/backend, egograph/pipelines を一括）
+git clone https://github.com/endo-ava/ego-graph.git
+cd ego-graph
 uv sync
 ```
 
-### 2. コンポーネント別セットアップ
-
-#### A. Pipelines（データ収集・ジョブ管理）
+### 2. EgoGraph（Pipelines & API）
 
 ```bash
-# 環境変数テンプレートを作成
-# `.env.example` はユーザー固有値を中心に載せており、未記載の設定はコード既定値を使う
-cp egograph/pipelines/.env.example egograph/pipelines/.env
+# Pipelines Service 起動（スケジュール駆動でデータ収集）
+uv run python -m egograph.pipelines.main serve
 
-# 常駐サービス起動
-uv run python -m pipelines.main serve
-
-# Workflow 一覧確認
-uv run python -m pipelines.main workflow list --json
-
-# テスト実行
-uv run pytest egograph/pipelines/tests --cov=pipelines
+# Agent API サーバー起動 → http://localhost:8000/docs
+uv run python -m egograph.backend.main
 ```
 
-**必要な環境変数**:
+環境変数は `.env.example` を参照。
 
-- `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REFRESH_TOKEN`
-- `R2_ENDPOINT_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`
-
-#### B. Backend（API サーバー）
+### 3. EgoPulse（AI エージェント）
 
 ```bash
-# 環境変数テンプレートを作成
-cp egograph/backend/.env.example egograph/backend/.env
+# バイナリインストール(推奨)
+curl -fsSL https://raw.githubusercontent.com/endo-ava/ego-graph/main/scripts/install-egopulse.sh | bash
+egopulse setup                     # 初回セットアップウィザード
+egopulse start                     # 全チャネル起動（Web / Discord / Telegram）
 
-# 開発サーバー起動（自動リロード）
-uv run uvicorn egograph.backend.main:app --reload --host 127.0.0.1 --port 8000
-
-# ヘルスチェック
-curl http://localhost:8000/health
-
-# API ドキュメント
-open http://localhost:8000/docs
+# またはソースから起動
+cargo run -p egopulse -- start     # 全チャネル起動（Web / Discord / Telegram）
 ```
 
-**必要な環境変数**:
+OpenAI 互換エンドポイント（OpenRouter, Ollama 等）に対応。詳細は [egopulse/README.md](./egopulse/README.md) を参照。
 
-- `R2_*`（データアクセス）
-- `LLM_*`（チャット機能）
-
-#### C. Frontend（Android アプリ）
+### 4. Frontend（Android アプリ・任意）
 
 ```bash
 cd frontend
-
-# デバッグビルド
 ./gradlew :androidApp:assembleDebug
-
-# デバイスにインストール
 ./gradlew :androidApp:installDebug
-
-# テスト実行
-./gradlew :shared:testDebugUnitTest
 ```
 
-**注意**: エミュレータから localhost にアクセスする場合は `10.0.2.2:8000` を使用してください。
+## Features & Architecture
 
-#### D. EgoPulse（Rust runtime foundation）
+![architecture](./docs/assets/readme/architecture.png)
 
-起動方法と設定例は [`egopulse/README.md`](./egopulse/README.md) を参照してください。
+### EgoGraph — Personal Data Warehouse
 
----
+- **常駐 Pipelines Service** — APScheduler によるスケジュール駆動。SQLite で workflow / run / step / lock を管理
+- **マルチソース収集** — Spotify、ブラウザ履歴、GitHub、Google Activity、ローカルミラー同期に対応
+- **Parquet + R2** — 分析用データを Parquet 形式で Cloudflare R2 またはローカルに保存
+- **DuckDB 即時分析** — `:memory:` モードで R2 から直接 Parquet を読み込み、サーバーレスで SQL 分析
+- **Agent API** — LLM が定義済みツールを呼び出して蓄積データにアクセスし、ユーザーの問い合わせに応答する
+- **増分取り込み** — カーソルで前回位置を追跡し、差分のみを取得
 
-## Git Worktree 自動セットアップ
+### EgoPulse — AI Agent Runtime
 
-`git worktree add` や `claude -w` で作成された worktree に対して、以下を自動実行できます。
+- **マルチチャネル** — TUI / Web UI（React + SSE + WebSocket）/ Discord / Telegram を単一バイナリで提供
+- **永続セッション** — SQLite で会話履歴を管理。セッションの再開・切り替えに対応
+- **OpenAI 互換** — OpenAI、OpenRouter、Ollama、ローカル LLM など幅広く対応
+- **セットアップウィザード** — `egopulse setup` で対話型 TUI から初期設定
+- **systemd 統合** — `egopulse gateway install` で本番サーバーにデプロイ
+- **Rust 製** — Tokio 非同期ランタイムで軽量・高速に動作
 
-- 設定/認証ファイルのコピー
-- `uv sync`
-- `npm install`（対象ディレクトリのみ）
+### Frontend — Mobile App
 
-### 導入
+- **Kotlin Multiplatform** — Compose Multiplatform によるネイティブ Android アプリ
+- **ストリーミングチャット** — AI チャットインターフェース（ストリーミング対応）
+- **データ可視化** — 個人データのグラフ・チャート表示（WIP）
 
-```bash
-bash scripts/install-git-hooks.sh
-```
+詳細なアーキテクチャ設計は [docs/10.architecture/](./docs/10.architecture/) を参照。
 
-このスクリプトは `core.hooksPath` を `.git/hooks` に設定します（`claude -w` 互換）。
+## Current Status
 
-### コピー対象・npm対象のカスタマイズ
+| Component | Status | Notes |
+|-----------|--------|-------|
+| EgoGraph Pipelines | Working | 常駐 Pipelines Service。Spotify / ブラウザ履歴 / GitHub / Google Activity 対応済み |
+| EgoGraph Backend | Working | FastAPI + DuckDB + LLM Tool Use |
+| EgoPulse | Working | TUI / Web UI / Discord / Telegram 対応済み。systemd 統合済み |
+| Frontend (Android) | Active Development | チャット UI 実装済み。データ可視化は WIP |
 
-- コピー対象: `.git-hooks/worktree-copy-files.txt`
-- `npm install` 対象: `.git-hooks/worktree-npm-dirs.txt`
-
-どちらも「1行1パス（リポジトリルートからの相対パス）」で指定します。  
-空行と `#` コメントは無視されます。
-
-### 他リポジトリへの流用
-
-以下をコピーして `scripts/install-git-hooks.sh` を実行すれば流用できます。
-
-- `.git-hooks/post-checkout`
-- `.git-hooks/setup-worktree.sh`
-- `.git-hooks/worktree-copy-files.txt`
-- `.git-hooks/worktree-npm-dirs.txt`
-- `scripts/install-git-hooks.sh`
-
----
-
-## Development
-
-### Claude / Codex 連携
-
-Claude 用に管理している Skill / Command を Codex からも使いたい場合は、リポジトリルートで以下を実行してください。
-
-```bash
-mkdir -p ~/.codex/skills ~/.codex/prompts
-
-find "$PWD/.claude/skills" -mindepth 1 -maxdepth 1 -type d \
-  -exec ln -sfn {} ~/.codex/skills/ \;
-
-find "$PWD/.claude/commands" -mindepth 1 -maxdepth 1 -type f -name '*.md' \
-  -exec ln -sfn {} ~/.codex/prompts/ \;
-```
-
-- Codex では custom command は `~/.codex/prompts/` 配下の Markdown を slash command として扱います
-- Claude の `.claude/commands/*.md` は、そのまま Codex 側の prompt として再利用できます
-- Skill は `~/.codex/skills/` 配下に配置すると Codex から参照されます
-
-### テスト実行
-
-```bash
-# Python 全テスト
-uv run pytest
-
-# コンポーネント別
-uv run pytest egograph/pipelines/tests --cov=pipelines
-uv run pytest egograph/backend/tests --cov=backend
-
-# Frontend (KMP)
-cd frontend && ./gradlew :shared:testDebugUnitTest
-```
-
-### Lint & Format
-
-```bash
-# Python (Ruff)
-uv run ruff check .          # チェックのみ
-uv run ruff format .         # フォーマット
-uv run ruff check --fix .    # 自動修正
-
-# Frontend (KMP)
-cd frontend && ./gradlew ktlintCheck
-cd frontend && ./gradlew ktlintFormat
-```
-
-### CI/CD
-
-GitHub Actions でコンポーネント別に自動テストが実行されます。
-
-- **ci-backend.yml**: `egograph/backend/` の変更時
-- **ci-pipelines.yml**: `egograph/pipelines/` の変更時
-- **ci-frontend.yml**: `frontend/` の変更時
-- **deploy-backend.yml**: `main` push で backend/pipelines をデプロイ
-
----
+> 個人プロジェクトとして開発中のため、破壊的変更が随時発生します。
 
 ## Documentation
 
-### プロジェクト構成
+| Document | Description |
+|----------|-------------|
+| [CONCEPT.md](./docs/CONCEPT.md) | ビジョン・目的・設計思想 |
+| [Architecture](./docs/10.architecture/) | システムアーキテクチャ設計 |
+| [Tech Stack](./docs/20.technical_selections/) | 技術選定記録（ADR） |
+| [Deploy](./docs/40.deploy/) | デプロイ手順 |
 
-```
-docs/
-├── CONCEPT.md                  # ビジョン・目的・Design Philosophy
-├── 00.requirements/            # 機能要件定義
-├── 10.architecture/            # アーキテクチャ設計
-├── 20.technical_selections/    # ADR (技術選定記録)
-├── 40.deploy/                  # デプロイ手順
-├── 70.knowledge/               # ナレッジベース
-└── 99.archive/                 # アーカイブ
-```
+### Component READMEs
 
-### コンセプト・ビジョン
-
-- **[CONCEPT.md](./docs/CONCEPT.md)**: EgoGraphのビジョン、解決する課題、Design Philosophy
-
-
-### コンポーネント詳細 (コード内README)
-
-各コンポーネントの詳細な使い方・セットアップは、各ディレクトリのREADMEを参照してください：
-
-| コンポーネント | README | 内容 |
-|--------------|--------|------|
-| **Pipelines** | [egograph/pipelines](./egograph/pipelines) | データ収集、compaction、local mirror sync、workflow/run 管理 |
-| **Backend** | [egograph/backend/README.md](./egograph/backend/README.md) | Agent API、DuckDB 接続、LLM 統合 |
-| **Frontend** | [frontend/README.md](./frontend/README.md) | Android アプリ（KMP）、MVVM構成、リリース手順 |
+| Component | README |
+|-----------|--------|
+| Pipelines | [egograph/pipelines/README.md](./egograph/pipelines/README.md) |
+| Backend | [egograph/backend/README.md](./egograph/backend/README.md) |
+| EgoPulse | [egopulse/README.md](./egopulse/README.md) |
+| Frontend | [frontend/README.md](./frontend/README.md) |
