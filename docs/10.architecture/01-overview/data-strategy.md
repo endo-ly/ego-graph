@@ -253,6 +253,36 @@ CREATE SCHEMA IF NOT EXISTS ops;   -- ingest状態・ログ
   - `date`: "YYYY-MM-DD"
   - `mood`: ["focus", "chill"]
 
+### 4.4 ローカル実行時データの配置
+
+ローカル実行時データは、Git 管理される `repo/` の中に置かず、`repo` の兄弟 `data/` 配下に集約する。
+
+- `repo/`: コード専用
+- `data/`: 実行時データ専用
+
+```text
+<app-root>/
+├── repo/                      # Git root
+└── data/                      # runtime data root
+    ├── backend/
+    │   └── chat.sqlite
+    ├── pipelines/
+    │   ├── state.sqlite3
+    │   └── logs/
+    ├── parquet/
+    │   └── compacted/...
+    └── legacy/
+        └── chat.duckdb
+```
+
+#### 配置ルール
+
+- 会話履歴の正本 SQLite は `data/backend/chat.sqlite` に置く
+- Pipelines の状態 DB と step log は `data/pipelines/` に置く
+- compacted parquet の local mirror は `data/parquet/compacted/...` に置く
+- 旧形式や一時退避が必要なデータだけを `data/legacy/` に残す
+- `repo/data` や `egograph/backend/data` のような旧配置は新規に使わない
+
 ---
 
 ## 5. 主要データ分類

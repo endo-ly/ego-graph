@@ -74,7 +74,10 @@
       "Bash(gh api:*)",
       "Bash(cd egopulse:*)",
       "Bash(cargo check:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fmt:*)"
     ],
     "deny": [
       "Read(.env)",
