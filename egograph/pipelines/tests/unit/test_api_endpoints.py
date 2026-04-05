@@ -3,24 +3,21 @@
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
+from pipelines.api.dependencies import verify_api_key
 from pipelines.app import create_app
 from pipelines.config import PipelinesConfig
 
 
-def _build_client(tmp_path, api_key: str | None = None):
-    """認証付きテストクライアントを構築する。"""
+def _build_client(tmp_path):
+    """認証をバイパスしたテストクライアントを構築する。"""
     config = PipelinesConfig(
         database_path=tmp_path / "state.sqlite3",
         logs_root=tmp_path / "logs",
         dispatcher_poll_seconds=60,
-        api_key=SecretStr(api_key) if api_key else None,
     )
     app = create_app(config)
+    app.dependency_overrides[verify_api_key] = lambda: None
     return TestClient(app)
-
-
-def _headers(api_key: str | None) -> dict:
-    return {"X-API-Key": api_key} if api_key else {}
 
 
 # --- workflows.py ---

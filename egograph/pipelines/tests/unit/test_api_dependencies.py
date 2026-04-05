@@ -20,8 +20,8 @@ def _build_app(api_key: str | None = None, tmp_path=None):
     return create_app(config)
 
 
-def test_verify_api_key_passes_when_no_key_configured(tmp_path):
-    """api_key が未設定時は X-API-Key ヘッダーなしで通過する。"""
+def test_verify_api_key_returns_500_when_no_key_configured(tmp_path):
+    """api_key が未設定時は 500 を返す。"""
     app = _build_app(api_key=None, tmp_path=tmp_path)
 
     @app.get("/test")
@@ -30,7 +30,8 @@ def test_verify_api_key_passes_when_no_key_configured(tmp_path):
 
     with TestClient(app) as client:
         response = client.get("/test")
-        assert response.status_code == 200
+        assert response.status_code == 500
+        assert response.json() == {"detail": "PIPELINES_API_KEY is not configured"}
 
 
 def test_verify_api_key_rejects_missing_header(tmp_path):

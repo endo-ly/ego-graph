@@ -244,9 +244,8 @@ sudo cp /opt/egograph/repo/egograph/pipelines/.env.example /opt/egograph/repo/eg
 sudo nano /opt/egograph/repo/egograph/pipelines/.env
 ```
 
-Browser History 拡張機能や管理 API に API Key 認証をかける場合は、
-`egograph/pipelines/.env` に `PIPELINES_API_KEY` を設定する。
-未設定なら `/v1/health` 以外の API も認証なしで受け付ける。
+`egograph/pipelines/.env` に `PIPELINES_API_KEY` を必ず設定する。
+未設定なら `/v1/health` 以外の API リクエストは 500 エラーとなる。
 
 起動確認:
 

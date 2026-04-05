@@ -16,12 +16,15 @@ def verify_api_key(
     x_api_key: str | None = Header(None),
     service: PipelineService = Depends(get_service),
 ) -> None:
-    """PIPELINES_API_KEY が設定されている場合だけ X-API-Key を検証する。"""
-    if service.config.api_key is None:
-        return
+    """X-API-Key を検証する。PIPELINES_API_KEY の設定が必須。"""
+    api_key = service.config.api_key
+    if api_key is None:
+        raise HTTPException(
+            status_code=500, detail="PIPELINES_API_KEY is not configured"
+        )
 
     if not x_api_key or not secrets.compare_digest(
         x_api_key,
-        service.config.api_key.get_secret_value(),
+        api_key.get_secret_value(),
     ):
         raise HTTPException(status_code=401, detail="Invalid API key")
