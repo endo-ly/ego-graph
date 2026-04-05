@@ -1,260 +1,553 @@
 # システムアーキテクチャ
 
-## 全体構成図
+> 最終更新: 2026-04-05
 
-### Architecture Overview
+## 1. システム概要
 
-![Architecture Diagram](../diagrams/architecture_diagram.png)
+EgoGraphは、分散する個人データを統合し、AIエージェントを通じて自然言語で分析・対話できる基盤。**サーバーレス・ローカルファースト**を設計原則とする。
 
-軽量サーバー（e2-micro等）での稼働を前提とし、メモリ負荷の高いベクトル検索を **Qdrant Cloud** にオフロードする構成。
-データの取り込み（Ingestion）は **GitHub Actions** で定期実行し、サーバー負荷を最小化する。
+### 1.1 構成要素
+
+| コンポーネント | 言語 | 責務 |
+|---|---|---|
+| **Pipelines Service** | Python 3.12+ | スケジュール駆動のデータ収集・ETL |
+| **Backend (Agent API)** | Python 3.12+ | LLMエージェント + データアクセスREST API |
+| **Frontend (Mobile App)** | Kotlin Multiplatform | Android ネイティブチャットUI |
+| **EgoPulse** | Rust | 独立型AIエージェントランタイム |
+| **Browser Extension** | Chromium | ブラウザ履歴収集 |
+
+### 1.2 モノレポ構成
+
+```
+ego-graph/
+├── egograph/
+│   ├── pipelines/          # Pipelines Service (uv workspace member)
+│   └── backend/            # Backend API (uv workspace member)
+├── frontend/
+│   ├── shared/             # KMP shared module
+│   └── androidApp/         # Android app entry point
+├── egopulse/               # Rust AI agent runtime
+├── browser-extension/
+│   └── chromium-history/   # Chrome extension (browser history)
+├── scripts/                # 運用スクリプト
+├── .github/workflows/      # CI/CD
+├── pyproject.toml          # Python workspace 設定
+└── Cargo.toml              # Rust workspace 設定
+```
+
+---
+
+## 2. 全体アーキテクチャ
+
+### 2.1 データ収集フロー（Write Path）
 
 ```mermaid
-flowchart TB
-    %% Styles
-    classDef client fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:black,rx:10,ry:10;
-    classDef server fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:black,rx:5,ry:5;
-    classDef storage fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:black,shape:cyl;
-    classDef external fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:black,rx:5,ry:5;
-    classDef process fill:#fff,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5,color:#666;
-
-    subgraph ClientLayer ["📱 Client Layer"]
-        direction TB
-        MobileApp["Mobile App\n(Android / KMP)"]:::client
+flowchart LR
+    subgraph Sources["Data Sources"]
+        SP[Spotify API]
+        GH[GitHub API]
+        GA[Google MyActivity]
+        BH[Browser Extension]
     end
 
-    subgraph CloudEnv ["☁️ Cloud / Server Environment"]
-        direction TB
-
-        subgraph AppLayer ["Application Server (VPS/VM)"]
-            direction TB
-            AgentAPI["Agent API\n(FastAPI)"]:::server
-            DuckDB[("DuckDB\n(Analytics Engine)")]:::server
-        end
-
-        subgraph IngestionLayer ["GitHub Actions (Async Batch)"]
-            direction TB
-            GHA["Ingestion Workers\n(Python Scripts)"]:::server
-        end
+    subgraph Pipelines["Pipelines Service"]
+        SCH["APScheduler<br/>CRON / INTERVAL"]
+        Q[("SQLite Queue")]
+        DISP[RunDispatcher]
+        EXE["Step Executor<br/>InProcess / SubProcess"]
     end
 
-    subgraph ManagedServices ["Managed Services"]
-        direction TB
-        Qdrant[("Qdrant Cloud\n(Vector Database)")]:::external
-        R2{{"Cloudflare R2\n(Object Storage)"}}:::storage
+    subgraph Storage["Cloudflare R2"]
+        RAW["raw/ - JSON"]
+        EVT["events/ - Parquet"]
+        MST["master/ - Parquet"]
+        ST["state/ - cursors"]
     end
 
-    subgraph DataSources ["🌐 External Data Sources"]
-        Spotify["Spotify API"]:::external
-        Docs["Google Drive / Notion"]:::external
-    end
+    SP -->|collect| EXE
+    GH -->|collect| EXE
+    GA -->|collect| EXE
+    BH -->|POST /v1/ingest/browser-history| Pipelines
 
-    %% Connectivity
-    MobileApp <==>|"HTTPS / REST"| AgentAPI
-    AgentAPI <-->|"SQL Query"| DuckDB
-    AgentAPI <-->|"Vector Search"| Qdrant
-
-    DuckDB -.->|"Read Parquet (httpfs)"| R2
-
-    GHA -->|"Fetch Data"| Spotify
-    GHA -->|"Fetch Data"| Docs
-    GHA -->|"Write Parquet/Raw"| R2
-    GHA -->|"Upsert Vectors"| Qdrant
-
-    %% Layout Positioning
-    MobileApp ~~~ AgentAPI
-    AgentAPI ~~~ Qdrant
-    GHA ~~~ R2
+    SCH -->|enqueue| Q
+    DISP -->|poll| Q
+    DISP -->|dispatch| EXE
+    EXE -->|write| RAW
+    EXE -->|write| EVT
+    EXE -->|write| MST
+    EXE -->|update| ST
 ```
 
-> **Note**: Last.fm 連携は一時停止中。
-
-### Detailed Flow
+### 2.2 分析・対話フロー（Read Path）
 
 ```mermaid
-flowchart TB
-    subgraph "Client"
-        Mobile[Mobile/Web App]
+sequenceDiagram
+    participant User
+    participant Frontend as Android App
+    participant Backend as Backend API
+    participant LLM as LLM Provider
+    participant Tool as ToolExecutor
+    participant DuckDB as DuckDB :memory:
+    participant SQLite as SQLite chat.db
+
+    User->>Frontend: 質問を入力
+    Frontend->>Backend: POST /v1/chat stream=true
+    Backend->>SQLite: スレッド取得/作成
+    Backend->>LLM: chat_stream with tools
+
+    loop Tool Loop (max 5)
+        LLM-->>Backend: tool_call
+        Backend->>Tool: execute tool
+        Tool->>DuckDB: SQL on Parquet
+        DuckDB-->>Tool: query result
+        Tool-->>Backend: tool result
+        Backend->>LLM: tool_result + continue
     end
 
-    subgraph "Ingestion (GitHub Actions)"
-        Action[Scheduled Workflows]
-    end
-
-    subgraph "External Server (VPS/GCP)"
-        Agent[Agent API (FastAPI)]
-        DuckDB[(DuckDB Engine)]
-    end
-
-    subgraph "Storage"
-        R2{Object Storage\n(Cloudflare R2)}
-    end
-
-    subgraph "Managed Services"
-        Qdrant[Qdrant Cloud\n(Vector DB)]
-    end
-
-    subgraph "Data Sources"
-        Spotify
-        Docs[Documents]
-    end
-
-    Mobile <-->|HTTPS| Agent
-    Agent <-->|SQL Analytics| DuckDB
-    Agent <-->|Vector Search| Qdrant
-
-    DuckDB <-->|Read Only| R2
-
-    Spotify --> Action
-    Docs --> Action
-
-    Action -->|Write Parquet/Raw| R2
-    Action -->|Upsert Vectors| Qdrant
+    LLM-->>Backend: final response stream
+    Backend-->>Frontend: SSE: delta / done
+    Backend->>SQLite: 会話を保存
+    Frontend-->>User: 回答を表示
 ```
 
----
+### 2.3 EgoPulse（独立エージェント）
 
-## コンポーネント詳細
+```mermaid
+flowchart LR
+    subgraph Channels["Channels"]
+        TUI["Ratatui TUI"]
+        WEB["Axum Web UI - SSE + WebSocket"]
+        DISC["Discord Bot"]
+        TG["Telegram Bot"]
+        CLI["CLI"]
+    end
 
-### Ingestion Layer (GitHub Actions)
+    subgraph EgoPulse["EgoPulse - Rust"]
+        AG["Agent Loop"]
+        LLM2["OpenAI-compatible Client"]
+        SES["SQLite - egopulse.db"]
+    end
 
-- **Role**: 定期的なデータ収集と加工。
-- **Workflow**:
-  - **Extract**: Spotify APIやドライブからデータを取得。
-  - **Transform**: 構造化データ（Parquet）やベクトル（Embedding）に変換。
-  - **Load**:
-    - **Cloudflare R2**: 「正本」としてParquet/Rawファイルを保存。
-    - **Qdrant**: 検索用ベクトルインデックスを更新。
-
-### Storage Layer
-
-- **Object Storage (Cloudflare R2)**:
-  - **正本 (Original)**。すべての事実データとドキュメントの実体を保持。
-  - DuckDBから `httpfs` またはローカルマウント経由で参照される。
-- **Semantic Data (Qdrant)**:
-  - 意味検索用のインデックスのみを保持。
-
-### Analysis Layer (Dual Engine)
-
-- **DuckDB**: **「事実」の集計 & 台帳管理**。
-  - 例: 「去年、何回再生した？」「あのドキュメントどこ？」
-  - Agentプロセスに内包されるライブラリとして動作。
-- **Qdrant**: **「意味」の検索**。
-  - 例: 「悲しい時に聴いた曲は？」
-  - 高速なベクトル検索を提供。
-
-### Application Layer (Agent)
-
-ユーザーの問いかけに対し、ツールを使い分けて回答を作る。
-
-- **LangChain / LlamaIndex**: SQL生成とツール実行の制御。
-- **Tool definitions**:
-  - `query_analytics(sql)`: 数値的な集計や台帳参照。
-  - `search_vectors(query_text)`: 意味的なインデックス検索。
-
-### Client Layer (Frontend)
-
-ユーザーとのインターフェース。
-
-- **Framework**: Kotlin Multiplatform + Compose Multiplatform
-- **Role**: Native Android App, Chat UI, Terminal UI.
-
----
-
-## データフロー (Search & Retrieval)
-
-### 書き込み (Ingestion by GitHub Actions)
-
-1.  **Fetch**: ActionsがAPI等からRawデータ（JSON）を取得。
-2.  **Transform**: 共通スキーマ（Unified Schema）に変換。
-3.  **Save**:
-    - **Cloudflare R2 (正本)**: 生ログ、ドキュメント本文、Parquetファイルを保存。
-    - **Qdrant (索引)**: IDとベクトル、フィルタ用タグを登録。
-
-> **Note**: サーバー側のDuckDBは、R2上の更新されたファイルを読み取る（メタデータ更新はサーバー起動時や定期タスクで行う、あるいはActionsからトリガーする）。
-
-### 読み取り (Search Pattern)
-
-#### A. ドキュメントRAG (doc_chunks)
-
-1.  **Embed**: ユーザーの質問をベクトル化。
-2.  **Index Search**: Qdrant (`doc_chunks_v1`) から候補の `chunk_id` を取得。
-3.  **Ledger Lookup**: DuckDB (`mart.documents`) で `chunk_id` を照会し、実データの場所 (`s3_uri`) を特定。
-4.  **Fetch Original**: R2 (またはキャッシュ済みParquet) から本文を取得。
-5.  **Generate**: LLMに渡して回答生成。
-
-#### B. Spotify "思い出し" RAG (daily_summaries)
-
-「台帳」自体が分析可能なデータを持つケース（DuckDBがデータをマウントしている場合）。
-
-1.  **Embed**: 質問をベクトル化。
-2.  **Index Search**: Qdrant (`spotify_daily_summaries_v1`) から `summary_id` を取得。
-3.  **Retrieve**: DuckDB (`mart.daily_summaries`) からサマリー本文と、関連する統計データを取得（DuckDBがR2上のParquetを透過的に扱う）。
-4.  **Generate**: 回答生成。
-
----
-
-## スケーラビリティと制限
-
-### データ量
-
-- **DuckDB**: 数億行〜TB級のParquetファイルでも、単一ノードで十分に高速処理可能。
-- **メモリ**: Aggregationなどの重い処理も、DuckDBの "Out-of-core" 処理により、メモリ容量を超えてもディスク（Temp領域）を使って実行できる。
-
-### 同時実行性
-
-- **Read**: 複数のAgentプロセス（Worker）からの同時読み取りは可能（Parquetファイルベースであれば）。
-- **Write**: GitHub Actionsによるバッチ書き込みが主のため、サーバー側のロック競合は最小限。
-
----
-
-## セキュリティ
-
-- **認証**: 実装しない（ローカル/個人利用前提）。
-- **データ保護**: 必要であれば、Parquetファイルの暗号化や、ファイルシステムレベルでのアクセス権限設定を行う。
-
----
-
-## Appendix: Architecture Image Generation Prompt
-
-以下のプロンプトを使用してアーキテクチャ図を生成しました：
-
-```text
-A professional system architecture diagram with a clean, modern style using simple badge-like icons.
-The diagram should have a white background and clearly distinct sections.
-
-Top Section: "Client Layer"
-- Icon: Smartphone/Tablet
-- Label: "Mobile/Web App (Capacitor)"
-
-Middle Section: "Server Environment"
-- Left Box: "Application Server"
-  - Icon: API/Server Gear
-  - Label: "Agent API (FastAPI)"
-  - Icon: Database (connected to API)
-  - Label: "DuckDB (Analytics)"
-- Right Box (Separated): "Ingestion (Async)"
-  - Icon: Gears/Worker
-  - Label: "GitHub Actions"
-
-Bottom Section: "Managed Services & Storage"
-- Icon: Cloud Database
-- Label: "Qdrant Cloud (Vector DB)"
-- Icon: Storage Bucket
-- Label: "Cloudflare R2 (Object Storage)"
-
-Data Sources (Feeding into Ingestion):
-- Icons: Music Note (Spotify), Documents (Docs)
-
-Connections (Arrows):
-1. Mobile App <-> Agent API (HTTPS)
-2. Agent API <-> DuckDB (SQL)
-3. Agent API <-> Qdrant (Search)
-4. DuckDB -> Cloudflare R2 (Read Parquet)  <-- IMPORTANT: Database reads from Storage
-5. GitHub Actions -> Spotify/Docs (Fetch)
-6. GitHub Actions -> Cloudflare R2 (Write Parquet)
-7. GitHub Actions -> Qdrant (Upsert)
-
-IMPORTANT: NO connection between Mobile App and GitHub Actions.
-Style: Flat design, pastel colors (Blue for client, Green for server, Orange for storage, Purple for external), rounded corners. High quality, technical presentation.
+    TUI --> AG
+    WEB --> AG
+    DISC --> AG
+    TG --> AG
+    CLI --> AG
+    AG --> LLM2
+    AG --> SES
 ```
+
+> **注**: EgoPulseはEgoGraphのデータに直接アクセスしない。独立したセッション管理とLLM統合を持つ。
+
+---
+
+## 3. コンポーネント詳細
+
+### 3.1 Pipelines Service
+
+**責務**: スケジュール駆動で外部APIからデータを収集し、R2に保存する常駐ETLサービス。
+
+#### アーキテクチャ
+
+```
+Trigger Layer (APScheduler)
+    ↓ enqueue
+Queue Layer (SQLite: workflow_runs)
+    ↓ poll
+Dispatch Layer (RunDispatcher + LockManager)
+    ↓ execute
+Execution Layer (InProcessExecutor / SubprocessExecutor)
+    ↓
+Source Layer (spotify, github, google_activity, browser_history, local_mirror_sync)
+    ↓
+Storage (Cloudflare R2: raw/, events/, master/, state/)
+```
+
+#### 管理API
+
+| Method | Path | 説明 |
+|---|---|---|
+| GET | `/v1/health` | ヘルスチェック |
+| GET | `/v1/workflows` | ワークフロー一覧 |
+| GET | `/v1/workflows/{id}` | ワークフロー詳細 |
+| POST | `/v1/workflows/{id}/runs` | 手動実行 |
+| POST | `/v1/workflows/{id}/enable` | 有効化 |
+| POST | `/v1/workflows/{id}/disable` | 無効化 |
+| GET | `/v1/runs` | 実行一覧 |
+| GET | `/v1/runs/{id}` | 実行詳細 |
+| POST | `/v1/runs/{id}/retry` | 再実行 |
+| POST | `/v1/runs/{id}/cancel` | キャンセル |
+| POST | `/v1/ingest/browser-history` | ブラウザ履歴受信（イベント駆動） |
+
+#### ワークフロー定義
+
+| Workflow | トリガー | ステップ |
+|---|---|---|
+| `spotify_ingest_workflow` | CRON 6回/日 | ingest → compact |
+| `github_ingest_workflow` | CRON 1回/日 | ingest → compact |
+| `google_activity_ingest_workflow` | CRON 1回/日 | ingest |
+| `local_mirror_sync_workflow` | INTERVAL 6h | sync |
+| `browser_history_compact_workflow` | イベント駆動 | compact |
+| `browser_history_compact_maintenance_workflow` | INTERVAL 6h | compact maintenance |
+
+#### データソース
+
+| ソース | 種別 | 収集方法 |
+|---|---|---|
+| Spotify | 音楽再生履歴 | Spotipy API (OAuth) |
+| GitHub | 開発活動ログ | GitHub REST API |
+| Google Activity | YouTube視聴履歴 | Google MyActivity + Cookie認証 |
+| Browser History | ブラウザ閲覧履歴 | Chrome Extension → POST API |
+| Local Mirror Sync | R2→ローカル同期 | boto3 S3 sync |
+
+#### 状態管理（SQLite）
+
+- `workflow_definitions`: ワークフロー定義
+- `workflow_schedules`: スケジュール（CRON/INTERVAL）
+- `workflow_runs`: 実行履歴（QUEUED → RUNNING → SUCCEEDED/FAILED/CANCELED）
+- `step_runs`: ステップ実行（attempt管理付き）
+- `workflow_locks`: 排他制御（lease + heartbeat）
+
+---
+
+### 3.2 Backend (Agent API)
+
+**責務**: LLMエージェントによる対話チャット + DuckDB経由のデータアクセスREST API。
+
+#### アーキテクチャ（レイヤード）
+
+```
+api/              ← プレゼンテーション層（FastAPIルーター、Pydanticスキーマ）
+usecases/         ← アプリケーション層（ChatUseCase、ToolExecutor、SystemPromptBuilder）
+infrastructure/   ← インフラ層（LLMプロバイダー、Repository実装、DuckDB接続）
+domain/           ← ドメイン層（モデル定義、ツール定義）
+```
+
+#### REST API
+
+| Method | Path | 説明 |
+|---|---|---|
+| GET | `/health` | ヘルスチェック |
+| GET | `/v1/data/spotify/stats/top-tracks` | Spotify トップトラック |
+| GET | `/v1/data/spotify/stats/listening` | Spotify 聴取統計 |
+| GET | `/v1/data/github/*` | GitHub データ |
+| GET | `/v1/data/browser-history/*` | ブラウザ履歴データ |
+| GET | `/v1/threads` | スレッド一覧 |
+| GET | `/v1/threads/{id}` | スレッド詳細 |
+| GET | `/v1/threads/{id}/messages` | メッセージ一覧 |
+| POST | `/v1/chat` | チャット（streaming/non-streaming） |
+| GET | `/v1/chat/models` | 利用可能モデル一覧 |
+| GET | `/v1/chat/tools` | 利用可能ツール一覧 |
+| GET/PUT | `/v1/system-prompts/{name}` | システムプロンプト管理 |
+
+#### チャットエンドポイント（SSE Streaming）
+
+```
+POST /v1/chat
+  → ChatUseCase.execute_stream()
+    → ToolExecutor.execute_loop_stream()
+      → LLMClient.chat_stream()
+        → OpenAIProvider / AnthropicProvider
+      → ToolExecutor.execute() (tool_calls)
+        → ToolRegistry.execute()
+          → SpotifyRepository / GitHubRepository / BrowserHistoryRepository
+            → DuckDBConnection (httpfs → R2 Parquet)
+```
+
+**SSEイベント型**: `delta`, `done`, `tool_call`, `tool_result`, `error`
+
+#### LLM統合
+
+| プロバイダー | 実装 | 備考 |
+|---|---|---|
+| OpenAI | `OpenAIProvider` | 直接API |
+| OpenRouter | `OpenAIProvider` (base_url変更) | Web検索オプション付き |
+| Anthropic | `AnthropicProvider` | 直接API |
+
+モデルは `MODELS_CONFIG` でエイリアス管理（例: `xiaomi/mimo-v2-flash:free`）。
+
+#### ツールシステム
+
+| カテゴリ | ツール名 | 説明 |
+|---|---|---|
+| Spotify | `get_top_tracks` | 期間内のトップトラック |
+| Spotify | `get_listening_stats` | 聴取統計 |
+| Browser History | `get_page_views` | 閲覧ページ検索 |
+| Browser History | `get_top_domains` | 閲覧ドメイン上位 |
+| GitHub | `get_pull_requests` | PR一覧 |
+| GitHub | `get_commits` | コミット一覧 |
+| GitHub | `get_repositories` | リポジトリ一覧 |
+| GitHub | `get_activity_stats` | 活動統計 |
+| GitHub | `get_repo_summary_stats` | リポジトリ要約統計 |
+
+> **注**: YouTubeツールは2025-02-04より一時非推奨。
+
+#### チャット履歴（SQLite）
+
+- パス: `data/backend/chat.sqlite`（repoの兄弟 `data/` 配下）
+- テーブル: `threads`, `messages`
+- WALモード有効、外部キー制約あり
+
+#### DuckDB（分析エンジン）
+
+- **モード**: `:memory:`（ステートレス、リクエスト毎に新規接続）
+- **拡張**: `httpfs`（R2からの直接Parquet読み込み）
+- **認証**: CREATE SECRET（S3互換、ハッシュ化secret名）
+- **ローカルミラー**: `data/parquet/compacted/` をR2より優先して読み込む
+
+---
+
+### 3.3 Frontend (Mobile App)
+
+**責務**: EgoGraph Backendと対話するAndroidネイティブチャットアプリ。
+
+#### アーキテクチャ（MVVM）
+
+```
+Screen          ← Compose UI表示
+  ↓
+ScreenModel     ← ビジネスロジック（StateFlow + Channel）
+  ↓
+State / Effect  ← UI状態 / One-shotイベント
+  ↓
+Repository      ← データアクセス（Ktor HTTP）
+  ↓
+Network         ← Ktor Client (SSE/REST)
+```
+
+#### 機能モジュール
+
+| 機能 | Screen | ScreenModel | 状態 |
+|---|---|---|---|
+| チャット | `ChatScreen` | `ChatScreenModel` | 実装済み |
+| スレッド一覧 | `ThreadListScreen` | (ChatScreenModel共有) | 実装済み |
+| サイドバー | `SidebarScreen` | (ChatScreenModel共有) | 実装済み |
+| 設定 | `SettingsScreen` | `SettingsScreenModel` | 実装済み |
+| システムプロンプト | `SystemPromptEditorScreen` | `SystemPromptEditorScreenModel` | 実装済み |
+| ターミナル | - | - | 未実装（WIP） |
+
+#### ナビゲーション
+
+```
+MainActivity
+  └── Voyager Navigator
+        └── SidebarScreen (root)
+              ├── Drawer: ThreadList + Footer
+              └── Content: MainNavigationHost
+                    ├── Chat → ChatScreen
+                    ├── SystemPrompt → SystemPromptEditorScreen
+                    └── Settings → SettingsScreen
+```
+
+スワイプジェスチャー対応の独自ナビゲーションコンテナ。
+
+#### 通信
+
+| 宛先 | 用途 | プロトコル |
+|---|---|---|
+| Backend API | チャット、スレッド、データ | HTTPS/REST + SSE |
+| EgoPulse Gateway | FCMトークン登録 | HTTPS/REST |
+
+#### プッシュ通知（FCM）
+
+```
+FCM Service (onMessageReceived)
+  → NotificationChannelManager
+  → NotificationDisplayer
+  → 通知種別: task_completed
+  → FcmTokenManager: トークン登録（指数バックオフ5回）
+    → PUT {gateway}/v1/push/token
+```
+
+#### 技術スタック
+
+| 要素 | 技術 | バージョン |
+|---|---|---|
+| Kotlin | 言語 | 2.2.21 |
+| Compose Multiplatform | UI | 1.9.0 |
+| Voyager | ナビゲーション | 1.1.0-beta03 |
+| Koin | DI | 4.0.0 |
+| Ktor | HTTPクライアント | 3.3.3 |
+| Kermit | ロギング | - |
+| WebView (Mermaid.js) | 図レンダリング | v11 CDN |
+
+---
+
+### 3.4 EgoPulse (AI Agent Runtime)
+
+**責務**: 独立型AIエージェントランタイム。複数チャネルを通じてLLMと対話。
+
+#### コマンド
+
+| コマンド | 説明 |
+|---|---|
+| `egopulse` | TUI起動 |
+| `egopulse setup` | 対話型セットアップウィザード（Ratatui TUI） |
+| `egopulse ask "prompt"` | 単発クエリ |
+| `egopulse chat` | CLIチャット |
+| `egopulse start` | 全有効チャネル起動 |
+| `egopulse gateway install` | systemdサービス登録 |
+| `egopulse gateway status/restart/uninstall` | systemd管理 |
+| `egopulse update` | GitHub Releasesから自己更新 |
+
+#### チャネル
+
+| チャネル | 実装 | プロトコル | 認証 |
+|---|---|---|---|
+| TUI | Ratatui + crossterm | ターミナル | なし |
+| CLI | stdin/stdout | パイプ | なし |
+| Web UI | Axum + React (Vite) | HTTP/SSE/WebSocket | Bearerトークン |
+| Discord | Serenity 0.12 | Gateway WebSocket | Botトークン |
+| Telegram | Teloxide 0.17 | Long Polling | Botトークン |
+
+> Web UIは `include_dir!` でバイナリに埋め込み。
+
+#### セッション管理
+
+- **ストレージ**: SQLite（WALモード）
+- **パス**: `{data_dir}/egopulse.db`
+- **テーブル**: `chats`, `messages`, `sessions`, `tool_calls`
+- **楽観的ロック**: `updated_at` タイムスタンプ
+- **履歴制限**: 1セッションあたり50メッセージ（設定可能）
+
+#### LLM統合
+
+- **プロトコル**: OpenAI互換HTTP API
+- **対応**: OpenAI, OpenRouter, Ollama, LM Studio
+- **ストリーミング**: SSEパース（`SseEventParser`）
+- **APIキー**: ローカルエンドポイントは空キー許可
+
+#### EgoGraphとの関係
+
+**EgoPulseはEgoGraphと独立して動作する。** 自身のSQLiteでセッションを管理し、EgoGraphのBackendやDuckDBにはアクセスしない。将来的にツール経由でのデータ連携が可能だが、現時点では未実装。
+
+---
+
+### 3.5 Browser Extension
+
+**責務**: Chromiumブラウザの閲覧履歴を収集し、Pipelines Serviceに送信。
+
+- **ディレクトリ**: `browser-extension/chromium-history/`
+- **送信先**: `POST {pipelines}/v1/ingest/browser-history`
+- **ビルド**: dist/ 配下に出力
+
+---
+
+## 4. データフロー
+
+### 4.1 書き込み（Ingestion）
+
+```
+1. Trigger: APScheduler (CRON/INTERVAL) または Event API
+2. Queue: SQLite に workflow_run を enqueue
+3. Dispatch: RunDispatcher が poll → lease → execute
+4. Collect: 各Sourceが外部APIからデータ取得
+5. Transform: スキーママッピング、Parquet変換
+6. Store: R2 に raw/ (JSON), events/ (Parquet), master/ (Parquet) を保存
+7. State: R2 state/ にカーソル位置を更新
+```
+
+### 4.2 読み取り（Analytics）
+
+```
+1. Request: ユーザーがチャットで質問
+2. LLM: モデルがツール呼び出しを判断
+3. Tool: ToolExecutor が該当ツールを実行
+4. DuckDB: :memory: 接続で R2 Parquet を httpfs 経由でクエリ
+   （ローカルミラーがあれば優先）
+5. Response: 結果をLLMに返し、回答を生成
+6. Persist: 会話をSQLiteに保存
+```
+
+### 4.3 R2 ディレクトリ構造
+
+```
+s3://{bucket}/
+├── events/              # 時系列データ
+│   ├── spotify/plays/   # 再生履歴 (year={yyyy}/month={mm}/)
+│   └── github/          # GitHub活動
+├── master/              # マスターデータ
+│   └── spotify/         # tracks/, artists/
+├── raw/                 # APIレスポンス（監査用JSON）
+└── state/               # 増分取り込みカーソル
+```
+
+> ストレージの責務分離・配置ルール・判断基準 → [data-strategy.md](./data-strategy.md)
+> 技術選定の理由（ADR）→ [tech-stack.md](./tech-stack.md)
+
+---
+
+## 5. CI/CD
+
+### 5.1 GitHub Actions ワークフロー
+
+| ワークフロー | トリガー | 内容 |
+|---|---|---|
+| `ci-backend.yml` | `egograph/backend/**` | Backend テスト・Lint |
+| `ci-pipelines.yml` | `egograph/pipelines/**` | Pipelines テスト・Lint |
+| `ci-frontend.yml` | `frontend/**` | Frontend テスト・Lint |
+| `ci-browser-extension.yml` | `browser-extension/**` | Extension ビルド |
+| `ci-egopulse.yml` | `egopulse/**` | Rust テスト・Lint |
+| `deploy-backend.yml` | `main` push | Backend/Pipelines デプロイ |
+| `release-egopulse.yml` | タグ | EgoPulse リリース |
+| `release-frontend-kmp.yml` | タグ | Frontend リリース |
+
+### 5.2 テストピラミッド
+
+| レイヤー | Python | Frontend | Rust |
+|---|---|---|---|
+| Unit | pytest | kotlin-test | cargo test |
+| Integration | pytest (fixtures) | Turbine + MockK | - |
+| E2E | pytest (live, 要認証) | Maestro | - |
+| Lint | Ruff | Ktlint + Detekt | Clippy |
+
+---
+
+## 6. セキュリティ
+
+### 6.1 認証
+
+| コンポーネント | 方式 |
+|---|---|
+| Pipelines API | API Key 検証 |
+| Backend API | API Key 検証 |
+| EgoPulse Web UI | Bearer トークン + WebSocket Origin検証 |
+| EgoPulse Discord/Telegram | Botトークン |
+
+### 6.2 データ保護
+
+- APIキー・認証情報は環境変数で管理（`.env` はGit管理外）
+- Backendのエラーレスポンスから機密情報を自動除去（`_redact_string`）
+- DuckDBのSECRET名はSHA-256ハッシュで衝突回避
+- CORS設定は環境変数から制御
+- EgoPulseのsystemdサービスはセキュリティハードニング適用（`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=true`）
+
+---
+
+## 7. 現状と制約
+
+### 7.1 コンポーネント成熟度
+
+| コンポーネント | 状態 | 備考 |
+|---|---|---|
+| Pipelines Service | 運用中 | 4データソース + ローカルミラー同期 |
+| Backend | 運用中 | チャット + ツール + REST API |
+| Frontend | 開発中 | チャットUI実装済み。データ可視化はWIP |
+| EgoPulse | 運用中 | 5チャネル対応。systemd統合済み |
+| Browser Extension | 保守中 | 履歴収集 → Pipelines API送信 |
+
+### 7.2 未実装・制限事項
+
+- **Qdrant（ベクトル検索）**: 設計段階。実装なし
+- **YouTubeツール**: 2025-02-04より一時非推奨
+- **Last.fm**: ジョブ停止中
+- **Frontend ターミナル**: ディレクトリ構造のみ（WIP）
+- **データ可視化**: MermaidDiagram（マークダウン図レンダリング）のみ実装済み
+- **モニタリング**: 未実装
+- **EgoPulse ↔ EgoGraph 連携**: 未実装（独立動作）
+
+### 7.3 既知の技術的負債
+
+- `data-strategy.md` に記載されているQdrant前提の表現は現状と不一致
+- 会話履歴のベクトル化方式は未選定
+- DockerデプロイはBackendのみ（Pipelines分離デプロイ未対応）

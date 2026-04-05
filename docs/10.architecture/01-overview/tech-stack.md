@@ -1,163 +1,110 @@
 # 技術スタック
 
-モノレポ構成における各コンポーネントの技術選定とその理由。
+各コンポーネントが使用している技術の一覧。
+
+技術選定の理由（ADR）→ [../20.technical_selections/](../20.technical_selections/)
 
 ---
 
 ## モノレポ構成
 
-| コンポーネント | 言語/FW     | パッケージマネージャー | 主要ライブラリ                        |
-| -------------- | ----------- | ---------------------- | ------------------------------------- |
-| **egograph/pipelines/** | Python 3.13   | uv     | FastAPI, APScheduler, SQLite, Spotipy, requests, DuckDB, boto3, pyarrow |
-| **egograph/backend/**   | Python 3.13   | uv     | FastAPI, Uvicorn, DuckDB |
-| **frontend/**           | Kotlin 2.2.21 | Gradle | Compose Multiplatform, Voyager, Koin, Ktor, FCM |
-
-- **Python Workspace**: uv で pipelines, backend を一元管理
-- **Frontend**: Kotlin Multiplatform (Gradle)
+| コンポーネント | 言語 | パッケージマネージャー |
+|---|---|---|
+| `egograph/pipelines/` | Python 3.12+ | uv (workspace) |
+| `egograph/backend/` | Python 3.12+ | uv (workspace) |
+| `frontend/` | Kotlin 2.2.21 | Gradle |
+| `egopulse/` | Rust (edition 2024) | Cargo |
 
 ---
 
-## 1. Data Storage
+## Pipelines Service
 
-### DuckDB (OLAP 分析エンジン)
+| カテゴリ | 技術 |
+|---|---|
+| Web Framework | FastAPI |
+| ジョブスケジューラ | APScheduler |
+| ジョブ状態管理 | SQLite |
+| 外部API通信 | Spotipy (Spotify), requests (GitHub) |
+| データ変換 | pyarrow, DuckDB |
+| ストレージ | boto3 → Cloudflare R2 |
+| Lint/Format | Ruff |
+| テスト | pytest, pytest-cov |
 
-- **用途**: SQL 分析、集計、台帳管理
-- **Extension**:
-  - `parquet`: Parquet ファイルに対する高速クエリ
-  - `httpfs`: Cloudflare R2 (S3互換) からの直接読取
-- **実行モード**: `:memory:` (Backend でステートレス実行)
-- **理由**: 列指向処理による高速集計、ファイルベースで運用が簡単
+## Backend (Agent API)
 
-### Qdrant Cloud (ベクトル検索)
+| カテゴリ | 技術 |
+|---|---|
+| Web Framework | FastAPI + Uvicorn |
+| 分析エンジン | DuckDB `:memory:` + httpfs |
+| 会話履歴 | SQLite (WAL) |
+| HTTP Client | httpx (LLM API呼び出し) |
+| バリデーション | Pydantic |
+| LLM Provider | OpenAI, Anthropic, OpenRouter (統一クライアント) |
+| エージェント | 自前 ToolExecutor |
+| Lint/Format | Ruff |
+| テスト | pytest, pytest-cov |
 
-- **用途**: 意味検索、RAG のインデックス
-- **Free Tier**: 1GB メモリ（約10万ベクトル）
-- **理由**: マネージドサービスで運用不要、Backend のメモリ負荷を削減
+## Frontend (Mobile App)
 
-### Cloudflare R2 (Object Storage)
+| カテゴリ | 技術 | バージョン |
+|---|---|---|
+| 言語 | Kotlin | 2.2.21 |
+| UI | Compose Multiplatform | 1.9.0 |
+| ナビゲーション | Voyager | 1.1.0-beta03 |
+| DI | Koin | 4.0.0 |
+| HTTP Client | Ktor | 3.3.3 |
+| プッシュ通知 | Firebase Cloud Messaging | - |
+| ロギング | Kermit | - |
+| 図レンダリング | WebView (Mermaid.js v11 CDN) | - |
+| テスト | kotlin-test, Turbine, MockK, Ktor MockEngine | - |
+| カバレッジ | Kover | - |
+| Lint | Ktlint, Detekt | - |
 
-- **用途**: 正本（Parquet/Raw JSON）の永続化
-- **特徴**: S3 互換、egress 無料
-- **構造**:
-  - `events/`: 時系列データ（年月パーティショニング）
-  - `master/`: マスターデータ
-  - `raw/`: API レスポンス（監査用）
-  - `state/`: 増分取り込みカーソル
+## EgoPulse (AI Agent Runtime)
 
----
+| カテゴリ | 技術 |
+|---|---|
+| 言語 | Rust (edition 2024) |
+| 非同期ランタイム | Tokio |
+| TUI | Ratatui + crossterm |
+| Web UI | Axum + React/Vite (include_dir! 埋め込み) |
+| Discord | Serenity 0.12 |
+| Telegram | Teloxide 0.17 |
+| DB | rusqlite (SQLite) |
+| HTTP | reqwest |
+| CLI | clap |
+| Lint | Clippy, rustfmt |
+| テスト | cargo test |
 
-## 2. Pipelines Service（データ収集・ジョブ管理）
+## インフラ
 
-- **Language**: Python 3.13
-- **実行環境**: 常駐 `egograph-pipelines.service`
-- **ジョブ管理**: APScheduler + SQLite + Dispatcher/Executor
-- **主要ライブラリ**:
-  - `fastapi`: 管理 API / Browser History ingest API
-  - `apscheduler`: 定期 trigger
-  - `spotipy`: Spotify API クライアント
-  - `requests`: HTTP クライアント（GitHub API 用）
-  - `pyarrow`: Parquet ファイル作成
-  - `boto3`: R2 アップロード
-  - `duckdb`: データ変換・検証
-- **特性**: Idempotent（冪等性）、Stateful（R2 カーソル + SQLite 実行管理）
-
----
-
-## 3. Backend（Agent API Server）
-
-- **Framework**: FastAPI (Python 3.13)
-- **Web Server**: Uvicorn (ASGI)
-- **主要ライブラリ**:
-  - `duckdb`: データアクセス
-  - `httpx`: 外部 API 呼び出し
-  - LLM プロバイダー SDK（OpenAI, Anthropic, OpenRouter）
-- **Agent Framework**: LangChain / LlamaIndex（検討中）
-- **LLM**:
-  - Agent Reasoning: OpenAI GPT-4o / DeepSeek v3
-  - Embedding: `cl-nagoya/ruri-v3-310m`（ローカル実行）
-- **実行環境**: VPS/GCP VM（常駐サーバー）
-- **特性**: ステートレス（DuckDB `:memory:` で初期化）
-
----
-
-## 4. Frontend（モバイル/Web アプリ）
-
-- **Framework**: Kotlin Multiplatform + Compose Multiplatform
-- **Language**: Kotlin 2.2.21
-- **Mobile Runtime**: Native Android
-- **UI System**: Material3 (Compose)
-- **Navigation**: Voyager 1.1.0-beta03
-- **State Management**: StateFlow + Channel (MVVM パターン)
-- **DI**: Koin 4.0.0
-- **HTTP Client**: Ktor 3.3.3
-- **Terminal UI**: xterm.js (WebView), xterm-addon-fit
-- **Push Notification**: Firebase Cloud Messaging (FCM)
-- **音声入力**: Android SpeechRecognizer
-- **Logging**: Kermit
-- **テスト**: kotlin-test, Turbine, MockK, Ktor MockEngine
-- **実行環境**: モバイル（Android）
+| 要素 | 技術 |
+|---|---|
+| Object Storage | Cloudflare R2 (S3互換) |
+| CI/CD | GitHub Actions |
+| コンテナ | Dockerfile (Backend/Pipelines) |
+| デプロイ | systemd (EgoPulse) |
 
 ---
 
-## 5. CI/CD
+## CI/CD
 
-### GitHub Actions
+| ワークフロー | トリガー | 内容 |
+|---|---|---|
+| `ci-backend.yml` | `egograph/backend/**` | Backend テスト・Lint |
+| `ci-pipelines.yml` | `egograph/pipelines/**` | Pipelines テスト・Lint |
+| `ci-frontend.yml` | `frontend/**` | Frontend テスト・Lint |
+| `ci-browser-extension.yml` | `browser-extension/**` | Extension ビルド |
+| `ci-egopulse.yml` | `egopulse/**` | Rust テスト・Lint |
+| `deploy-backend.yml` | `main` push | Backend/Pipelines デプロイ |
+| `release-egopulse.yml` | タグ | EgoPulse リリース |
+| `release-frontend-kmp.yml` | タグ | Frontend リリース |
 
-| ワークフロー             | トリガー      | 用途                    |
-| ------------------------ | ------------- | ----------------------- |
-| `ci-backend.yml`         | `backend/**`  | Backend テスト・Lint    |
-| `ci-pipelines.yml`       | `pipelines/**` | Pipelines テスト・Lint  |
-| `ci-frontend.yml`        | `frontend/**` | Frontend テスト (JUnit) |
-| `deploy-backend.yml`     | `main` push   | backend/pipelines デプロイ |
+## テスト戦略
 
-### Pipelines 定期実行
-
-Spotify / GitHub / Google Activity / local mirror sync の定期実行は
-GitHub Actions ではなく、`egograph/pipelines` の APScheduler が担う。
-
-### テストツール
-
-- **Python**: pytest, pytest-cov, Ruff (Lint/Format)
-- **Frontend**: Kotest, Ktlint, Detekt
-
----
-
-## 6. Deployment Infrastructure
-
-### 開発環境
-
-- **Python**: uv で依存関係管理（`uv sync`）
-- **Frontend**: Gradle で依存関係管理（`./gradlew build`）
-
-### 本番環境（想定）
-
-- **Server**: VPS (Hetzner / Sakura) or GCP VM
-- **Storage**:
-  - Cloudflare R2: 正本（Parquet/Raw JSON）
-  - Local SSD: DuckDB キャッシュ
-- **Monitoring**: (未実装)
-- **Deployment**: (未実装、将来的に Docker Compose 等)
-
----
-
-## なぜこの技術スタックか？
-
-### DuckDB + Qdrant のハイブリッド構成
-
-1. **Separation of Concerns**: 分析（集計）と探索（意味検索）を分離
-2. **Performance**: DuckDB の列指向処理 + Qdrant の高速ベクトル検索
-3. **Simplicity**: ファイルベースで大規模 DWH 不要、個人運用に最適
-4. **Cost Effective**: VPS + マネージドサービス（Qdrant Free Tier）で低コスト
-
-### モノレポ + uv workspace
-
-1. **コンポーネント分離**: 各層（pipelines/backend/frontend）が独立した責任範囲
-2. **依存関係の透明性**: workspace 依存で Python パッケージの共通基盤を明示
-3. **開発効率**: `uv sync` 一発で全 Python パッケージをセットアップ
-4. **CI/CD の最適化**: コンポーネント別テストで高速フィードバック
-
-### Mobile First (KMP)
-
-1. **Native Performance**: ネイティブAndroidアプリとしての高速な動作
-2. **Type Safety**: Kotlinによる堅牢な型システムと、Backend (Pydantic) との連携
-3. **Future Proof**: iOS版も同じコードベース（Compose Multiplatform）で展開可能
+| レイヤー | Python | Frontend | Rust |
+|---|---|---|---|
+| Unit | pytest | kotlin-test | cargo test |
+| Integration | pytest (fixtures) | Turbine + MockK | - |
+| E2E | pytest (live, 要認証) | Maestro | - |
+| Lint/Format | Ruff | Ktlint + Detekt | Clippy + rustfmt |

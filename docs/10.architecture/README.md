@@ -33,15 +33,23 @@ EgoGraphのシステムアーキテクチャ設計。全体構成、データモ
 | [terminal](./02-frontend/terminal.md) | ターミナル機能設計 |
 | [settings](./02-frontend/settings.md) | 設定・サイドバー機能設計 |
 
-### 03-ingest: データ収集設計
+### 03-pipelines: データ収集設計
 
 | ドキュメント | 内容 |
 |---|---|
-| [README](./03-ingest/README.md) | データソース別設計の概要 |
-| [spotify](./03-ingest/spotify.md) | Spotifyデータソース設計 |
-| [GitHub](./03-ingest/github.md) | GitHubデータソース設計 |
-| [browser-history](./03-ingest/browser-history.md) | ブラウザ履歴データソース設計 |
-| [_template](./03-ingest/_template.md) | データソース設計テンプレート |
+| [README](./03-pipelines/README.md) | Pipelines Service 概要 |
+| [architecture](./03-pipelines/architecture.md) | Pipelines Service アーキテクチャ詳細 |
+| [testing-strategy](./03-pipelines/testing-strategy.md) | テスト戦略 |
+| [spotify](./03-pipelines/spotify.md) | Spotifyデータソース設計 |
+| [github](./03-pipelines/github.md) | GitHubデータソース設計 |
+| [browser-history](./03-pipelines/browser-history.md) | ブラウザ履歴データソース設計 |
+| [_template](./03-pipelines/_template.md) | データソース設計テンプレート |
+
+### 04-egopulse: AIエージェントランタイム
+
+| ドキュメント | 内容 |
+|---|---|
+| *(未作成)* | EgoPulse アーキテクチャ設計 |
 
 ---
 
