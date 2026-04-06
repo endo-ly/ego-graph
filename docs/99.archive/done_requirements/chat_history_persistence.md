@@ -356,7 +356,7 @@ ON messages(thread_id, created_at);
 
 ## 10. Reference
 
-- データ戦略: `docs/10.architecture/01-overview/data-strategy.md`
+- データ戦略: `docs/10.architecture/data-strategy.md`
 - 既存API実装: `backend/api/chat.py`
 - 既存モデル: `backend/llm/models.py`
 - システムアーキテクチャ: `docs/10.architecture/1001_system_architecture.md`

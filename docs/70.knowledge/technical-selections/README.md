@@ -26,5 +26,5 @@ EgoGraphの各コンポーネントにおける技術選定の詳細と比較検
 
 ## 関連ドキュメント
 
-- [技術スタック概要](../../10.architecture/01-overview/tech-stack.md)
+- [技術スタック概要](../../10.architecture/tech-stack.md)
 - [システムアーキテクチャ](../../10.architecture/)

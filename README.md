@@ -116,7 +116,7 @@ cd frontend
 | [CONCEPT.md](./docs/CONCEPT.md) | ビジョン・目的・設計思想 |
 | [Architecture](./docs/10.architecture/) | システムアーキテクチャ設計 |
 | [Tech Stack](./docs/70.knowledge/technical-selections/) | 技術選定記録（ADR） |
-| [Deploy](./docs/40.deploy/) | デプロイ手順 |
+| [Deploy](./docs/50.deploy/) | デプロイ手順 |
 
 ### Component READMEs
 

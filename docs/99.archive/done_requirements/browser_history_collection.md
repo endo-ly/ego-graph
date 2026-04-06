@@ -458,4 +458,4 @@ pipelines/
 - YouTube 動画単位の分析は、`watch?v=...` のような URL を後段で抽出することでかなり対応可能
 - ただし browser history は「ページ訪問履歴」であり、「再生イベントそのもの」ではない
 - 受信口は `pipelines` に置き、`backend` は read/query API のみに限定する
-- raw JSON と page view parquet の責務分離、および 2 秒クラスタリングの判断理由は [browser-history.md](../10.architecture/03-ingest/browser-history.md) を参照
+- raw JSON と page view parquet の責務分離、および 2 秒クラスタリングの判断理由は [browser-history.md](../../20.egograph/pipelines/browser-history.md) を参照

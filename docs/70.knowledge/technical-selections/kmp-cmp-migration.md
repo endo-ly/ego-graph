@@ -344,7 +344,7 @@ fun ChatScreen() {
 ## 5. 関連ドキュメント
 
 - [既存フロントエンド技術選定](https://github.com/endo-ava/egograph-frontend-capacitor-legacy/blob/main/docs/20.technical_selections/02_frontend.md) - 移行前の技術選定記録
-- [システムアーキテクチャ](../10.architecture/01-overview/system-architecture.md)
+- [システムアーキテクチャ](../../10.architecture/system-architecture.md)
 - [KMP公式ドキュメント](https://kotlinlang.org/docs/multiplatform.html)
 - [Compose Multiplatform](https://www.jetbrains.com/lp/compose-multiplatform/)
 
