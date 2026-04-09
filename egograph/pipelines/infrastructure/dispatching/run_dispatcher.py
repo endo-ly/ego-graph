@@ -92,16 +92,7 @@ class RunDispatcher:
 
             workflow = self._workflows.get(run.workflow_id)
             if workflow is None:
-                logger.error(
-                    "unknown workflow: %s, run_id: %s",
-                    run.workflow_id,
-                    run.run_id,
-                )
-                self._run_repository.update_run_result(
-                    run_id=run.run_id,
-                    status=WorkflowRunStatus.FAILED,
-                    error_message=f"unknown workflow: {run.workflow_id}",
-                )
+                self._fail_unknown_workflow_run(run)
                 return True
 
             try:
@@ -116,26 +107,7 @@ class RunDispatcher:
                 )
                 return False
 
-            heartbeat_stop = threading.Event()
-            heartbeat_thread = threading.Thread(
-                target=self._heartbeat_loop,
-                args=(lease, heartbeat_stop),
-                daemon=True,
-            )
-            heartbeat_thread.start()
-            try:
-                self._execute_run(workflow, run)
-            finally:
-                heartbeat_stop.set()
-                heartbeat_thread.join(timeout=max(1, self._heartbeat_seconds))
-                try:
-                    self._lock_manager.release(lease)
-                except Exception:
-                    logger.exception(
-                        "failed to release workflow lease: lock_key=%s, run_id=%s",
-                        lease.lock_key,
-                        lease.run_id,
-                    )
+            self._execute_run_with_heartbeat(workflow, run, lease)
             return True
         except Exception as exc:
             if run is None:
@@ -158,6 +130,7 @@ class RunDispatcher:
     ) -> None:
         while not stop_event.wait(self._heartbeat_seconds):
             try:
+                # Heartbeat failure should not kill the background thread silently.
                 self._lock_manager.heartbeat(lease)
             except Exception as exc:
                 logger.warning(
@@ -236,14 +209,11 @@ class RunDispatcher:
                     attempt_no=attempt_no,
                 )
             except Exception as exc:
-                self._step_run_repository.update_step_result(
+                # Treat an unexpected executor crash as a failed attempt so the
+                # run can still reach a terminal state through the normal path.
+                self._record_unexpected_step_exception(
                     step_run_id=step_run.step_run_id,
-                    status=StepRunStatus.FAILED,
-                    exit_code=None,
-                    stdout_tail="",
-                    stderr_tail=f"{type(exc).__name__}: {exc}",
-                    log_path=None,
-                    result_summary=None,
+                    exc=exc,
                 )
                 if attempt_no < step.max_attempts and step.retry_delay_seconds > 0:
                     time.sleep(step.retry_delay_seconds)
@@ -318,6 +288,61 @@ class RunDispatcher:
             return " ".join(step.command)
         return step.callable_ref or ""
 
+    def _execute_run_with_heartbeat(
+        self,
+        workflow: WorkflowDefinition,
+        run: WorkflowRun,
+        lease: WorkflowLease,
+    ) -> None:
+        heartbeat_stop = threading.Event()
+        heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop,
+            args=(lease, heartbeat_stop),
+            daemon=True,
+        )
+        heartbeat_thread.start()
+        try:
+            self._execute_run(workflow, run)
+        finally:
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=max(1, self._heartbeat_seconds))
+            try:
+                self._lock_manager.release(lease)
+            except Exception:
+                logger.exception(
+                    "failed to release workflow lease: lock_key=%s, run_id=%s",
+                    lease.lock_key,
+                    lease.run_id,
+                )
+
+    def _fail_unknown_workflow_run(self, run: WorkflowRun) -> None:
+        logger.error(
+            "unknown workflow: %s, run_id: %s",
+            run.workflow_id,
+            run.run_id,
+        )
+        self._run_repository.update_run_result(
+            run_id=run.run_id,
+            status=WorkflowRunStatus.FAILED,
+            error_message=f"unknown workflow: {run.workflow_id}",
+        )
+
+    def _record_unexpected_step_exception(
+        self,
+        *,
+        step_run_id: str,
+        exc: Exception,
+    ) -> None:
+        self._step_run_repository.update_step_result(
+            step_run_id=step_run_id,
+            status=StepRunStatus.FAILED,
+            exit_code=None,
+            stdout_tail="",
+            stderr_tail=f"{type(exc).__name__}: {exc}",
+            log_path=None,
+            result_summary=None,
+        )
+
     def _mark_run_failed_after_unexpected_exception(
         self,
         *,
@@ -325,6 +350,8 @@ class RunDispatcher:
         exc: Exception,
     ) -> None:
         try:
+            # Persist the failure explicitly so startup reconcile does not need
+            # to clean up a RUNNING row after an in-loop crash.
             self._run_repository.update_run_result(
                 run_id=run_id,
                 status=WorkflowRunStatus.FAILED,
