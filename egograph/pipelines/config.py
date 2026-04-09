@@ -28,5 +28,6 @@ class PipelinesConfig(BaseSettings):
     api_key: SecretStr | None = None
     timezone: str = "UTC"
     dispatcher_poll_seconds: float = 1.0
+    max_concurrent_runs: int = 4
     lock_lease_seconds: int = 300
     lock_heartbeat_seconds: int = 30
