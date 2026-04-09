@@ -129,17 +129,20 @@ class RunRepository(SQLiteRepository):
 
     def requeue_run(self, run_id: str, *, reason: str | None = None) -> WorkflowRun:
         """running に遷移させた run を再度 queued に戻す。"""
+        now_text = dt_to_text(utc_now())
         with self._mutex, self._conn:
             self._conn.execute(
                 """
                 UPDATE workflow_runs
                 SET status = ?,
+                    queued_at = ?,
                     started_at = NULL,
                     last_error_message = ?
                 WHERE run_id = ?
                 """,
                 (
                     WorkflowRunStatus.QUEUED.value,
+                    now_text,
                     reason,
                     run_id,
                 ),

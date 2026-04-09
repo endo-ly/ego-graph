@@ -45,6 +45,7 @@ class RunDispatcher:
         inprocess_executor: InProcessStepExecutor,
         poll_seconds: float,
         heartbeat_seconds: int,
+        max_concurrent_runs: int = 1,
     ) -> None:
         self._run_repository = run_repository
         self._step_run_repository = step_run_repository
@@ -54,8 +55,11 @@ class RunDispatcher:
         self._inprocess_executor = inprocess_executor
         self._poll_seconds = poll_seconds
         self._heartbeat_seconds = heartbeat_seconds
+        self._max_concurrent_runs = max(1, max_concurrent_runs)
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._worker_mutex = threading.Lock()
+        self._worker_threads: dict[str, threading.Thread] = {}
 
     def start(self) -> None:
         """background dispatcher を開始する。"""
@@ -70,17 +74,30 @@ class RunDispatcher:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=max(1.0, self._poll_seconds * 2))
+        for worker in self._take_worker_snapshot():
+            worker.join(timeout=max(1.0, self._heartbeat_seconds))
 
     def run_forever(self) -> None:
         """停止要求が来るまで dispatch を続ける。"""
         while not self._stop_event.is_set():
             try:
-                dispatched = self.dispatch_once()
+                dispatched = self._dispatch_available_runs()
             except Exception:
                 logger.exception("dispatcher loop crashed unexpectedly")
                 dispatched = False
             if not dispatched:
                 self._stop_event.wait(self._poll_seconds)
+
+    def _dispatch_available_runs(self) -> bool:
+        dispatched = False
+        while not self._stop_event.is_set():
+            available_slots = self._available_slots()
+            if available_slots <= 0:
+                return dispatched
+            if not self._dispatch_once_in_background():
+                return dispatched
+            dispatched = True
+        return dispatched
 
     def dispatch_once(self) -> bool:
         """queued run を1件処理する。"""
@@ -108,6 +125,54 @@ class RunDispatcher:
                 return False
 
             self._execute_run_with_heartbeat(workflow, run, lease)
+            return True
+        except Exception as exc:
+            if run is None:
+                logger.exception("dispatch_once failed before leasing a run")
+                return False
+            logger.exception(
+                "dispatch_once failed unexpectedly for run_id=%s",
+                run.run_id,
+            )
+            self._mark_run_failed_after_unexpected_exception(
+                run_id=run.run_id,
+                exc=exc,
+            )
+            return True
+
+    def _dispatch_once_in_background(self) -> bool:
+        run: WorkflowRun | None = None
+        try:
+            run = self._run_repository.lease_next_queued_run()
+            if run is None:
+                return False
+
+            workflow = self._workflows.get(run.workflow_id)
+            if workflow is None:
+                self._fail_unknown_workflow_run(run)
+                return True
+
+            try:
+                lease = self._lock_manager.acquire(
+                    lock_key=workflow.lock_key,
+                    run_id=run.run_id,
+                )
+            except WorkflowLockUnavailableError as exc:
+                self._run_repository.requeue_run(
+                    run_id=run.run_id,
+                    reason=str(exc),
+                )
+                return False
+
+            worker = threading.Thread(
+                target=self._execute_run_in_worker,
+                args=(workflow, run, lease),
+                daemon=True,
+                name=f"workflow-run-{run.run_id}",
+            )
+            with self._worker_mutex:
+                self._worker_threads[run.run_id] = worker
+            worker.start()
             return True
         except Exception as exc:
             if run is None:
@@ -318,6 +383,34 @@ class RunDispatcher:
                     lease.lock_key,
                     lease.run_id,
                 )
+
+    def _execute_run_in_worker(
+        self,
+        workflow: WorkflowDefinition,
+        run: WorkflowRun,
+        lease: WorkflowLease,
+    ) -> None:
+        try:
+            self._execute_run_with_heartbeat(workflow, run, lease)
+        finally:
+            with self._worker_mutex:
+                self._worker_threads.pop(run.run_id, None)
+
+    def _available_slots(self) -> int:
+        with self._worker_mutex:
+            finished_run_ids = [
+                run_id
+                for run_id, worker in self._worker_threads.items()
+                if not worker.is_alive()
+            ]
+            for run_id in finished_run_ids:
+                self._worker_threads.pop(run_id, None)
+            active_count = len(self._worker_threads)
+        return self._max_concurrent_runs - active_count
+
+    def _take_worker_snapshot(self) -> list[threading.Thread]:
+        with self._worker_mutex:
+            return list(self._worker_threads.values())
 
     def _fail_unknown_workflow_run(self, run: WorkflowRun) -> None:
         logger.error(

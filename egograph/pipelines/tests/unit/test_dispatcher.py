@@ -1,5 +1,7 @@
 import logging
 import sqlite3
+import threading
+import time
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
@@ -27,15 +29,16 @@ from pipelines.infrastructure.execution.subprocess_executor import (
 )
 
 
-def _build_dispatcher(tmp_path, workflows):
+def _build_dispatcher(tmp_path, workflows, *, max_concurrent_runs=1):
     conn = connect(tmp_path / "state.sqlite3")
     initialize_schema(conn)
-    workflow_repository = WorkflowRepository(conn)
+    db_mutex = threading.RLock()
+    workflow_repository = WorkflowRepository(conn, mutex=db_mutex)
     workflow_repository.register_workflows(workflows)
-    run_repository = RunRepository(workflow_repository, conn)
-    step_run_repository = StepRunRepository(conn)
+    run_repository = RunRepository(workflow_repository, conn, mutex=db_mutex)
+    step_run_repository = StepRunRepository(conn, mutex=db_mutex)
     log_store = LocalLogStore(tmp_path / "logs")
-    lock_manager = WorkflowLockManager(conn, lease_seconds=60)
+    lock_manager = WorkflowLockManager(conn, lease_seconds=60, mutex=db_mutex)
     dispatcher = RunDispatcher(
         run_repository=run_repository,
         step_run_repository=step_run_repository,
@@ -45,6 +48,7 @@ def _build_dispatcher(tmp_path, workflows):
         inprocess_executor=InProcessStepExecutor(log_store),
         poll_seconds=0.01,
         heartbeat_seconds=60,
+        max_concurrent_runs=max_concurrent_runs,
     )
     return run_repository, step_run_repository, dispatcher, lock_manager
 
@@ -392,20 +396,182 @@ def test_run_forever_keeps_looping_after_dispatch_once_exception(tmp_path, caplo
     _, _, dispatcher, _ = _build_dispatcher(tmp_path, {})
     calls = {"count": 0}
 
-    def _dispatch_once():
+    def _dispatch_available_runs():
         calls["count"] += 1
         if calls["count"] == 1:
             raise RuntimeError("loop boom")
         dispatcher._stop_event.set()
         return False
 
-    dispatcher.dispatch_once = _dispatch_once
+    dispatcher._dispatch_available_runs = _dispatch_available_runs
 
     with caplog.at_level(logging.ERROR):
         dispatcher.run_forever()
 
     assert calls["count"] == 2
     assert "dispatcher loop crashed unexpectedly" in caplog.text
+
+
+def test_start_runs_distinct_workflows_in_parallel(tmp_path):
+    """別 lock_key の run は background dispatcher 上で並列実行される。"""
+    workflows = {
+        "workflow_a": WorkflowDefinition(
+            workflow_id="workflow_a",
+            name="Workflow A",
+            description="Parallel test workflow A",
+            steps=(
+                StepDefinition(
+                    step_id="sleep",
+                    step_name="Sleep",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:sleep_briefly",
+                ),
+            ),
+        ),
+        "workflow_b": WorkflowDefinition(
+            workflow_id="workflow_b",
+            name="Workflow B",
+            description="Parallel test workflow B",
+            steps=(
+                StepDefinition(
+                    step_id="sleep",
+                    step_name="Sleep",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:sleep_briefly",
+                ),
+            ),
+        ),
+    }
+    run_repository, _, dispatcher, _ = _build_dispatcher(
+        tmp_path,
+        workflows,
+        max_concurrent_runs=2,
+    )
+    run_a = run_repository.enqueue_run(
+        workflow_id="workflow_a",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+    run_b = run_repository.enqueue_run(
+        workflow_id="workflow_b",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+
+    dispatcher.start()
+    try:
+        deadline = time.monotonic() + 5
+        saw_parallel_running = False
+        while time.monotonic() < deadline:
+            current_a = run_repository.get_run(run_a.run_id)
+            current_b = run_repository.get_run(run_b.run_id)
+            if (
+                current_a.status == WorkflowRunStatus.RUNNING
+                and current_b.status == WorkflowRunStatus.RUNNING
+            ):
+                saw_parallel_running = True
+                break
+            if (
+                current_a.status
+                in {
+                    WorkflowRunStatus.SUCCEEDED,
+                    WorkflowRunStatus.FAILED,
+                }
+                and current_b.status
+                in {
+                    WorkflowRunStatus.SUCCEEDED,
+                    WorkflowRunStatus.FAILED,
+                }
+            ):
+                break
+            time.sleep(0.01)
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            current_a = run_repository.get_run(run_a.run_id)
+            current_b = run_repository.get_run(run_b.run_id)
+            if (
+                current_a.status == WorkflowRunStatus.SUCCEEDED
+                and current_b.status == WorkflowRunStatus.SUCCEEDED
+            ):
+                break
+            time.sleep(0.01)
+    finally:
+        dispatcher.stop()
+
+    assert saw_parallel_running is True
+    assert run_repository.get_run(run_a.run_id).status == WorkflowRunStatus.SUCCEEDED
+    assert run_repository.get_run(run_b.run_id).status == WorkflowRunStatus.SUCCEEDED
+
+
+def test_start_allows_other_workflow_to_progress_while_locked_run_is_requeued(
+    tmp_path,
+):
+    """lock 待ち run が先頭でも、別 workflow を後続で進められる。"""
+    workflows = {
+        "locked_workflow": WorkflowDefinition(
+            workflow_id="locked_workflow",
+            name="Locked workflow",
+            description="Locked workflow",
+            concurrency_key="shared-lock",
+            steps=(
+                StepDefinition(
+                    step_id="sleep",
+                    step_name="Sleep",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:sleep_briefly",
+                ),
+            ),
+        ),
+        "free_workflow": WorkflowDefinition(
+            workflow_id="free_workflow",
+            name="Free workflow",
+            description="Free workflow",
+            steps=(
+                StepDefinition(
+                    step_id="sleep",
+                    step_name="Sleep",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:sleep_briefly",
+                ),
+            ),
+        ),
+    }
+    run_repository, _, dispatcher, lock_manager = _build_dispatcher(
+        tmp_path,
+        workflows,
+        max_concurrent_runs=2,
+    )
+    blocked_run = run_repository.enqueue_run(
+        workflow_id="locked_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+    free_run = run_repository.enqueue_run(
+        workflow_id="free_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+    held_lease = lock_manager.acquire(lock_key="shared-lock", run_id="other-run")
+
+    dispatcher.start()
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            current_free = run_repository.get_run(free_run.run_id)
+            if current_free.status == WorkflowRunStatus.SUCCEEDED:
+                break
+            time.sleep(0.01)
+    finally:
+        dispatcher.stop()
+        lock_manager.release(held_lease)
+
+    blocked_after = run_repository.get_run(blocked_run.run_id)
+    free_after = run_repository.get_run(free_run.run_id)
+
+    assert blocked_after.status == WorkflowRunStatus.QUEUED
+    assert blocked_after.last_error_message == "workflow lock is active: shared-lock"
+    assert free_after.status == WorkflowRunStatus.SUCCEEDED
 
 
 def test_heartbeat_loop_logs_warning_and_continues_after_exception(

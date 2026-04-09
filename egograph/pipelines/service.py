@@ -86,6 +86,7 @@ class PipelineService:
                 inprocess_executor=InProcessStepExecutor(log_store),
                 poll_seconds=config.dispatcher_poll_seconds,
                 heartbeat_seconds=config.lock_heartbeat_seconds,
+                max_concurrent_runs=config.max_concurrent_runs,
             ),
             log_store=log_store,
         )
