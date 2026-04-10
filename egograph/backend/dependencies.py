@@ -1,19 +1,17 @@
 """FastAPI dependency functions.
 
-設定の取得、DB接続ファクトリ、認証などの依存関数を提供します。
+設定の取得、DuckDB接続ファクトリ、認証などの依存関数を提供します。
 """
 
 import logging
 import secrets
-import sqlite3
 from collections.abc import Generator
 
 import duckdb
 from fastapi import Depends, Header, HTTPException
 
 from backend.config import BackendConfig
-from backend.infrastructure.database import ChatSQLiteConnection, DuckDBConnection
-from backend.infrastructure.repositories import ThreadRepository
+from backend.infrastructure.database import DuckDBConnection
 
 logger = logging.getLogger(__name__)
 
@@ -61,24 +59,6 @@ def get_db_connection(
 
     with DuckDBConnection(config.r2) as conn:
         yield conn
-
-
-def get_chat_db() -> Generator[sqlite3.Connection, None, None]:
-    """チャット履歴用SQLite接続を取得します。
-
-    ChatSQLiteConnectionをコンテキストマネージャーとして使用し、
-    開かれた接続をyieldします。接続は自動的にクローズされます。
-
-    Yields:
-        sqlite3.Connection: 開かれたSQLite接続（チャット履歴用）
-
-    Raises:
-        sqlite3.Error: SQLite接続に失敗した場合
-    """
-    with ChatSQLiteConnection() as conn:
-        yield conn
-
-
 async def verify_api_key(
     x_api_key: str | None = Header(None),
     config: BackendConfig = Depends(get_config),
@@ -103,17 +83,3 @@ async def verify_api_key(
         str(x_api_key), str(config.api_key.get_secret_value())
     ):
         raise HTTPException(status_code=401, detail="Invalid API key")
-
-
-def get_thread_repository(
-    chat_db: sqlite3.Connection = Depends(get_chat_db),
-) -> ThreadRepository:
-    """スレッドリポジトリを取得します。
-
-    Args:
-        chat_db: チャット履歴用SQLite接続
-
-    Returns:
-        ThreadRepository: スレッドリポジトリの実装
-    """
-    return ThreadRepository(chat_db)

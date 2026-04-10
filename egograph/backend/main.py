@@ -1,46 +1,18 @@
 """EgoGraph Backend - FastAPI application entry point.
 
-ハイブリッドBackend: LLMエージェント + 汎用データアクセスREST API
+データ提供 API に特化した FastAPI サーバー。
 """
 
 import logging
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from backend.api import (
-    browser_history_data,
-    chat,
-    data,
-    github,
-    health,
-    system_prompts,
-    threads,
-)
+from backend.api import browser_history_data, data, github, health
 from backend.config import BackendConfig
-from backend.infrastructure.database import ChatSQLiteConnection, create_chat_tables
 
 logger = logging.getLogger(__name__)
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """アプリケーションのライフサイクル管理。
-
-    起動時にチャット履歴用のテーブルを作成します。
-    """
-    logger.info("Running startup tasks")
-    try:
-        with ChatSQLiteConnection() as conn:
-            create_chat_tables(conn)
-        logger.info("Chat tables initialized successfully")
-    except Exception:
-        logger.exception("Failed to initialize chat tables")
-        raise
-
-    yield
 
 
 def create_app(config: BackendConfig | None = None) -> FastAPI:
@@ -57,11 +29,10 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
 
     app = FastAPI(
         title="EgoGraph Backend API",
-        description="Hybrid Backend: LLM Agent + Direct Data Access REST API",
+        description="Direct Data Access REST API",
         version="0.1.0",
         docs_url="/docs",
         redoc_url="/redoc",
-        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -101,19 +72,10 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     app.include_router(data.router)
     app.include_router(browser_history_data.router)
     app.include_router(github.router)
-    # YouTubeルーターは一時非推奨 (2025-02-04)
-    # app.include_router(youtube.router)
-    app.include_router(chat.router)
-    app.include_router(threads.router)
-    app.include_router(system_prompts.router)
 
     logger.info("EgoGraph Backend initialized successfully")
 
     return app
-
-
-# モジュールレベルでのアプリインスタンス（プロダクション用）
-app = create_app()
 
 
 if __name__ == "__main__":
@@ -130,11 +92,7 @@ if __name__ == "__main__":
             "  - R2_ENDPOINT_URL\n"
             "  - R2_ACCESS_KEY_ID\n"
             "  - R2_SECRET_ACCESS_KEY\n"
-            "  - R2_BUCKET_NAME\n"
-            "Optional settings:\n"
-            "  - LLM_PROVIDER\n"
-            "  - LLM_API_KEY\n"
-            "  - LLM_MODEL_NAME"
+            "  - R2_BUCKET_NAME"
         )
         sys.exit(1)
 
@@ -143,13 +101,13 @@ if __name__ == "__main__":
     # reloadモードではimport stringを使う必要がある
     if config.reload:
         uvicorn.run(
-            "backend.main:app",  # import string（モジュールレベルのappを使用）
+            "backend.main:create_app",
             host=config.host,
             port=config.port,
             reload=True,
+            factory=True,
         )
     else:
-        # 本番環境ではappインスタンスを直接渡す
         uvicorn.run(
             create_app(config),
             host=config.host,
