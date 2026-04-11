@@ -23,7 +23,11 @@
 
 ## Tool Registry
 
-現在 registry に登録されている tool は次の 8 つ。
+現在 registry には、静的 built-in tool と動的 MCP tool の 2 種類が存在する。
+
+### 静的 built-in tool
+
+registry に静的登録されている tool は次の 8 つ。
 
 - `read`
 - `bash`
@@ -35,6 +39,19 @@
 - `activate_skill`
 
 登録箇所: [egopulse/src/tools.rs](../../egopulse/src/tools.rs)
+
+### 動的 MCP tool
+
+MCP が有効な場合、接続済み MCP server が公開する tool が `mcp_{server}_{tool}` 形式で動的追加される。
+
+例:
+
+- `mcp_filesystem_read_file`
+- `mcp_remote_search`
+
+MCP の詳細は以下を参照。
+
+- [mcp.md](./mcp.md)
 
 ## `read`
 
