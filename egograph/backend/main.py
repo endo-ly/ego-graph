@@ -79,9 +79,18 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
 
 
 if __name__ == "__main__":
+    import argparse
     import sys
 
-    import uvicorn
+    parser = argparse.ArgumentParser(description="EgoGraph Backend")
+    parser.add_argument("--mcp", action="store_true", help="MCP Server mode")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default="streamable-http",
+        help="MCP transport (default: streamable-http)",
+    )
+    args = parser.parse_args()
 
     try:
         config = BackendConfig.from_env()
@@ -96,21 +105,29 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
-    logger.info("Starting EgoGraph Backend on %s:%s", config.host, config.port)
+    if args.mcp:
+        from backend.mcp_server import create_mcp_server
 
-    # reloadモードではimport stringを使う必要がある
-    if config.reload:
-        uvicorn.run(
-            "backend.main:create_app",
-            host=config.host,
-            port=config.port,
-            reload=True,
-            factory=True,
-        )
+        logger.info("Starting EgoGraph MCP Server (transport=%s)", args.transport)
+        server = create_mcp_server(config)
+        server.run(transport=args.transport)
     else:
-        uvicorn.run(
-            create_app(config),
-            host=config.host,
-            port=config.port,
-            reload=False,
-        )
+        import uvicorn
+
+        logger.info("Starting EgoGraph Backend on %s:%s", config.host, config.port)
+
+        if config.reload:
+            uvicorn.run(
+                "backend.main:create_app",
+                host=config.host,
+                port=config.port,
+                reload=True,
+                factory=True,
+            )
+        else:
+            uvicorn.run(
+                create_app(config),
+                host=config.host,
+                port=config.port,
+                reload=False,
+            )
