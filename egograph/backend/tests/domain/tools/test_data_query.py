@@ -115,7 +115,9 @@ def test_execute_limit_enforced(tool, patched_duckdb_connection):
 
     assert len(success_result) == 1000
 
-    with pytest.raises(ValueError, match=r"Query returned too many rows: 1001 > 1000"):
+    with pytest.raises(
+        ValueError, match=r"Query returned too many rows \(limit: 1000\)"
+    ):
         tool.execute("SELECT * FROM range(1001) AS t(num)")
 
 

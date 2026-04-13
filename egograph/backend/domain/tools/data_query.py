@@ -52,19 +52,19 @@ class DataQueryTool(ToolBase):
         """SELECTクエリを実行して結果を返します。"""
         self._validate_sql(sql)
 
+        limited_sql = f"SELECT * FROM ({sql}) AS _sub LIMIT {self.MAX_ROWS + 1}"
+
         with DuckDBConnection(self.r2_config) as conn:
-            result = conn.execute(sql, params or [])
+            result = conn.execute(limited_sql, params or [])
+            column_names = [column[0] for column in result.description]
             rows = result.fetchall()
 
         if len(rows) > self.MAX_ROWS:
-            raise ValueError(
-                f"Query returned too many rows: {len(rows)} > {self.MAX_ROWS}"
-            )
+            raise ValueError(f"Query returned too many rows (limit: {self.MAX_ROWS})")
 
         if not rows:
             return []
 
-        column_names = [column[0] for column in result.description]
         return [
             {column_name: row[index] for index, column_name in enumerate(column_names)}
             for row in rows
