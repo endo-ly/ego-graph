@@ -10,12 +10,7 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 import backend.dependencies as deps
-from backend.config import BackendConfig, LLMConfig, R2Config
-from backend.infrastructure.database import (
-    ChatSQLiteConnection,
-    chat_connection,
-    create_chat_tables,
-)
+from backend.config import BackendConfig, R2Config
 from backend.main import create_app
 
 # ========================================
@@ -26,15 +21,12 @@ from backend.main import create_app
 @pytest.fixture(autouse=True)
 def disable_env_files():
     """Pydantic Settingsの.env読み込みを無効化する。"""
-    original_llm_env_file = LLMConfig.model_config.get("env_file")
     original_backend_env_file = BackendConfig.model_config.get("env_file")
 
-    LLMConfig.model_config["env_file"] = []
     BackendConfig.model_config["env_file"] = []
 
     yield
 
-    LLMConfig.model_config["env_file"] = original_llm_env_file
     BackendConfig.model_config["env_file"] = original_backend_env_file
 
 
@@ -61,20 +53,7 @@ def mock_r2_config():
 
 
 @pytest.fixture
-def mock_llm_config():
-    """モックLLM設定。"""
-
-    # model_construct()を使って検証をスキップして直接構築
-    return LLMConfig.model_construct(
-        openrouter_api_key=SecretStr("test-api-key"),
-        default_model="deepseek/deepseek-v3.2",
-        temperature=0.7,
-        max_tokens=2048,
-    )
-
-
-@pytest.fixture
-def mock_backend_config(mock_r2_config, mock_llm_config):
+def mock_backend_config(mock_r2_config):
     """モックBackend設定。"""
 
     # model_construct()を使って検証をスキップして直接構築
@@ -87,7 +66,6 @@ def mock_backend_config(mock_r2_config, mock_llm_config):
         log_level="DEBUG",
     )
     config.r2 = mock_r2_config
-    config.llm = mock_llm_config
     return config
 
 
@@ -446,45 +424,6 @@ def mock_db_and_parquet():
         mock_get_db.return_value.__exit__.return_value = False
 
         yield {"mock_get_db": mock_get_db, "mock_conn": mock_conn}
-
-
-# ========================================
-# チャット履歴テスト用フィクスチャ
-# ========================================
-
-
-@pytest.fixture
-def test_client_with_chat_db(tmp_path, monkeypatch):
-    """チャット履歴DBを使用するテストクライアントを提供します。
-
-    LLM、R2、チャット履歴DBを設定したFastAPIテストクライアントを返します。
-    統合テストで使用します。
-    """
-
-    # 一時的なチャット履歴DBパスを設定
-    chat_db_path = tmp_path / "test_chat.sqlite"
-
-    # chat_connection.pyのDB_PATHをモンキーパッチ
-    monkeypatch.setattr(chat_connection, "DB_PATH", chat_db_path)
-
-    # LLM APIキーとモデルを設定（モックLLMを使用）
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setenv("DEFAULT_LLM_MODEL", "deepseek/deepseek-v3.2")
-
-    # R2設定（ダミー）
-    monkeypatch.setenv("R2_ENDPOINT_URL", "https://test.r2.cloudflarestorage.com")
-    monkeypatch.setenv("R2_ACCESS_KEY_ID", "test-access-key")
-    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "test-secret-key")
-    monkeypatch.setenv("R2_BUCKET_NAME", "test-bucket")
-
-    # テーブルを事前に作成
-    with ChatSQLiteConnection() as conn:
-        create_chat_tables(conn)
-
-    app = create_app()
-    client = TestClient(app)
-
-    yield client
 
 
 # ========================================

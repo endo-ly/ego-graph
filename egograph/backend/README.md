@@ -1,6 +1,6 @@
 # Backend Service
 
-データアクセスと LLM エージェント機能を提供する FastAPI サーバー。
+データアクセス API を提供する FastAPI サーバー。
 
 ## Quick Start
 
@@ -16,7 +16,7 @@
 uv sync
 
 # 起動（自動リロード付き開発モード）
-uv run uvicorn egograph.backend.main:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn egograph.backend.main:create_app --factory --reload --host 127.0.0.1 --port 8000
 ```
 
 - **API Docs**: http://localhost:8000/docs
@@ -32,25 +32,21 @@ uv run uvicorn egograph.backend.main:app --reload --host 127.0.0.1 --port 8000
 | カバレッジ付きテスト | `uv run pytest egograph/backend/tests --cov=backend` |
 | Lint | `uv run ruff check egograph/backend/` |
 | Format | `uv run ruff format egograph/backend/` |
-| デバッグ用 CLI | `uv run python -m egograph.backend.dev_tools.chat_cli` |
 
 ## Project Structure
 
 ```text
 egograph/backend/
-├── api/                # FastAPI ルート定義（chat, data, health, threads）
+├── api/                # FastAPI ルート定義（data, health, browser_history, github）
 │   └── schemas/        # リクエスト/レスポンススキーマ
 ├── domain/             # ドメインモデル・ツール定義
 │   ├── models/         # エンティティ・DTO
 │   └── tools/          # LLM ツールインターフェース
 ├── usecases/           # ユースケース（アプリケーション層）
-│   ├── chat/           # チャットユースケース
 │   └── tools/          # ツールファクトリ
 ├── infrastructure/     # インフラストラクチャ層
 │   ├── database/       # DuckDB 接続・クエリ実行
-│   ├── llm/            # LLM プロバイダー統合
 │   └── repositories/   # Repository 実装
-├── dev_tools/          # 開発用デバッグツール
 ├── tests/              # テスト
 └── main.py             # エントリーポイント
 ```
@@ -62,6 +58,4 @@ egograph/backend/
 | トピック | ドキュメント |
 |----------|-------------|
 | アーキテクチャ設計 | [docs/20.egograph/backend/architecture.md](../../docs/20.egograph/backend/architecture.md) |
-| Tool System | [docs/20.egograph/backend/tool-system.md](../../docs/20.egograph/backend/tool-system.md) |
-| ストリーミング | [docs/20.egograph/backend/streaming.md](../../docs/20.egograph/backend/streaming.md) |
 | デプロイ手順 | [docs/50.deploy/backend.md](../../docs/50.deploy/backend.md) |
