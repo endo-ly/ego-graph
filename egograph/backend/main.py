@@ -120,6 +120,9 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     return app
 
 
+app = create_app()
+
+
 if __name__ == "__main__":
     import sys
 
