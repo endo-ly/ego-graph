@@ -20,6 +20,31 @@ pub(crate) async fn maybe_compact_messages(
         return Ok(messages.to_vec());
     }
 
+    summarize_and_compact(state, context, chat_id, messages, llm, "compaction").await
+}
+
+pub async fn force_compact(
+    state: &AppState,
+    context: &SurfaceContext,
+    chat_id: i64,
+    messages: &[Message],
+    llm: &std::sync::Arc<dyn crate::llm::LlmProvider>,
+) -> Result<Vec<Message>, EgoPulseError> {
+    if messages.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    summarize_and_compact(state, context, chat_id, messages, llm, "force_compact").await
+}
+
+async fn summarize_and_compact(
+    state: &AppState,
+    context: &SurfaceContext,
+    chat_id: i64,
+    messages: &[Message],
+    llm: &std::sync::Arc<dyn crate::llm::LlmProvider>,
+    label: &str,
+) -> Result<Vec<Message>, EgoPulseError> {
     archive_conversation(&state.config.data_dir, &context.channel, chat_id, messages).await;
 
     let keep_recent = state.config.compact_keep_recent.min(messages.len());
@@ -54,19 +79,19 @@ pub(crate) async fn maybe_compact_messages(
     let summary = match summary_result {
         Ok(Ok(response)) => strip_thinking(&response.content),
         Ok(Err(error)) => {
-            warn!("compaction summarization failed: {error}; falling back to recent messages");
+            warn!("{label} summarization failed: {error}; falling back to recent messages");
             return Ok(recent_messages.to_vec());
         }
         Err(_) => {
             warn!(
-                "compaction summarization timed out after {timeout_secs}s for {}:{}; falling back to recent messages",
+                "{label} summarization timed out after {timeout_secs}s for {}:{}; falling back to recent messages",
                 context.channel, chat_id
             );
             return Ok(recent_messages.to_vec());
         }
     };
     if summary.trim().is_empty() {
-        warn!("compaction summarization returned empty text; falling back to recent messages");
+        warn!("{label} summarization returned empty text; falling back to recent messages");
         return Ok(recent_messages.to_vec());
     }
 
@@ -434,5 +459,115 @@ mod tests {
                 .as_text_lossy(),
             "final answer"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn force_compact_runs_regardless_of_threshold() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let provider = RecordingProvider::new(
+            vec![Ok(MessagesResponse {
+                content: "summary text".to_string(),
+                tool_calls: Vec::new(),
+            })],
+            vec![0],
+        );
+        let config =
+            test_config_with_compaction(dir.path().to_str().expect("utf8").to_string(), 40, 1);
+        let state = build_state(config, Box::new(provider.clone()));
+        let context = cli_context("force-compact-threshold");
+        let llm = state.global_llm().expect("llm");
+        let messages = vec![
+            Message::text("user", "msg-1"),
+            Message::text("assistant", "reply-1"),
+        ];
+
+        let result = force_compact(&state, &context, 1, &messages, &llm)
+            .await
+            .expect("force_compact");
+
+        assert_eq!(provider.seen_systems().len(), 1);
+        assert_eq!(provider.seen_systems()[0], "You are a helpful summarizer.");
+        assert!(
+            result
+                .first()
+                .is_some_and(|m| m.content.as_text_lossy().contains("[Conversation Summary]"))
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn force_compact_preserves_recent_messages() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let provider = RecordingProvider::new(
+            vec![Ok(MessagesResponse {
+                content: "summary text".to_string(),
+                tool_calls: Vec::new(),
+            })],
+            vec![0],
+        );
+        let config =
+            test_config_with_compaction(dir.path().to_str().expect("utf8").to_string(), 40, 2);
+        let state = build_state(config, Box::new(provider.clone()));
+        let context = cli_context("force-compact-recent");
+        let llm = state.global_llm().expect("llm");
+        let messages = vec![
+            Message::text("user", "old-1"),
+            Message::text("assistant", "old-2"),
+            Message::text("user", "old-3"),
+            Message::text("assistant", "old-4"),
+            Message::text("user", "kept-a"),
+            Message::text("assistant", "kept-b"),
+            Message::text("user", "kept-c"),
+        ];
+
+        let result = force_compact(&state, &context, 1, &messages, &llm)
+            .await
+            .expect("force_compact");
+
+        let text: Vec<String> = result.iter().map(|m| m.content.as_text_lossy()).collect();
+        assert!(text.iter().any(|t| t.contains("kept-b")));
+        assert!(text.iter().any(|t| t.contains("kept-c")));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn force_compact_produces_archive() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let data_dir = dir.path().to_str().expect("utf8").to_string();
+        let provider = RecordingProvider::new(
+            vec![Ok(MessagesResponse {
+                content: "summary text".to_string(),
+                tool_calls: Vec::new(),
+            })],
+            vec![0],
+        );
+        let config = test_config_with_compaction(data_dir.clone(), 40, 1);
+        let state = build_state(config, Box::new(provider.clone()));
+        let context = cli_context("force-compact-archive");
+        let llm = state.global_llm().expect("llm");
+        let chat_id: i64 = 42;
+        let messages = vec![
+            Message::text("user", "msg-1"),
+            Message::text("assistant", "reply-1"),
+        ];
+
+        force_compact(&state, &context, chat_id, &messages, &llm)
+            .await
+            .expect("force_compact");
+
+        let archive_dir = dir
+            .path()
+            .join("groups")
+            .join("cli")
+            .join(chat_id.to_string())
+            .join("conversations");
+        let archives = std::fs::read_dir(&archive_dir)
+            .expect("archive dir")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("archive entries");
+        assert_eq!(archives.len(), 1);
+        let body = std::fs::read_to_string(archives[0].path()).expect("archive body");
+        assert!(body.contains("msg-1"));
     }
 }

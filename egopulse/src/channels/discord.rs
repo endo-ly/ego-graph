@@ -169,10 +169,51 @@ impl EventHandler for Handler {
             return;
         }
 
-        let sender_name = msg.author.name.clone();
-
         // microclaw パターン: chat_type を "discord" に統一
         let external_chat_id = external_channel_id.to_string();
+
+        // --- スラッシュコマンドインターセプト ---
+        if crate::slash_commands::is_slash_command(&text) {
+            let slash_chat_id =
+                crate::storage::call_blocking(std::sync::Arc::clone(&self.app_state.db), {
+                    let channel = "discord".to_string();
+                    let ext_id = external_chat_id.clone();
+                    let chat_type = "discord".to_string();
+                    move |db| db.resolve_or_create_chat_id(&channel, &ext_id, None, &chat_type)
+                })
+                .await;
+
+            match slash_chat_id {
+                Ok(chat_id) => {
+                    let sender_id = msg.author.id.get().to_string();
+                    if let Some(response) = crate::slash_commands::handle_slash_command(
+                        &self.app_state,
+                        chat_id,
+                        "discord",
+                        &text,
+                        Some(&sender_id),
+                    )
+                    .await
+                    {
+                        send_discord_response(&ctx, msg.channel_id, &response).await;
+                        return;
+                    }
+                }
+                Err(e) => {
+                    error!("failed to resolve chat_id for slash command: {e}");
+                    send_discord_response(
+                        &ctx,
+                        msg.channel_id,
+                        "An error occurred processing the command.",
+                    )
+                    .await;
+                    return;
+                }
+            }
+        }
+        // --- インターセプトここまで ---
+
+        let sender_name = msg.author.name.clone();
 
         let context = SurfaceContext {
             channel: "discord".to_string(),

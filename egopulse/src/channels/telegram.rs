@@ -18,6 +18,8 @@ use crate::agent_loop::SurfaceContext;
 use crate::channel_adapter::ChannelAdapter;
 use crate::channel_adapter::ConversationKind;
 use crate::runtime::AppState;
+use crate::slash_commands;
+use crate::storage::call_blocking;
 use crate::text::split_text;
 
 /// Telegram メッセージ長制限 (文字数)。
@@ -167,37 +169,57 @@ async fn handle_message(
     let is_group = chat_type != "telegram_private";
     if is_group {
         let bot_username = state.config.telegram_bot_username();
-        let mentioned = match &bot_username {
-            Some(username) => msg
-                .parse_entities()
-                .into_iter()
-                .flatten()
-                .filter(|e| matches!(e.kind(), MessageEntityKind::Mention))
-                .any(|e| {
-                    e.text()
-                        .strip_prefix('@')
-                        .is_some_and(|m| m.eq_ignore_ascii_case(username))
-                }),
-            None => {
-                if BOT_USERNAME_WARN_EMITTED
-                    .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-                    .is_ok()
-                {
-                    warn!(
-                        chat_id = raw_chat_id,
-                        "telegram_bot_username not set; group messages will be ignored"
-                    );
+        let msg_text = text.as_str();
+        let is_own_command = msg
+            .entities()
+            .unwrap_or_default()
+            .iter()
+            .filter(|e| matches!(e.kind, MessageEntityKind::BotCommand))
+            .any(|e| {
+                let start = e.offset;
+                let end = start + e.length;
+                let cmd_text = msg_text.get(start..end).unwrap_or("");
+                if let Some(at_pos) = cmd_text.find('@') {
+                    let mention = &cmd_text[at_pos + 1..];
+                    bot_username.is_some_and(|u| mention.eq_ignore_ascii_case(u))
+                } else {
+                    bot_username.is_some()
                 }
-                false
-            }
-        };
+            });
 
-        if !mentioned {
-            debug!(
-                chat_id = raw_chat_id,
-                "Telegram: skipping non-mentioned group message"
-            );
-            return Ok(());
+        if !is_own_command {
+            let mentioned = match &bot_username {
+                Some(username) => msg
+                    .parse_entities()
+                    .into_iter()
+                    .flatten()
+                    .filter(|e| matches!(e.kind(), MessageEntityKind::Mention))
+                    .any(|e| {
+                        e.text()
+                            .strip_prefix('@')
+                            .is_some_and(|m| m.eq_ignore_ascii_case(username))
+                    }),
+                None => {
+                    if BOT_USERNAME_WARN_EMITTED
+                        .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+                        .is_ok()
+                    {
+                        warn!(
+                            chat_id = raw_chat_id,
+                            "telegram_bot_username not set; group messages will be ignored"
+                        );
+                    }
+                    false
+                }
+            };
+
+            if !mentioned {
+                debug!(
+                    chat_id = raw_chat_id,
+                    "Telegram: skipping non-mentioned group message"
+                );
+                return Ok(());
+            }
         }
     }
 
@@ -207,7 +229,7 @@ async fn handle_message(
         channel: "telegram".to_string(),
         surface_user: sender_name,
         surface_thread: external_chat_id.clone(),
-        chat_type,
+        chat_type: chat_type.clone(),
     };
 
     info!(
@@ -216,6 +238,46 @@ async fn handle_message(
         text_length = text.len(),
         "Telegram message received"
     );
+
+    // --- スラッシュコマンドインターセプト ---
+    // process_turn より先に chat_id を解決し、
+    // スラッシュコマンドであればエージェントループに入らずに即応答する。
+    if slash_commands::is_slash_command(&text) {
+        let resolved_chat_id = match call_blocking(std::sync::Arc::clone(&state.db), {
+            let channel = "telegram".to_string();
+            let ext_id = external_chat_id.clone();
+            move |db| db.resolve_or_create_chat_id(&channel, &ext_id, None, &chat_type)
+        })
+        .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                error!("failed to resolve chat_id for slash command: {e}");
+                send_telegram_response(
+                    &bot,
+                    msg.chat.id,
+                    "An error occurred processing the command.",
+                )
+                .await;
+                return Ok(());
+            }
+        };
+
+        let sender_id = msg.from.as_ref().map(|u| u.id.0.to_string());
+        if let Some(response) = slash_commands::handle_slash_command(
+            &state,
+            resolved_chat_id,
+            "telegram",
+            &text,
+            sender_id.as_deref(),
+        )
+        .await
+        {
+            send_telegram_response(&bot, msg.chat.id, &response).await;
+            return Ok(());
+        }
+    }
+    // --- インターセプトここまで ---
 
     // タイピングインジケーター (バックグラウンドタスクで定期的に送信)
     let typing_bot = bot.clone();
@@ -229,7 +291,6 @@ async fn handle_message(
         }
     });
 
-    // session 解決は process_turn() に一任 (二重解決を避ける)
     match crate::agent_loop::process_turn(&state, &context, &text).await {
         Ok(response) => {
             typing_handle.abort();
@@ -289,6 +350,26 @@ pub async fn start_telegram_bot(
     bot.delete_webhook().await.inspect_err(|e| {
         error!("Telegram: failed to delete webhook: {e}");
     })?;
+
+    // BotFather にコマンド一覧を登録 (メニュー表示用)
+    {
+        use teloxide::types::BotCommand;
+
+        let commands = vec![
+            BotCommand::new("new", "Clear current session"),
+            BotCommand::new("compact", "Force compact session"),
+            BotCommand::new("status", "Show current status"),
+            BotCommand::new("skills", "List available skills"),
+            BotCommand::new("restart", "Restart the bot"),
+            BotCommand::new("providers", "List LLM providers"),
+            BotCommand::new("provider", "Show/switch provider"),
+            BotCommand::new("models", "List models"),
+            BotCommand::new("model", "Show/switch model"),
+        ];
+        if let Err(e) = bot.set_my_commands(commands).await {
+            warn!("Telegram: failed to set bot commands: {e}");
+        }
+    }
 
     info!("Starting Telegram bot...");
 
