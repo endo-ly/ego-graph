@@ -11,6 +11,8 @@
 
 Python (uv workspace) + Rust (Cargo) + Kotlin Multiplatform / Compose Multiplatform
 
+コンポーネントごとの詳しい説明は`docs/`配下にまとまっている。調査する際はまずそこを読む
+
 ### egograph/pipelines (データ収集・ジョブ実行)
 
 常駐 Pipelines Service + ETL/ELT Pipeline。R2 に Parquet + JSON を保存し、SQLite でジョブ状態を管理。
@@ -89,6 +91,7 @@ coderabbit --prompt-only -t committed --base main
 - 「後方互換」は負債。既存利用維持のための互換分岐や旧仕様フォールバックは追加しない。新仕様へ一直線に置き換える
 - うまくいかない時にコードを増やし続けない。コードを削除する勇気を持つ。シンプルが最も美しい
 - frontend実装はエミュレータ―接続前提。目視確認のため、`installDebug`までおこなうこと。接続されてない場合は報告。
+- Rust実装後は`fmt`,`test`,`check`,`clippy`必須
 
 | 項目      | ルール                                             |
 | --------- | -------------------------------------------------- |
@@ -101,6 +104,7 @@ coderabbit --prompt-only -t committed --base main
 ### 文書
 
 - 文書作成時はどんな時でも **MECE** を意識する（セクション構成、要件定義、設計書、PR詳細などすべて）
+- 実装後、関連内容が`docs/`にある場合は必ず反映する
 
 ### Git / CI / PR
 
@@ -141,9 +145,3 @@ codex exec -m gpt-5.4 "このプランをレビューして。致命的な点だ
 ```bash
 codex exec resume --last -m gpt-5.4 "プランを更新したからレビューして。致命的な点だけ指摘して: {plan_path}"
 ```
-
-## エージェント運用
-
-- サブエージェント活用でコンテキストをクリーンに（`delegate_task` を使用、`task` は使わない）
-- コード変更後はテスト確認必須
-- UI/UX調整タスクは言葉での認識合わせが難しいため、必要に応じて ASCII 等を使いながらユーザーに確認する
