@@ -4,15 +4,16 @@ Personal Data Warehouse。各種サービスからデータを定期収集し、
 
 ## 構成
 
-### [Backend (Agent API)](./backend/architecture.md)
+### [Backend (Data API + MCP Server)](./backend/architecture.md)
 
-LLMが定義済みツールを呼び出して蓄積データにアクセスし、ユーザーの問い合わせに応答する。
+REST API と MCP (Model Context Protocol) で個人データへのアクセスを提供する。
 
 - FastAPI + Uvicorn
 - DuckDB `:memory:` + httpfs（R2 から直接 Parquet 読み込み）
 - DDD (Domain-Driven Design) レイヤードアーキテクチャ
-- [Tool System](./backend/tool-system.md) — LLM Tool Use アーキテクチャ
-- [Streaming](./backend/streaming.md) — LLM ストリーミングアーキテクチャ
+- REST API — ダッシュボード・可視化向け直接データアクセス
+- MCP Server — AIエージェント向けツールインターフェース
+- [MCP 設定例](./backend/architecture.md) — architecture.md 内「egopulse 設定例」
 
 ### [Pipelines Service](./pipelines/README.md)
 
