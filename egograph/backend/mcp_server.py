@@ -30,6 +30,7 @@ def create_mcp_server(config: BackendConfig) -> FastMCP:
             "data via tools. Use data_query for raw SQL queries (SELECT only)."
         ),
         streamable_http_path="/",
+        transport_security=config.mcp_transport_security,
     )
 
     registry = build_tool_registry(config.r2)

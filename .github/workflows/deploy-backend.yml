@@ -64,5 +64,13 @@ jobs:
             git reset --hard origin/main
             /root/.local/bin/uv sync --all-packages
             sudo systemctl restart egograph-backend
-            sleep 2
-            curl -fsS http://127.0.0.1:8000/health
+            for i in $(seq 1 10); do
+              if curl -fsS http://127.0.0.1:8000/health; then
+                echo "Health check passed"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "=== Health check failed after 20s ==="
+            sudo journalctl -u egograph-backend --since "1 min ago" --no-pager
+            exit 1

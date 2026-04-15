@@ -51,6 +51,9 @@ class BackendConfig(BaseSettings):
     # サブ設定
     r2: R2Config | None = None
 
+    # MCP transport security: テスト環境向けにHost許可リストを設定可能
+    mcp_allowed_hosts: list[str] = Field([], alias="MCP_ALLOWED_HOSTS")
+
     @classmethod
     def from_env(cls) -> "BackendConfig":
         """環境変数から設定をロードします。
@@ -92,6 +95,23 @@ class BackendConfig(BaseSettings):
             raise ValueError(
                 "CORS_ORIGINS must be explicitly configured for production (not '*')"
             )
+
+    @property
+    def mcp_transport_security(self):
+        """MCP transport security設定を返す。
+
+        テスト環境では許可リスト経由でtestserver等を許可し、
+        本番環境ではデフォルトのDNS rebinding保護を適用する。
+        """
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        if self.mcp_allowed_hosts:
+            return TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=self.mcp_allowed_hosts,
+                allowed_origins=self.mcp_allowed_hosts,
+            )
+        return None
 
 
 class R2Settings(BaseSettings):

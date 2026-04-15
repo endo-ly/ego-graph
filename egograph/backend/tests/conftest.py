@@ -64,6 +64,7 @@ def mock_backend_config(mock_r2_config):
         api_key=SecretStr("test-backend-key"),  # SecretStrでラップ
         cors_origins="http://localhost:3000",  # ワイルドカードを避ける
         log_level="DEBUG",
+        mcp_allowed_hosts=["testserver"],  # TestClient用のHost許可
     )
     config.r2 = mock_r2_config
     return config
