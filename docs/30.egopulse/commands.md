@@ -252,3 +252,25 @@ Available skills:
 | `/skills` | | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `/status` | | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `/restart` | | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+### 4.3 コマンド UI の実装詳細
+
+#### CommandDef レジストリ
+
+全チャネルのコマンド定義は `slash_commands.rs` の `CommandDef` 配列（`all_commands()`）に一元化されている。各チャネルはこのレジストリを通じてコマンドメタデータ（名前・説明・使用法）を参照する。コマンド定義の重複を排除し、単一ソースオブテュースを実現している。
+
+#### Discord: Application Commands (ネイティブ UI)
+
+Discord はテキストベースの `/` 入力に加え、Discord Application Commands（Interactions API）を登録している。Bot 起動時（`ready` イベント）に `Command::set_global_commands` で一括登録し、`interaction_create` イベントで応答する。これにより Discord ネイティブのオートコンプリート UI が提供される。
+
+- **登録タイミング**: Bot 起動時の `ready` ハンドラ
+- **応答方式**: `CreateInteractionResponse::Message` で即座に応答
+- **フォールバック**: テキストベースの `/` 入力も引き続きサポート
+
+#### WebUI: コマンドサジェスト
+
+Web チャットでは `/` 入力時にクライアントサイドでコマンド候補をポップアップ表示する。`Composer` コンポーネントが `/` で始まる入力を検知し、`filterCommands()` で候補をフィルタして `CommandSuggest` コンポーネントに渡す。
+
+- **キーボード操作**: `↑↓` で候補選択、`Tab` / `Enter` で確定、`Escape` で閉じる
+- **マウス操作**: クリックで選択
+- **コマンド定義**: `commands.ts` にハードコード（コマンド数が少なく変更頻度も低いため）
