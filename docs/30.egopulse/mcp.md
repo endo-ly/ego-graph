@@ -34,14 +34,17 @@ MCP 統合に関係する主要ファイルは以下である。
 - [`egopulse/src/mcp.rs`](../../egopulse/src/mcp.rs)
   - config 読み込み
   - server 接続
-  - tool definition 生成
+  - adapter 生成 (`create_tool_adapters()`)
   - tool 実行
+- [`egopulse/src/tools/mcp_adapter.rs`](../../egopulse/src/tools/mcp_adapter.rs)
+  - MCP tool → `Tool` trait の adapter
+  - tool definition 変換
+  - MCP server 呼び出し
+- [`egopulse/src/tools/sanitizer.rs`](../../egopulse/src/tools/sanitizer.rs)
+  - 秘匿情報マスキング (全 tool の出力に適用)
 - [`egopulse/src/runtime.rs`](../../egopulse/src/runtime.rs)
   - `AppState` 構築時の `McpManager` 初期化
-- [`egopulse/src/tools.rs`](../../egopulse/src/tools.rs)
-  - built-in tool registry
-  - MCP tool definition の合成
-  - MCP tool dispatch
+  - adapter を `ToolRegistry` に登録
 - [`egopulse/src/error.rs`](../../egopulse/src/error.rs)
   - MCP 固有 error 型
 
@@ -175,9 +178,17 @@ MCP は `AppState` 構築時に初期化される。
 ```rust
 let mut tools = ToolRegistry::new(&config, Arc::clone(&skills));
 
-let mcp_manager = crate::mcp::McpManager::new(&config.workspace_dir()).await;
-let mcp_arc = Arc::new(tokio::sync::RwLock::new(mcp_manager));
-tools.set_mcp_manager(mcp_arc);
+let mcp_manager = McpManager::new(&workspace_dir).await?;
+let mcp_arc = Arc::new(RwLock::new(mcp_manager));
+
+// MCP tool を adapter 経由で registry に登録
+let adapters = McpManager::create_tool_adapters(&mcp_arc).await;
+for adapter in adapters {
+    tools.register_tool(adapter);
+}
+
+// AppState が mcp_manager を直接保持 (status snapshot 用)
+AppState { ..., mcp_manager: Some(mcp_arc), ... }
 ```
 
 処理順は次の通り。
@@ -186,27 +197,29 @@ tools.set_mcp_manager(mcp_arc);
 2. `McpManager::new()` で config を読み込む
 3. 各 server に接続する
 4. 各 server から `tools/list` を取得する
-5. `ToolRegistry` に MCP manager を渡す
-6. turn loop で LLM へ built-in + MCP tool definitions を返す
+5. `create_tool_adapters()` で各 MCP tool を `McpToolAdapter` にラップする
+6. 各 adapter を `register_tool()` で registry に登録する
+7. `McpManager` への参照は `AppState` が直接保持する
+8. turn loop で LLM へ全 tool definitions を返す
 
 ## 10. Tool 公開
 
-MCP tool は built-in tool と同じ `ToolDefinition` 形式で LLM に公開される。
+MCP tool は `McpToolAdapter` 経由で built-in tool と同じ `ToolDefinition` 形式で LLM に公開される。`ToolRegistry` は built-in / MCP の区別なく全 tool を一様に管理する。
 
-実装: [`egopulse/src/tools.rs`](../../egopulse/src/tools.rs)
+実装: [`egopulse/src/tools/mcp_adapter.rs`](../../egopulse/src/tools/mcp_adapter.rs)
 
-### definition 合成
+### definition 列挙
 
-- `definitions_async()`
-  - built-in tool definitions を集める
-  - MCP manager から動的 tool definitions を追加する
+- `ToolRegistry::definitions_async()`
+  - 全 tool (built-in + MCP adapter) を一様に iterate して定義を収集
+  - MCP 特有の分岐なし
 
 ### dispatch
 
-- `execute()`
-  - まず built-in tool を探索する
-  - 見つからなければ MCP tool かどうかを確認する
-  - MCP tool なら対応 server へ dispatch する
+- `ToolRegistry::execute()`
+  - 全 tool を名前で探索して dispatch
+  - MCP adapter の `execute()` が内部で MCP server に委譲
+  - MCP 特有の分岐なし
 
 ## 11. Tool Naming
 

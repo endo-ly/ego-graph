@@ -23,9 +23,9 @@
 
 ## Tool Registry
 
-現在 registry には、静的 built-in tool と動的 MCP tool の 2 種類が存在する。
+`ToolRegistry` は全 tool を `Box<dyn Tool>` として一元管理する。built-in / MCP の区別なく、統一的に定義列挙・実行 dispatch を行う。
 
-### 静的 built-in tool
+### Built-in tool
 
 registry に静的登録されている tool は次の 8 つ。
 
@@ -38,11 +38,11 @@ registry に静的登録されている tool は次の 8 つ。
 - `ls`
 - `activate_skill`
 
-登録箇所: [egopulse/src/tools.rs](../../egopulse/src/tools.rs)
+登録箇所: [egopulse/src/tools/mod.rs](../../egopulse/src/tools/mod.rs)
 
-### 動的 MCP tool
+### MCP tool (Adapter 経由)
 
-MCP が有効な場合、接続済み MCP server が公開する tool が `mcp_{server}_{tool}` 形式で動的追加される。
+MCP が有効な場合、`McpManager.create_tool_adapters()` が各 MCP tool を `McpToolAdapter` (Tool trait 実装) として生成し、`ToolRegistry.register_tool()` で登録する。Registry は MCP の存在を意識しない。
 
 命名規則:
 
@@ -55,6 +55,8 @@ MCP が有効な場合、接続済み MCP server が公開する tool が `mcp_{
 - `mcp_filesystem_read_file` — 標準的な命名
 - `mcp_db_query_1_` — `query(1)` の `(` `)` が `_` に置換される
 - `mcp_a1b2c3d4` — server/tool 名の合計が 64 文字を超える場合のハッシュ短縮
+
+実装: [egopulse/src/tools/mcp_adapter.rs](../../egopulse/src/tools/mcp_adapter.rs)
 
 MCP の詳細は以下を参照。
 
