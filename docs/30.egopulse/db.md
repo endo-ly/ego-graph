@@ -1,7 +1,6 @@
 # EgoPulse DB Schema — 現状
 
 > ソース: `egopulse/src/storage.rs`
-> Microclaw の Schema v19 と比較した際の現状整理。
 
 ## 全体構成
 

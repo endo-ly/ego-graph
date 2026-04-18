@@ -144,8 +144,6 @@ config merge は次のルールで行う。
 - `stdio`
 - `streamable_http`
 
-`streamable_http` は MicroClaw 独自ではなく、MCP 標準 transport のひとつである。
-
 ### `stdio`
 
 `stdio` では subprocess を起動して MCP server に接続する。
@@ -381,5 +379,3 @@ workspace:
 - retry / backoff / circuit breaker は未実装
 - tool list の TTL cache は未実装
 - `defaultProtocolVersion` / `protocol_version` は parse されるが接続時未使用
-
-つまり現在は「MCP を使うための基盤」は入っているが、MicroClaw の耐障害性まわりまではまだ追従していない。

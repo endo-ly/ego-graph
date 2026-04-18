@@ -60,7 +60,7 @@ Your name is EgoPulse. Current channel: {channel}.
 ```
 
 - SOUL.md が存在しない場合、このセクションは出力されない
-- `<soul>` タグによるラップは Microclaw の `build_system_prompt()` と同じフォーマット
+- `<soul>` タグによるラップ
 - identity line は SOUL セクションの一部として付与される
 
 ### 2.2 Identity + Capabilities セクション
