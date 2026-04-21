@@ -11,7 +11,6 @@ from backend.api.schemas.data import (
     TopTrackResponse,
     TopVideoResponse,
     WatchEventResponse,
-    WatchHistoryResponse,
     WatchingStatsResponse,
 )
 from backend.api.schemas.github import (
@@ -28,7 +27,6 @@ __all__ = [
     "ListeningStatsResponse",
     "PageViewResponse",
     "WatchEventResponse",
-    "WatchHistoryResponse",
     "WatchingStatsResponse",
     "TopDomainResponse",
     "TopChannelResponse",

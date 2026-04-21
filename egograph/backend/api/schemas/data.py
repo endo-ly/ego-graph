@@ -64,10 +64,6 @@ class WatchEventResponse(BaseModel):
     content_type: str
 
 
-# 後方互換エイリアス（Step 4 で削除）
-WatchHistoryResponse = WatchEventResponse
-
-
 class WatchingStatsResponse(BaseModel):
     """視聴統計 API レスポンス。
 

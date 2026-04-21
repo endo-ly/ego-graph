@@ -51,33 +51,6 @@ class TestYouTubeRepository:
         assert "watch_event_id" in result[0]
         assert "video_title" in result[0]
 
-    def test_get_watch_history_delegates_to_get_watch_events(
-        self, youtube_with_sample_data
-    ):
-        """get_watch_history は get_watch_events に委譲する。"""
-        # Arrange
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=youtube_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch(
-                "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-                return_value=[watch_events_path],
-            ):
-                # Act
-                repo = YouTubeRepository(_mock_r2_config())
-                result = repo.get_watch_history(date(2024, 1, 1), date(2024, 1, 3))
-
-        # Assert: get_watch_history も新しいデータ形状を返す
-        assert len(result) > 0
-        assert "watch_event_id" in result[0]
-
     def test_get_watching_stats(self, youtube_with_sample_data):
         """視聴統計を取得。"""
         # Arrange

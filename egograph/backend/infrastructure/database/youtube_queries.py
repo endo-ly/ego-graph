@@ -46,9 +46,6 @@ def get_watch_events_parquet_path(bucket: str, events_path: str) -> str:
     return YOUTUBE_WATCH_EVENTS_PATH.format(bucket=bucket, events_path=events_path)
 
 
-# 後方互換エイリアス（Step 4 で削除）
-get_watches_parquet_path = get_watch_events_parquet_path
-
 
 def get_videos_parquet_path(bucket: str, master_path: str) -> str:
     """YouTube動画マスターのS3パスパターンを生成します。
@@ -197,10 +194,6 @@ def get_watch_events(
         query,
         [partition_paths, params.start_date, params.end_date],
     )
-
-
-# 後方互換エイリアス（Step 4 で削除）
-get_watch_history = get_watch_events
 
 
 def get_watching_stats(

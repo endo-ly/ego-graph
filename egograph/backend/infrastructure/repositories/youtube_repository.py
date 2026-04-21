@@ -102,24 +102,6 @@ class YouTubeRepository:
             start_date, end_date, get_watch_events, "watch events", limit=limit
         )
 
-    def get_watch_history(
-        self, start_date: date, end_date: date, limit: int | None = None
-    ) -> list[dict[str, Any]]:
-        """指定期間の視聴イベントを取得します（後方互換エイリアス）。
-
-        Args:
-            start_date: 開始日
-            end_date: 終了日
-            limit: 取得するイベント数（デフォルト: None = 全件）
-
-        Returns:
-            視聴イベントのリスト（watched_at_utc DESC）
-
-        Raises:
-            duckdb.Error: データベース操作に失敗した場合
-        """
-        return self.get_watch_events(start_date, end_date, limit)
-
     def get_watching_stats(
         self, start_date: date, end_date: date, granularity: str = "day"
     ) -> list[dict[str, Any]]:
