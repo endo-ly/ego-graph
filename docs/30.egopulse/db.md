@@ -11,15 +11,16 @@ egopulse.db (SQLite / WAL mode)
 ├── chats               — チャットメタデータ・チャンネルアイデンティティ
 ├── messages            — メッセージ履歴
 ├── sessions            — セッションスナップショット（シリアライズ済み会話）
-└── tool_calls          — ツール呼び出し記録
+├── tool_calls          — ツール呼び出し記録
+└── llm_usage_logs      — LLM API 使用量ログ
 ```
 
 | 項目 | 値 |
 |------|----|
-| テーブル数 | 6（データテーブル 4 + マイグレーション基盤テーブル 2） |
-| インデックス数 | 5 |
+| テーブル数 | 7（データテーブル 5 + マイグレーション基盤テーブル 2） |
+| インデックス数 | 7 |
 | 外部キー制約 | 1（tool_calls.chat_id → chats.chat_id） |
-| スキーマバージョン管理 | バージョンベース（`SCHEMA_VERSION` 定数、現行 v1） |
+| スキーマバージョン管理 | バージョンベース（`SCHEMA_VERSION` 定数、現行 v2） |
 | DBライブラリ | rusqlite 0.37（bundled） |
 | DBファイル | `{data_dir}/egopulse.db` |
 | 接続ラッパー | `Mutex<Connection>` |
@@ -59,6 +60,22 @@ egopulse.db (SQLite / WAL mode)
                 │ tool_input       │
                 │ tool_output      │
                 │ timestamp        │
+                └──────────────────┘
+
+        │1    *
+        │───────┌──────────────────┐
+        │       │  llm_usage_logs  │
+        │       │──────────────────│
+        └───────│ id (PK)          │
+                │ chat_id          │
+                │ caller_channel   │
+                │ provider         │
+                │ model            │
+                │ input_tokens     │
+                │ output_tokens    │
+                │ total_tokens     │
+                │ request_kind     │
+                │ created_at       │
                 └──────────────────┘
 
 ┌──────────────────┐       ┌──────────────────┐
@@ -214,6 +231,51 @@ CREATE INDEX IF NOT EXISTS idx_tool_calls_chat_message_id
 
 ---
 
+### llm_usage_logs
+
+LLM API の使用量ログ。トークン消費の追跡とコスト管理に使用。
+
+```sql
+CREATE TABLE IF NOT EXISTS llm_usage_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    caller_channel TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    total_tokens INTEGER NOT NULL,
+    request_kind TEXT NOT NULL DEFAULT 'agent_loop',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_usage_chat_created
+    ON llm_usage_logs(chat_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_llm_usage_created
+    ON llm_usage_logs(created_at);
+```
+
+| カラム | 型 | 制約 | 説明 |
+|--------|----|------|------|
+| id | INTEGER | PK (auto) | 内部ID（AUTOINCREMENT） |
+| chat_id | INTEGER | NOT NULL | chats.chat_id への参照 |
+| caller_channel | TEXT | NOT NULL | 呼び出し元チャンネル（`cli`, `web`, `discord`, `telegram`） |
+| provider | TEXT | NOT NULL | LLM プロバイダ名（`openai`, `openrouter`, `ollama` 等） |
+| model | TEXT | NOT NULL | モデル名 |
+| input_tokens | INTEGER | NOT NULL | 入力トークン数 |
+| output_tokens | INTEGER | NOT NULL | 出力トークン数 |
+| total_tokens | INTEGER | NOT NULL | 合計トークン数（input + output） |
+| request_kind | TEXT | NOT NULL DEFAULT 'agent_loop' | リクエスト種別 |
+| created_at | TEXT | NOT NULL | RFC3339 タイムスタンプ |
+
+**操作**:
+- `log_llm_usage(chat_id, caller_channel, provider, model, input_tokens, output_tokens, request_kind)` — INSERT（total_tokens は自動計算）
+- `get_llm_usage_summary(chat_id, since)` — 集計サマリ（requests, input/output/total tokens, last_request_at）
+- `get_llm_usage_by_model(chat_id, since)` — モデル別集計（total_tokens 降順）
+
+---
+
 ### db_meta
 
 スキーマバージョンの key-value ストア。現在は `schema_version` のみ格納。
@@ -269,6 +331,8 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 | `SessionSummary` | chats + messages（JOIN） | chat_id, channel, surface_thread, chat_title, last_message_time, last_message_preview |
 | `SessionSnapshot` | sessions + messages | messages_json, updated_at, recent_messages: Vec\<StoredMessage\> |
 | `ToolCall` | tool_calls | id, chat_id, message_id, tool_name, tool_input, tool_output, timestamp |
+| `LlmUsageSummary` | llm_usage_logs（集計） | requests, input_tokens, output_tokens, total_tokens, last_request_at |
+| `LlmModelUsageSummary` | llm_usage_logs（モデル別集計） | model, requests, input_tokens, output_tokens, total_tokens |
 
 ---
 
@@ -283,7 +347,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 2. `schema_version(conn)` で `db_meta` テーブルから現在のバージョンを取得（未設定時は `0`）
 3. `if version < N` ブロックで未適用のマイグレーションを逐次実行
 4. 各マイグレーション適用後に `set_schema_version(conn, N, "note")` でバージョンを更新し `schema_migrations` に履歴を記録
-5. `SCHEMA_VERSION` 定数（現行 `1`）に到達したら完了。`debug_assert_eq!` で検証
+5. `SCHEMA_VERSION` 定数（現行 `2`）に到達したら完了。`debug_assert_eq!` で検証
 
 **新規マイグレーションの追加手順**:
 1. `SCHEMA_VERSION` 定数をインクリメント（例: `1` → `2`）
@@ -294,8 +358,27 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 ```rust
 // 既存のテンプレート（storage.rs 内）
 // if version < 2 {
-//     conn.execute_batch("...")?;
-//     set_schema_version(conn, 2, "...")?;
+//     conn.execute_batch(
+//         "CREATE TABLE IF NOT EXISTS llm_usage_logs (
+//             id INTEGER PRIMARY KEY AUTOINCREMENT,
+//             chat_id INTEGER NOT NULL,
+//             caller_channel TEXT NOT NULL,
+//             provider TEXT NOT NULL,
+//             model TEXT NOT NULL,
+//             input_tokens INTEGER NOT NULL,
+//             output_tokens INTEGER NOT NULL,
+//             total_tokens INTEGER NOT NULL,
+//             request_kind TEXT NOT NULL DEFAULT 'agent_loop',
+//             created_at TEXT NOT NULL
+//         );
+//
+//         CREATE INDEX IF NOT EXISTS idx_llm_usage_chat_created
+//             ON llm_usage_logs(chat_id, created_at);
+//
+//         CREATE INDEX IF NOT EXISTS idx_llm_usage_created
+//             ON llm_usage_logs(created_at);",
+//     )?;
+//     set_schema_version(conn, 2, "add llm_usage_logs table for LLM usage tracking")?;
 //     version = 2;
 // }
 ```
@@ -319,12 +402,12 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 | 観点 | EgoPulse（現状） | Microclaw（v19） |
 |------|------------------|------------------|
-| テーブル数 | 6（データ4 + マイグレーション基盤2） | 24 |
-| マイグレーション | バージョンベース（v1） | バージョンベース（v1→v19） |
+| テーブル数 | 7（データ5 + マイグレーション基盤2） | 24 |
+| マイグレーション | バージョンベース（v1→v2） | バージョンベース（v1→v19） |
 | セッション設定 | messages_json のみ | label, thinking_level, verbose_level, reasoning_level, skill_envs_json, fork |
 | メモリ/知識管理 | なし | memories + reflector/injection/supersede（5テーブル） |
 | タスクスケジューリング | なし | scheduled_tasks + run_logs + dlq（3テーブル） |
 | 認証・認可 | なし（静的トークンのみ） | auth + api_keys + scopes（4テーブル） |
-| オブザーバビリティ | なし | audit_logs + metrics + llm_usage（3テーブル） |
+| オブザーバビリティ | llm_usage_logs（1テーブル） | audit_logs + metrics + llm_usage（3テーブル） |
 | サブエージェント | なし | runs + announces + events + focus（4テーブル） |
 | ツール呼び出し記録 | tool_calls（独立テーブル） | sessions.messages_json 内に埋め込み |
