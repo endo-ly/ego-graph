@@ -4,6 +4,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from pipelines.sources.browser_history.compaction import collect_compaction_targets
 from pipelines.sources.browser_history.schema import (
@@ -18,6 +19,13 @@ from pipelines.sources.browser_history.youtube_extraction import (
     extract_youtube_watch_events,
     group_watch_events_by_month,
 )
+from pipelines.sources.browser_history.youtube_metadata import (
+    resolve_youtube_metadata,
+    save_youtube_masters,
+)
+
+if TYPE_CHECKING:
+    from pipelines.sources.google_activity.youtube_api import YouTubeAPIClient
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +47,7 @@ def run_browser_history_pipeline(
     storage: BrowserHistoryStorage,
     *,
     received_at: datetime | None = None,
+    youtube_api_client: "YouTubeAPIClient | None" = None,
 ) -> BrowserHistoryPipelineResult:
     """payload を raw/events/state へ保存する。"""
     normalized_received_at = received_at or datetime.now(timezone.utc)
@@ -80,9 +89,23 @@ def run_browser_history_pipeline(
                 )
         events_saved = True
 
-    # YouTube watch event 抽出・保存
+    # YouTube watch event 抽出・メタデータ解決・保存
     youtube_events = extract_youtube_watch_events(rows)
     if youtube_events:
+        # メタデータ解決（API クライアントが利用可能な場合）
+        resolved = None
+        if youtube_api_client is not None:
+            resolved = resolve_youtube_metadata(youtube_events, youtube_api_client)
+            if resolved is not None:
+                youtube_events, video_master, channel_master = resolved
+                save_youtube_masters(storage, video_master, channel_master)
+            else:
+                logger.warning(
+                    "YouTube metadata resolution failed; "
+                    "saving watch events with browser-level metadata only"
+                )
+
+        # watch events を月次 parquet で保存
         youtube_monthly = group_watch_events_by_month(youtube_events)
         for (year, month), month_events in youtube_monthly.items():
             saved_key = storage.save_parquet(
