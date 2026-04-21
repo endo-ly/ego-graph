@@ -311,11 +311,11 @@ YouTube は単なるドメインフィルタではなく、動画・チャンネ
 
 - [x] データソース境界の設計
 - [x] Tool 仕様の設計
-- [ ] URL 抽出・正規化実装
-- [ ] YouTube Data API 連携実装
-- [ ] Parquet保存実装
-- [ ] Backend Tool 実装
-- [ ] テスト完了
+- [x] URL 抽出・正規化実装
+- [x] YouTube Data API 連携実装
+- [x] Parquet保存実装
+- [x] Backend Tool 実装
+- [x] テスト完了
 
 ### 未実装機能
 

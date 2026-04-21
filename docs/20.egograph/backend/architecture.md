@@ -89,7 +89,7 @@ backend/
 | Spotify | `events/spotify/plays/` | 再生履歴 |
 | Browser History | `events/browser_history/page_views/` | ページビュー |
 | GitHub | `events/github/prs/`, `events/github/commits/`, `master/github/repos/` | PR・コミット・リポジトリ |
-| YouTube | （一時非推奨） | 視聴履歴 |
+| YouTube | `events/youtube/watch_events/`, `master/youtube/videos/`, `master/youtube/channels/` | 視聴イベント・動画・チャンネル |
 
 ## REST API
 
