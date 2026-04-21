@@ -48,17 +48,18 @@ flowchart LR
 | 01 | Spotify | [spotify.md](./spotify.md) | 構造化ログ | MVP |
 | 02 | GitHub | [github.md](./github.md) | 構造化ログ | MVP |
 | 03 | Browser History | [browser-history.md](./browser-history.md) | 時系列・行動履歴 | MVP |
+| 04 | YouTube | [youtube.md](./youtube.md) | 時系列・行動履歴 | MVP |
 
 ### 実装予定
 
 | No. | データソース | ドキュメント | データタイプ | 優先度 |
 |---|---|---|---|---|
-| 04 | Bank（銀行取引） | 未作成 | 構造化ログ | Phase 1 |
-| 05 | Amazon（購買履歴） | 未作成 | 構造化ログ | Phase 1 |
-| 06 | Calendar（カレンダー） | 未作成 | 構造化ログ | Phase 1 |
-| 07 | Note（メモ） | 未作成 | 非構造化データ | Phase 2 |
-| 08 | Email | 未作成 | 非構造化データ | Phase 2 |
-| 09 | Location | 未作成 | 時系列・行動履歴 | Phase 3 |
+| 05 | Bank（銀行取引） | 未作成 | 構造化ログ | Phase 1 |
+| 06 | Amazon（購買履歴） | 未作成 | 構造化ログ | Phase 1 |
+| 07 | Calendar（カレンダー） | 未作成 | 構造化ログ | Phase 1 |
+| 08 | Note（メモ） | 未作成 | 非構造化データ | Phase 2 |
+| 09 | Email | 未作成 | 非構造化データ | Phase 2 |
+| 10 | Location | 未作成 | 時系列・行動履歴 | Phase 3 |
 
 ---
 
