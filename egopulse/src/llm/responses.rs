@@ -1,6 +1,7 @@
 use super::*;
 
 pub(crate) fn parse_openai_response(body: OpenAiResponse) -> Result<MessagesResponse, LlmError> {
+    let usage = body.usage;
     let choice = body
         .choices
         .into_iter()
@@ -37,12 +38,17 @@ pub(crate) fn parse_openai_response(body: OpenAiResponse) -> Result<MessagesResp
     Ok(MessagesResponse {
         content,
         tool_calls,
+        usage: usage.map(|u| LlmUsage {
+            input_tokens: u.prompt_tokens,
+            output_tokens: u.completion_tokens,
+        }),
     })
 }
 
 pub(crate) fn parse_responses_response(
     body: ResponsesApiResponse,
 ) -> Result<MessagesResponse, LlmError> {
+    let usage = body.usage;
     let mut content_parts = Vec::new();
     let mut tool_calls = Vec::new();
 
@@ -89,6 +95,10 @@ pub(crate) fn parse_responses_response(
     Ok(MessagesResponse {
         content,
         tool_calls,
+        usage: usage.map(|u| LlmUsage {
+            input_tokens: u.input_tokens,
+            output_tokens: u.output_tokens,
+        }),
     })
 }
 
@@ -365,11 +375,27 @@ pub(crate) fn find_raw_tool_use_end(text: &str) -> Option<usize> {
 #[derive(Debug, Deserialize)]
 pub(crate) struct OpenAiResponse {
     pub(crate) choices: Vec<Choice>,
+    #[serde(default)]
+    pub(crate) usage: Option<OpenAiUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OpenAiUsage {
+    pub(crate) prompt_tokens: i64,
+    pub(crate) completion_tokens: i64,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ResponsesApiResponse {
     pub(crate) output: Vec<ResponsesOutputItem>,
+    #[serde(default)]
+    pub(crate) usage: Option<ResponsesApiUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ResponsesApiUsage {
+    pub(crate) input_tokens: i64,
+    pub(crate) output_tokens: i64,
 }
 
 #[derive(Debug, Deserialize)]

@@ -102,6 +102,14 @@ impl OpenAiProvider {
 
 #[async_trait]
 impl LlmProvider for OpenAiProvider {
+    fn provider_name(&self) -> &str {
+        "openai"
+    }
+
+    fn model_name(&self) -> &str {
+        &self.model
+    }
+
     async fn send_message(
         &self,
         system: &str,
@@ -232,6 +240,7 @@ impl LlmProvider for OpenAiProvider {
         Ok(MessagesResponse {
             content: text,
             tool_calls: Vec::new(),
+            usage: None,
         })
     }
 }
