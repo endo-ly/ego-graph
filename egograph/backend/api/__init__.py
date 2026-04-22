@@ -5,6 +5,7 @@ from . import (
     data,
     github,
     health,
+    youtube,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "data",
     "github",
     "health",
+    "youtube",
 ]

@@ -15,7 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from backend.api import browser_history_data, data, github, health
+from backend.api import browser_history_data, data, github, health, youtube
 from backend.config import BackendConfig
 from backend.mcp_server import create_mcp_server
 
@@ -123,6 +123,7 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     app.include_router(data.router)
     app.include_router(browser_history_data.router)
     app.include_router(github.router)
+    app.include_router(youtube.router)
 
     # MCPサブアプリをマウント
     app.mount("/mcp", mcp_asgi)

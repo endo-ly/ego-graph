@@ -4,10 +4,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from pipelines.sources.youtube.api_client import QuotaExceededError, YouTubeAPIClient
+
 from .collector import MyActivityCollector
 from .config import AccountConfig
 from .storage import YouTubeStorage
-from .youtube_api import QuotaExceededError, YouTubeAPIClient
 
 logger = logging.getLogger(__name__)
 

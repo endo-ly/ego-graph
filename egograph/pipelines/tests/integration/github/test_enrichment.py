@@ -4,8 +4,6 @@ PR review 件数補完と commit detail 補完のフローを検証する。
 """
 
 import responses
-from pydantic import SecretStr
-
 from pipelines.sources.common.config import (
     Config,
     DuckDBConfig,
@@ -22,6 +20,7 @@ from pipelines.tests.fixtures.github_responses import (
     MOCK_PULL_REQUEST_RESPONSE,
     MOCK_REPOSITORY_RESPONSE,
 )
+from pydantic import SecretStr
 
 
 def _build_config(memory_s3, **kwargs) -> Config:

@@ -1,7 +1,6 @@
 """YouTubeスキーマ定義のテスト。"""
 
 import duckdb
-
 from pipelines.sources.google_activity.schema import YouTubeSchema
 
 

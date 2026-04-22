@@ -17,7 +17,7 @@ from pipelines.sources.google_activity.pipeline import (
     run_account_pipeline,
     run_all_accounts_pipeline,
 )
-from pipelines.sources.google_activity.youtube_api import YouTubeAPIClient
+from pipelines.sources.youtube.api_client import YouTubeAPIClient
 
 # テスト用サンプルデータ
 SAMPLE_WATCH_HISTORY = [
@@ -216,14 +216,6 @@ async def test_pipeline_with_multiple_months():
     mock_storage.save_raw_json.return_value = "raw/test.json"
     mock_storage.save_parquet.return_value = "events/test.parquet"
     mock_storage.save_ingest_state = MagicMock()
-
-    mock_api_client = MagicMock()
-    mock_api_client.get_videos.return_value = []
-    mock_api_client.get_channels.return_value = []
-
-    mock_api_client = MagicMock()
-    mock_api_client.get_videos.return_value = []
-    mock_api_client.get_channels.return_value = []
 
     mock_api_client = MagicMock()
     mock_api_client.get_videos.return_value = []

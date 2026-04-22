@@ -188,3 +188,22 @@ class PipelineService:
                 ]
             },
         )
+
+    def enqueue_youtube_ingest(
+        self,
+        *,
+        sync_id: str,
+        target_months: list[tuple[int, int]],
+        requested_by: str = "api",
+    ) -> WorkflowRun:
+        """Browser History ingest 後の YouTube 派生 ingest run を積む。"""
+        return self.scheduler.enqueue_event_run(
+            workflow_id="youtube_ingest_workflow",
+            requested_by=requested_by,
+            result_summary={
+                "sync_id": sync_id,
+                "target_months": [
+                    {"year": year, "month": month} for year, month in target_months
+                ],
+            },
+        )

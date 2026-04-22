@@ -217,7 +217,7 @@ def get_listening_stats(
     # 粒度に応じた期間フォーマットを選択
     date_format_map = {
         "day": "%Y-%m-%d",
-        "week": "%Y-W%V",  # ISO週番号
+        "week": "%G-W%V",  # ISO週番号（ISO年）
         "month": "%Y-%m",
     }
 

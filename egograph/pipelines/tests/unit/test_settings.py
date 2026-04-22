@@ -6,6 +6,7 @@ from pipelines.sources.common.settings import (
     GitHubWorklogSettings,
     PipelinesSettings,
     R2Settings,
+    YouTubeSettings,
 )
 
 
@@ -67,3 +68,16 @@ def test_pipelines_settings_defaults_duckdb_path_from_shared_paths():
 
     assert config.duckdb is not None
     assert config.duckdb.db_path == str(ANALYTICS_DUCKDB_PATH)
+
+
+def test_settings_load_youtube_api_key_for_browser_history_pipeline():
+    """YOUTUBE_API_KEY が共通設定から読み込める。"""
+    env = {
+        "YOUTUBE_API_KEY": "test-api-key-123",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        settings = YouTubeSettings()
+
+    assert settings.youtube_api_key.get_secret_value() == "test-api-key-123"
+    config = settings.to_config()
+    assert config.youtube_api_key.get_secret_value() == "test-api-key-123"

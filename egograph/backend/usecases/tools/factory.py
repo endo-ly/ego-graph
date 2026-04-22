@@ -14,20 +14,18 @@ from backend.domain.tools.github.worklog import (
     GetRepoSummaryStatsTool,
 )
 from backend.domain.tools.spotify.stats import GetListeningStatsTool, GetTopTracksTool
+from backend.domain.tools.youtube.stats import (
+    GetYouTubeTopChannelsTool,
+    GetYouTubeTopVideosTool,
+    GetYouTubeWatchEventsTool,
+    GetYouTubeWatchingStatsTool,
+)
 from backend.infrastructure.repositories import (
     BrowserHistoryRepository,
     GitHubRepository,
     SpotifyRepository,
+    YouTubeRepository,
 )
-
-# YouTubeツールは一時非推奨 (2025-02-04)
-# from backend.domain.tools.youtube.stats import (
-#     GetTopChannelsTool,
-#     GetWatchHistoryTool,
-#     GetWatchingStatsTool,
-# )
-# YouTubeツールは一時非推奨
-# from backend.infrastructure.repositories import YouTubeRepository
 from backend.usecases.tools.registry import ToolRegistry
 
 
@@ -58,10 +56,11 @@ def build_tool_registry(r2_config: R2Config | None) -> ToolRegistry:
     # Data Query ツール
     tool_registry.register(DataQueryTool(r2_config))
 
-    # YouTubeツールは一時非推奨 (2025-02-04)
-    # youtube_repository = YouTubeRepository(r2_config)
-    # tool_registry.register(GetWatchHistoryTool(youtube_repository))
-    # tool_registry.register(GetWatchingStatsTool(youtube_repository))
-    # tool_registry.register(GetTopChannelsTool(youtube_repository))
+    # YouTubeツール
+    youtube_repository = YouTubeRepository(r2_config)
+    tool_registry.register(GetYouTubeWatchEventsTool(youtube_repository))
+    tool_registry.register(GetYouTubeWatchingStatsTool(youtube_repository))
+    tool_registry.register(GetYouTubeTopVideosTool(youtube_repository))
+    tool_registry.register(GetYouTubeTopChannelsTool(youtube_repository))
 
     return tool_registry

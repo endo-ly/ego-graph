@@ -1,15 +1,22 @@
 """Step callable のエントリポイントテスト。"""
 
 import inspect
+from datetime import datetime, timezone
 
-from pipelines.domain.workflow import WorkflowRun
+from pipelines.domain.workflow import (
+    QueuedReason,
+    TriggerType,
+    WorkflowRun,
+    WorkflowRunStatus,
+)
 from pipelines.infrastructure.execution.inprocess_executor import (
     InProcessStepExecutor,
 )
-from pipelines.workflows.registry import get_workflows
+from pipelines.sources.common.config import Config, DuckDBConfig, R2Config
 from pipelines.sources.github.pipeline import run_github_compact, run_github_ingest
 from pipelines.sources.spotify.pipeline import run_spotify_compact, run_spotify_ingest
-from pipelines.sources.common.config import Config, DuckDBConfig, R2Config
+from pipelines.sources.youtube.pipeline import run_youtube_ingest
+from pipelines.workflows.registry import get_workflows
 from pydantic import SecretStr
 
 
@@ -67,6 +74,34 @@ def test_run_github_ingest_delegates_to_existing_pipeline(monkeypatch):
         "provider": "github",
         "operation": "ingest",
         "status": "succeeded",
+    }
+
+
+def test_run_youtube_ingest_skips_without_event_context():
+    """YouTube ingest entrypoint は event context が無い場合 no-op で終わる。"""
+    run = WorkflowRun(
+        run_id="run-1",
+        workflow_id="youtube_ingest_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+        status=WorkflowRunStatus.RUNNING,
+        scheduled_at=None,
+        queued_at=datetime(2026, 4, 22, tzinfo=timezone.utc),
+        started_at=None,
+        finished_at=None,
+        last_error_message=None,
+        requested_by="api",
+        parent_run_id=None,
+        result_summary=None,
+    )
+
+    result = run_youtube_ingest(run)
+
+    assert result == {
+        "provider": "youtube",
+        "operation": "ingest",
+        "status": "skipped",
+        "reason": "missing_browser_history_event_context",
     }
 
 
@@ -144,7 +179,9 @@ def test_all_inprocess_steps_are_importable():
 
 def test_all_inprocess_steps_can_be_invoked_with_no_args():
     """InProcessStepExecutor._invoke は WorkflowRun 注入以外の step を引数ゼロで呼ぶ。
-    各 callable が引数ゼロで実行可能（自前で config を読み込むなど）であることを検証する。"""
+
+    各 callable が引数ゼロで実行可能であることを検証する。
+    """
     workflows = get_workflows()
     for wf in workflows.values():
         for step in wf.steps:

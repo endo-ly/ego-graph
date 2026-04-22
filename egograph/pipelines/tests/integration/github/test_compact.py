@@ -8,9 +8,6 @@ import io
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-import responses
-from pydantic import SecretStr
-
 from pipelines.sources.common.config import (
     Config,
     DuckDBConfig,
@@ -24,6 +21,7 @@ from pipelines.sources.github.storage import GitHubWorklogStorage
 from pipelines.tests.e2e.test_browser_history_ingest import (
     _MemoryS3Server,
 )
+from pydantic import SecretStr
 
 
 def _build_config(memory_s3) -> Config:

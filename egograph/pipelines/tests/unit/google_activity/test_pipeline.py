@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from pipelines.sources.google_activity.config import AccountConfig
 from pipelines.sources.google_activity.pipeline import (
     run_account_pipeline,

@@ -15,6 +15,7 @@ from pipelines.sources.browser_history.ingest_pipeline import (
 from pipelines.sources.browser_history.pipeline import (
     compact_from_event_context,
     enqueue_browser_history_compaction_event,
+    enqueue_youtube_ingest_event,
     run_browser_history_compact_maintenance,
     run_browser_history_ingest,
 )
@@ -59,6 +60,35 @@ def test_enqueue_browser_history_compaction_event_builds_event_payload():
         "queued_reason": "event_enqueue",
         "payload": {
             "compaction_targets": [
+                {"year": 2026, "month": 4},
+                {"year": 2026, "month": 3},
+            ],
+        },
+    }
+
+
+def test_enqueue_youtube_ingest_event_builds_event_payload():
+    """YouTube 派生 ingest 用 payload を組み立てる。"""
+    captured: dict[str, object] = {}
+
+    def enqueue_run(payload):
+        captured.update(payload)
+        return "run-youtube-1"
+
+    run_id = enqueue_youtube_ingest_event(
+        sync_id="sync-123",
+        target_months=((2026, 4), (2026, 3)),
+        enqueue_run=enqueue_run,
+    )
+
+    assert run_id == "run-youtube-1"
+    assert captured == {
+        "workflow_id": "youtube_ingest_workflow",
+        "trigger_type": "event",
+        "queued_reason": "event_enqueue",
+        "payload": {
+            "sync_id": "sync-123",
+            "target_months": [
                 {"year": 2026, "month": 4},
                 {"year": 2026, "month": 3},
             ],

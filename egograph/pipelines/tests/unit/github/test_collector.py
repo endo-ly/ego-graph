@@ -6,8 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 import responses
-from tenacity import RetryError
-
 from pipelines.sources.github.collector import GitHubWorklogCollector
 from pipelines.tests.fixtures.github_responses import (
     get_mock_commit_detail,
@@ -18,6 +16,7 @@ from pipelines.tests.fixtures.github_responses import (
     get_mock_repository_commits,
     get_mock_user_repositories,
 )
+from tenacity import RetryError
 
 
 class TestGitHubWorklogCollectorInit:

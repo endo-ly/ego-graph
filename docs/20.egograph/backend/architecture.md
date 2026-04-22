@@ -89,7 +89,7 @@ backend/
 | Spotify | `events/spotify/plays/` | 再生履歴 |
 | Browser History | `events/browser_history/page_views/` | ページビュー |
 | GitHub | `events/github/prs/`, `events/github/commits/`, `master/github/repos/` | PR・コミット・リポジトリ |
-| YouTube | （一時非推奨） | 視聴履歴 |
+| YouTube | `events/youtube/watch_events/`, `master/youtube/videos/data.parquet`, `master/youtube/channels/data.parquet` | 視聴イベント・動画・チャンネル |
 
 ## REST API
 
@@ -107,6 +107,10 @@ backend/
 | GET | `/v1/data/github/repositories` | リポジトリ一覧 |
 | GET | `/v1/data/github/activity-stats` | アクティビティ統計 |
 | GET | `/v1/data/github/repo-summary-stats` | リポジトリ別サマリー |
+| GET | `/v1/data/youtube/watch-events` | 視聴イベント一覧 |
+| GET | `/v1/data/youtube/stats/watching` | 視聴統計（日/週/月） |
+| GET | `/v1/data/youtube/stats/top-videos` | トップ動画 |
+| GET | `/v1/data/youtube/stats/top-channels` | トップチャンネル |
 
 共通パラメータパターン:
 - `start_date` / `end_date`（必須、ISO形式）: 期間フィルタ
@@ -186,6 +190,10 @@ R2Config → SpotifyRepository → GetTopTracksTool ─┐
 | `get_repositories` | リポジトリ一覧 | GitHub |
 | `get_activity_stats` | アクティビティ統計 | GitHub |
 | `get_repo_summary_stats` | リポジトリ別サマリー | GitHub |
+| `get_youtube_watch_events` | 視聴イベント一覧 | YouTube |
+| `get_youtube_watching_stats` | 視聴統計（日/週/月） | YouTube |
+| `get_youtube_top_videos` | トップ動画 | YouTube |
+| `get_youtube_top_channels` | トップチャンネル | YouTube |
 | `data_query` | DuckDB 生SQL（SELECTのみ） | 全データ |
 
 ## MCP Server

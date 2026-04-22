@@ -107,6 +107,7 @@ def transform_payload_to_page_view_rows(
             transition = _pick_transition(cluster)
             rows.append(
                 {
+                    "sync_id": str(payload.sync_id),
                     "page_view_id": build_page_view_id(
                         source_device=payload.source_device,
                         browser=payload.browser,

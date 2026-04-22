@@ -321,6 +321,31 @@ class TestGetListeningStats:
             with pytest.raises(ValueError, match="Invalid granularity"):
                 get_listening_stats(params, granularity="invalid")
 
+    def test_uses_iso_year_for_week_granularity(self, duckdb_with_sample_data):
+        """週集計は ISO 年フォーマットを使う。"""
+        parquet_path = duckdb_with_sample_data.test_parquet_path
+        with (
+            patch(
+                "backend.infrastructure.database.queries._generate_partition_paths",
+                return_value=[parquet_path],
+            ),
+            patch(
+                "backend.infrastructure.database.queries.execute_query",
+                return_value=[],
+            ) as mock_execute,
+        ):
+            params = QueryParams(
+                conn=duckdb_with_sample_data,
+                bucket="test-bucket",
+                events_path="events/",
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 1, 3),
+            )
+            get_listening_stats(params, granularity="week")
+
+        query = mock_execute.call_args.args[1]
+        assert "%G-W%V" in query
+
 
 class TestSearchTracksByName:
     """search_tracks_by_name のテスト。"""

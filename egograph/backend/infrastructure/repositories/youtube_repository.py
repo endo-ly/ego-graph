@@ -1,6 +1,6 @@
 """YouTube データ取得リポジトリ。
 
-YouTube 視聴履歴データへのアクセスを提供します。
+YouTube 視聴イベントデータへのアクセスを提供します。
 DuckDB を使用して R2 の Parquet ファイルから直接データを取得します。
 """
 
@@ -14,7 +14,8 @@ from backend.infrastructure.database import DuckDBConnection
 from backend.infrastructure.database.youtube_queries import (
     YouTubeQueryParams,
     get_top_channels,
-    get_watch_history,
+    get_top_videos,
+    get_watch_events,
     get_watching_stats,
 )
 
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 class YouTubeRepository:
     """YouTube データ取得リポジトリ。
 
-    DuckDB を使用して YouTube 視聴履歴データを取得します。
+    DuckDB を使用して YouTube 視聴イベントデータを取得します。
     R2 上の Parquet ファイルに直接クエリを発行します。
     """
 
@@ -81,24 +82,24 @@ class YouTubeRepository:
             )
             return result
 
-    def get_watch_history(
+    def get_watch_events(
         self, start_date: date, end_date: date, limit: int | None = None
     ) -> list[dict[str, Any]]:
-        """指定期間の視聴履歴を取得します。
+        """指定期間の視聴イベントを取得します。
 
         Args:
             start_date: 開始日
             end_date: 終了日
-            limit: 取得する履歴数（デフォルト: None = 全件）
+            limit: 取得するイベント数（デフォルト: None = 全件）
 
         Returns:
-            視聴履歴のリスト（watched_at_utc DESC）
+            視聴イベントのリスト（watched_at_utc DESC）
 
         Raises:
             duckdb.Error: データベース操作に失敗した場合
         """
         return self._execute_query(
-            start_date, end_date, get_watch_history, "watch history", limit=limit
+            start_date, end_date, get_watch_events, "watch events", limit=limit
         )
 
     def get_watching_stats(
@@ -126,6 +127,26 @@ class YouTubeRepository:
             granularity=granularity,
         )
 
+    def get_top_videos(
+        self, start_date: date, end_date: date, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """指定期間で最も視聴された動画を取得します。
+
+        Args:
+            start_date: 開始日
+            end_date: 終了日
+            limit: 取得する動画数（デフォルト: 10）
+
+        Returns:
+            トップ動画のリスト（視聴イベント数降順）
+
+        Raises:
+            duckdb.Error: データベース操作に失敗した場合
+        """
+        return self._execute_query(
+            start_date, end_date, get_top_videos, "top videos", limit=limit
+        )
+
     def get_top_channels(
         self, start_date: date, end_date: date, limit: int = 10
     ) -> list[dict[str, Any]]:
@@ -137,7 +158,7 @@ class YouTubeRepository:
             limit: 取得するチャンネル数（デフォルト: 10）
 
         Returns:
-            トップチャンネルのリスト（視聴時間降順）
+            トップチャンネルのリスト（視聴イベント数降順）
 
         Raises:
             duckdb.Error: データベース操作に失敗した場合

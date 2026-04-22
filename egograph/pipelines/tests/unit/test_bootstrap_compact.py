@@ -4,8 +4,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from pydantic import SecretStr
-
 from pipelines.sources.common.bootstrap_compact import (
     _compact_browser_history,
     _compact_github,
@@ -13,6 +11,7 @@ from pipelines.sources.common.bootstrap_compact import (
     main,
 )
 from pipelines.sources.common.config import Config, DuckDBConfig, R2Config
+from pydantic import SecretStr
 
 
 def _build_config() -> Config:

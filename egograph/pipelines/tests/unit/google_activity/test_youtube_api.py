@@ -4,8 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 import requests
-
-from pipelines.sources.google_activity.youtube_api import (
+from pipelines.sources.youtube.api_client import (
     QuotaExceededError,
     YouTubeAPIClient,
 )
@@ -109,7 +108,7 @@ class TestYouTubeAPIClientInit:
 class TestGetVideos:
     """get_videos メソッドのテスト。"""
 
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_videos_single_batch(
         self, mock_get, youtube_client, mock_video_response
     ):
@@ -132,7 +131,7 @@ class TestGetVideos:
         call_args = mock_get.call_args
         assert call_args[1]["params"]["id"] == "video1,video2"
 
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_videos_multiple_batches(
         self, mock_get, youtube_client, mock_video_response
     ):
@@ -171,7 +170,7 @@ class TestGetVideos:
         assert len(result) == 120
         assert mock_get.call_count == 3  # 50 + 50 + 20 = 120
 
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_videos_empty_list(self, mock_get, youtube_client):
         """空のリストの場合、リクエストを行わず空リストを返すこと。"""
         # Act
@@ -181,7 +180,7 @@ class TestGetVideos:
         assert result == []
         mock_get.assert_not_called()
 
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_videos_quota_exceeded(
         self, mock_get, youtube_client, mock_quota_exceeded_response
     ):
@@ -199,7 +198,7 @@ class TestGetVideos:
 
         assert "quota" in str(exc_info.value).lower()
 
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_videos_http_error(self, mock_get, youtube_client):
         """HTTP エラー時に requests.HTTPError をスローすること。"""
         # Arrange
@@ -215,11 +214,31 @@ class TestGetVideos:
         with pytest.raises(requests.HTTPError):
             youtube_client.get_videos(video_ids)
 
+    @patch("pipelines.sources.youtube.api_client.requests.get")
+    def test_get_videos_non_quota_403_is_not_retried(self, mock_get, youtube_client):
+        """quotaExceeded 以外の 403 は即時失敗させること。"""
+        video_ids = ["video1"]
+        mock_response = Mock()
+        mock_response.status_code = 403
+        mock_response.json.return_value = {
+            "error": {
+                "code": 403,
+                "message": "Forbidden",
+                "errors": [{"reason": "forbidden"}],
+            }
+        }
+        mock_get.return_value = mock_response
+
+        with pytest.raises(requests.HTTPError):
+            youtube_client.get_videos(video_ids)
+
+        mock_get.assert_called_once()
+
 
 class TestGetChannels:
     """get_channels メソッドのテスト。"""
 
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_channels_single_batch(
         self, mock_get, youtube_client, mock_channel_response
     ):
@@ -242,7 +261,7 @@ class TestGetChannels:
         call_args = mock_get.call_args
         assert call_args[1]["params"]["id"] == "channel1,channel2"
 
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_channels_multiple_batches(
         self, mock_get, youtube_client, mock_channel_response
     ):
@@ -288,7 +307,7 @@ class TestGetChannels:
         assert len(result) == 130
         assert mock_get.call_count == 3  # 50 + 50 + 30 = 130
 
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_channels_empty_list(self, mock_get, youtube_client):
         """空のリストの場合、リクエストを行わず空リストを返すこと。"""
         # Act
@@ -298,7 +317,7 @@ class TestGetChannels:
         assert result == []
         mock_get.assert_not_called()
 
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_channels_quota_exceeded(
         self, mock_get, youtube_client, mock_quota_exceeded_response
     ):
@@ -316,7 +335,7 @@ class TestGetChannels:
 
         assert "quota" in str(exc_info.value).lower()
 
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_channels_http_error(self, mock_get, youtube_client):
         """HTTP エラー時に requests.HTTPError をスローすること。"""
         # Arrange
@@ -336,8 +355,8 @@ class TestGetChannels:
 class TestRetryLogic:
     """再試行ロジックのテスト。"""
 
-    @patch("pipelines.sources.google_activity.youtube_api.time.sleep")
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.time.sleep")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_videos_retry_on_failure(
         self, mock_get, mock_sleep, youtube_client, mock_video_response
     ):
@@ -374,8 +393,8 @@ class TestRetryLogic:
         # 最終的に成功したことを確認
         assert len(result) == 2
 
-    @patch("pipelines.sources.google_activity.youtube_api.time.sleep")
-    @patch("pipelines.sources.google_activity.youtube_api.requests.get")
+    @patch("pipelines.sources.youtube.api_client.time.sleep")
+    @patch("pipelines.sources.youtube.api_client.requests.get")
     def test_get_channels_retry_on_failure(
         self, mock_get, mock_sleep, youtube_client, mock_channel_response
     ):

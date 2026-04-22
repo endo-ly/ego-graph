@@ -6,8 +6,6 @@ ingest_state による cursor 指定の増分取得フローを検証する。
 from datetime import datetime, timedelta, timezone
 
 import responses
-from pydantic import SecretStr
-
 from pipelines.sources.common.config import (
     Config,
     DuckDBConfig,
@@ -22,11 +20,9 @@ from pipelines.tests.e2e.test_browser_history_ingest import (
     _MemoryS3Server,
 )
 from pipelines.tests.fixtures.github_responses import (
-    MOCK_COMMIT_DETAIL_RESPONSE,
-    MOCK_PR_REVIEWS_RESPONSE,
-    MOCK_PULL_REQUEST_RESPONSE,
     MOCK_REPOSITORY_RESPONSE,
 )
+from pydantic import SecretStr
 
 
 def _build_config(memory_s3) -> Config:

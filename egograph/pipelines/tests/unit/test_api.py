@@ -1,8 +1,7 @@
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
-
 from pipelines.app import create_app
 from pipelines.config import PipelinesConfig
+from pydantic import SecretStr
 
 
 def test_management_api_lists_workflows_and_manual_runs(tmp_path):
@@ -31,6 +30,7 @@ def test_management_api_lists_workflows_and_manual_runs(tmp_path):
         assert "spotify_ingest_workflow" in workflow_ids
         assert "github_ingest_workflow" in workflow_ids
         assert "google_activity_ingest_workflow" in workflow_ids
+        assert "youtube_ingest_workflow" in workflow_ids
 
         disable_response = client.post(
             "/v1/workflows/spotify_ingest_workflow/disable",

@@ -40,28 +40,28 @@ class ListeningStatsResponse(BaseModel):
     unique_tracks: int
 
 
-class WatchHistoryResponse(BaseModel):
-    """視聴履歴 API レスポンス。
+class WatchEventResponse(BaseModel):
+    """視聴イベント API レスポンス。
 
     Attributes:
-        watch_id: 視聴ID
+        watch_event_id: 視聴イベントID
         watched_at_utc: 視聴日時（UTC）
         video_id: 動画ID
+        video_url: 動画URL
         video_title: 動画タイトル
         channel_id: チャンネルID
         channel_name: チャンネル名
-        duration_seconds: 動画長（秒、未取得の場合はNone）
-        video_url: 動画URL
+        content_type: コンテンツ種別（video / short）
     """
 
-    watch_id: str
+    watch_event_id: str
     watched_at_utc: str
     video_id: str
-    video_title: str
-    channel_id: str
-    channel_name: str
-    duration_seconds: int | None = None
     video_url: str
+    video_title: str
+    channel_id: str | None = None
+    channel_name: str | None = None
+    content_type: str
 
 
 class WatchingStatsResponse(BaseModel):
@@ -69,15 +69,15 @@ class WatchingStatsResponse(BaseModel):
 
     Attributes:
         period: 期間（日付文字列）
-        total_seconds: 総視聴時間（秒）
-        video_count: 視聴動画数
-        unique_videos: ユニーク動画数
+        watch_event_count: 視聴イベント数
+        unique_video_count: ユニーク動画数
+        unique_channel_count: ユニークチャンネル数
     """
 
     period: str
-    total_seconds: int
-    video_count: int
-    unique_videos: int
+    watch_event_count: int
+    unique_video_count: int
+    unique_channel_count: int
 
 
 class TopChannelResponse(BaseModel):
@@ -86,14 +86,32 @@ class TopChannelResponse(BaseModel):
     Attributes:
         channel_id: チャンネルID
         channel_name: チャンネル名
-        video_count: 視聴動画数
-        total_seconds: 総視聴時間（秒）
+        watch_event_count: 視聴イベント数
+        unique_video_count: ユニーク動画数
     """
 
-    channel_id: str
-    channel_name: str
-    video_count: int
-    total_seconds: int
+    channel_id: str | None = None
+    channel_name: str | None = None
+    watch_event_count: int
+    unique_video_count: int
+
+
+class TopVideoResponse(BaseModel):
+    """トップ動画 API レスポンス。
+
+    Attributes:
+        video_id: 動画ID
+        video_title: 動画タイトル
+        channel_id: チャンネルID
+        channel_name: チャンネル名
+        watch_event_count: 視聴イベント数
+    """
+
+    video_id: str
+    video_title: str | None = None
+    channel_id: str | None = None
+    channel_name: str | None = None
+    watch_event_count: int
 
 
 class PageViewResponse(BaseModel):
