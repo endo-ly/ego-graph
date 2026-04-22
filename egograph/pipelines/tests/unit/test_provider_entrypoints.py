@@ -6,10 +6,10 @@ from pipelines.domain.workflow import WorkflowRun
 from pipelines.infrastructure.execution.inprocess_executor import (
     InProcessStepExecutor,
 )
-from pipelines.workflows.registry import get_workflows
+from pipelines.sources.common.config import Config, DuckDBConfig, R2Config
 from pipelines.sources.github.pipeline import run_github_compact, run_github_ingest
 from pipelines.sources.spotify.pipeline import run_spotify_compact, run_spotify_ingest
-from pipelines.sources.common.config import Config, DuckDBConfig, R2Config
+from pipelines.workflows.registry import get_workflows
 from pydantic import SecretStr
 
 

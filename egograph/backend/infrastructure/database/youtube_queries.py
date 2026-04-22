@@ -296,13 +296,13 @@ def get_top_videos(
     query = """
         SELECT
             w.video_id,
-            w.video_title,
-            w.channel_id,
-            w.channel_name,
+            MAX(w.video_title) as video_title,
+            MAX(w.channel_id) as channel_id,
+            MAX(w.channel_name) as channel_name,
             COUNT(*) as watch_event_count
         FROM read_parquet(?) w
         WHERE w.watched_at_utc::DATE BETWEEN ? AND ?
-        GROUP BY w.video_id, w.video_title, w.channel_id, w.channel_name
+        GROUP BY w.video_id
         ORDER BY watch_event_count DESC
         LIMIT ?
     """
@@ -349,12 +349,12 @@ def get_top_channels(
     query = """
         SELECT
             w.channel_id,
-            w.channel_name,
+            MAX(w.channel_name) as channel_name,
             COUNT(*) as watch_event_count,
             COUNT(DISTINCT w.video_id) as unique_video_count
         FROM read_parquet(?) w
         WHERE w.watched_at_utc::DATE BETWEEN ? AND ?
-        GROUP BY w.channel_id, w.channel_name
+        GROUP BY w.channel_id
         ORDER BY watch_event_count DESC
         LIMIT ?
     """

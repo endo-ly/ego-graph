@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 
 import pandas as pd
-
 from pipelines.sources.common.compaction import (
     build_compacted_key,
     compact_records,

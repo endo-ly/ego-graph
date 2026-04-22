@@ -1,8 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from pydantic import SecretStr
-
 from pipelines.sources.common.config import (
     Config,
     DuckDBConfig,
@@ -10,6 +8,7 @@ from pipelines.sources.common.config import (
     R2Config,
 )
 from pipelines.sources.github.ingest_pipeline import _resolve_since_iso, run_pipeline
+from pydantic import SecretStr
 
 
 def _build_config() -> Config:

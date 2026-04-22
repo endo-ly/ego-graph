@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from pipelines.sources.google_activity.collector import (
     MyActivityCollector,
     _extract_video_id,

@@ -5,8 +5,6 @@ MemoryS3 + responses モックを使用し、Collector → Transform → S3 Stor
 """
 
 import responses
-from pydantic import SecretStr
-
 from pipelines.sources.common.config import (
     Config,
     DuckDBConfig,
@@ -26,6 +24,7 @@ from pipelines.tests.fixtures.github_responses import (
     MOCK_REPOSITORY_COMMITS_RESPONSE,
     MOCK_REPOSITORY_RESPONSE,
 )
+from pydantic import SecretStr
 
 
 def _build_config(memory_s3) -> Config:

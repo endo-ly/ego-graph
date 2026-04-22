@@ -4,7 +4,6 @@ import uuid as uuid_module
 from unittest.mock import MagicMock, patch
 
 from botocore.exceptions import ClientError
-
 from pipelines.sources.google_activity.storage import YouTubeStorage
 
 

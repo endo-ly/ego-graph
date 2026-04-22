@@ -1,12 +1,11 @@
 """API dependencies のテスト。"""
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
-
 from pipelines.api.dependencies import verify_api_key
 from pipelines.app import create_app
 from pipelines.config import PipelinesConfig
+from pydantic import SecretStr
 
 
 def _build_app(api_key: str | None = None, tmp_path=None):

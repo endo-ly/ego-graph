@@ -250,8 +250,8 @@ def test_save_video_and_channel_master_parquet():
 # --- Test 7: 全出力保存後にのみ state 更新対象としてイベントが返る ---
 
 
-def test_update_youtube_ingest_state_only_after_all_outputs_saved():
-    """resolve が成功した場合、enriched events + masters 全部が返る。失敗時は None。"""
+def test_resolve_youtube_metadata_returns_enriched_events_and_masters():
+    """resolve成功時にenriched eventsとmasterが返ることを検証。"""
     # Arrange
     events = [_watch_event("vid1"), _watch_event("vid2")]
     mock_client = MagicMock()

@@ -1,8 +1,6 @@
 """Workflow / Runs API のエラーパスと境界条件テスト。"""
 
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
-
 from pipelines.api.dependencies import verify_api_key
 from pipelines.app import create_app
 from pipelines.config import PipelinesConfig

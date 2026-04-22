@@ -98,7 +98,11 @@ def run_browser_history_pipeline(
             resolved = resolve_youtube_metadata(youtube_events, youtube_api_client)
             if resolved is not None:
                 youtube_events, video_master, channel_master = resolved
-                save_youtube_masters(storage, video_master, channel_master)
+                if not save_youtube_masters(storage, video_master, channel_master):
+                    logger.warning(
+                        "Failed to save YouTube master parquet; "
+                        "watch events will still be saved",
+                    )
             else:
                 logger.warning(
                     "YouTube metadata resolution failed; "

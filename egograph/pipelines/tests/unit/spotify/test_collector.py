@@ -3,7 +3,6 @@
 import re
 
 import responses
-
 from pipelines.sources.common.utils import iso8601_to_unix_ms
 from pipelines.sources.spotify.collector import SpotifyCollector
 from pipelines.tests.fixtures.spotify_responses import (

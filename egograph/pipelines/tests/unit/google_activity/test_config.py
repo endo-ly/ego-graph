@@ -3,7 +3,6 @@
 from dataclasses import FrozenInstanceError
 
 import pytest
-
 from pipelines.sources.google_activity.config import (
     MAX_RETRIES,
     MYACTIVITY_URL,

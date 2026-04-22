@@ -5,7 +5,6 @@ import os
 from unittest.mock import patch
 
 import pytest
-
 from pipelines.sources.google_activity.main import _load_cookies, _load_google_accounts
 
 

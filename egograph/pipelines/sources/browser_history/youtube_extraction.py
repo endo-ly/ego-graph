@@ -5,7 +5,7 @@ Browser History の page view rows から YouTube 視聴イベントを抽出・
 
 import uuid
 from collections import defaultdict
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 _WATCH_EVENT_PREFIX = "youtube_watch_event_"
 
@@ -132,9 +132,15 @@ def extract_youtube_watch_events(
         started_at = row["started_at_utc"]
         ingested_at = row["ingested_at_utc"]
 
+        source_event_id = row["page_view_id"]
+        watch_event_uuid = uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"browser_history:{source_event_id}:{video_id}",
+        )
+
         events.append(
             {
-                "watch_event_id": f"{_WATCH_EVENT_PREFIX}{uuid.uuid4()}",
+                "watch_event_id": f"{_WATCH_EVENT_PREFIX}{watch_event_uuid}",
                 "watched_at_utc": started_at,
                 "video_id": video_id,
                 "video_url": video_url,
@@ -143,7 +149,7 @@ def extract_youtube_watch_events(
                 "channel_name": None,
                 "content_type": detect_content_type(url),
                 "source": "browser_history",
-                "source_event_id": row["page_view_id"],
+                "source_event_id": source_event_id,
                 "source_device": row["source_device"],
                 "ingested_at_utc": ingested_at,
             }

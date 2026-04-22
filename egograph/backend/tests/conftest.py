@@ -147,11 +147,6 @@ class YouTubeConnectionWrapper:
         self.test_watch_events_parquet_path = watch_events_parquet_path
         self.test_videos_parquet_path = videos_parquet_path
 
-    @property
-    def test_watches_parquet_path(self) -> str:
-        """後方互換プロパティ（test_watch_events_parquet_path へのエイリアス）。"""
-        return self.test_watch_events_parquet_path
-
     def __getattr__(self, name):
         """属性アクセスを内部の接続オブジェクトに委譲。"""
         return getattr(self._conn, name)

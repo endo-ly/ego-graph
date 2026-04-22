@@ -3,7 +3,6 @@
 パスマウントやタスクグループ初期化の退化を検知する。
 """
 
-import json
 
 
 class TestMcpEndpoint:

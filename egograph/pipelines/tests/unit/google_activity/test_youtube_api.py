@@ -4,7 +4,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 import requests
-
 from pipelines.sources.google_activity.youtube_api import (
     QuotaExceededError,
     YouTubeAPIClient,
