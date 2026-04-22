@@ -1,5 +1,6 @@
 """YouTube クエリ層のテスト。"""
 
+from contextlib import ExitStack
 from datetime import date
 from unittest.mock import patch
 
@@ -17,6 +18,29 @@ from backend.infrastructure.database.youtube_queries import (
     get_watch_events_parquet_path,
     get_watching_stats,
 )
+
+
+def _patch_youtube_paths(youtube_with_sample_data):
+    stack = ExitStack()
+    stack.enter_context(
+        patch(
+            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
+            return_value=[youtube_with_sample_data.test_watch_events_parquet_path],
+        )
+    )
+    stack.enter_context(
+        patch(
+            "backend.infrastructure.database.youtube_queries.get_videos_parquet_path",
+            return_value=youtube_with_sample_data.test_videos_parquet_path,
+        )
+    )
+    stack.enter_context(
+        patch(
+            "backend.infrastructure.database.youtube_queries.get_channels_parquet_path",
+            return_value=youtube_with_sample_data.test_channels_parquet_path,
+        )
+    )
+    return stack
 
 
 class TestYouTubeQueryParams:
@@ -187,12 +211,7 @@ class TestGetWatchEvents:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
@@ -215,12 +234,7 @@ class TestGetWatchEvents:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act: 2024-01-01のデータのみ取得
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
@@ -240,12 +254,7 @@ class TestGetWatchEvents:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act: limit=2で取得
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
@@ -269,12 +278,7 @@ class TestGetWatchingStats:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
@@ -298,12 +302,7 @@ class TestGetWatchingStats:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
@@ -325,12 +324,7 @@ class TestGetWatchingStats:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
@@ -352,12 +346,7 @@ class TestGetTopVideos:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
@@ -380,12 +369,7 @@ class TestGetTopVideos:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act: limit=2で取得
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
@@ -405,12 +389,7 @@ class TestGetTopVideos:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
@@ -435,12 +414,7 @@ class TestGetTopChannels:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
@@ -464,12 +438,7 @@ class TestGetTopChannels:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act: limit=2で取得
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,
@@ -489,12 +458,7 @@ class TestGetTopChannels:
         # Arrange
         bucket = "test-bucket"
         events_path = "events/"
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
-        with patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-            return_value=[watch_events_path],
-        ):
+        with _patch_youtube_paths(youtube_with_sample_data):
             # Act
             params = YouTubeQueryParams(
                 conn=youtube_with_sample_data,

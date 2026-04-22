@@ -17,7 +17,7 @@ from pipelines.sources.google_activity.pipeline import (
     run_account_pipeline,
     run_all_accounts_pipeline,
 )
-from pipelines.sources.google_activity.youtube_api import YouTubeAPIClient
+from pipelines.sources.youtube.api_client import YouTubeAPIClient
 
 # テスト用サンプルデータ
 SAMPLE_WATCH_HISTORY = [

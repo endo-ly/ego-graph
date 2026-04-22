@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from pipelines.sources.browser_history.youtube_extraction import (
+from pipelines.sources.youtube.extraction import (
     detect_content_type,
     extract_video_id,
     extract_youtube_watch_events,

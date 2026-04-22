@@ -119,6 +119,23 @@ def get_workflows() -> dict[str, WorkflowDefinition]:
             misfire_policy=MisfirePolicy.COALESCE_LATEST,
         ),
         WorkflowDefinition(
+            workflow_id="youtube_ingest_workflow",
+            name="YouTube derived ingest workflow",
+            description="Build YouTube watch events and masters from browser history",
+            steps=(
+                _inprocess_step(
+                    "run_youtube_ingest",
+                    "Run YouTube derived ingest",
+                    "pipelines.sources.youtube.pipeline:run_youtube_ingest",
+                    timeout_seconds=3600,
+                ),
+            ),
+            triggers=(),
+            concurrency_key="youtube_ingest_workflow",
+            timeout_seconds=3600,
+            misfire_policy=MisfirePolicy.SKIP_MISFIRE,
+        ),
+        WorkflowDefinition(
             workflow_id="local_mirror_sync_workflow",
             name="Local compacted parquet mirror sync",
             description="Sync compacted parquet files from R2 to local mirror",

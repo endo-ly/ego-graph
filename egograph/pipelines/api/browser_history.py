@@ -27,9 +27,15 @@ def ingest_browser_history_endpoint(
         validated_payload = BrowserHistoryPayload.model_validate(payload)
         result = run_browser_history_ingest(validated_payload)
         run = None
+        youtube_run = None
         if result.compaction_targets:
             run = service.enqueue_browser_history_compact(
                 list(result.compaction_targets),
+                requested_by="api",
+            )
+            youtube_run = service.enqueue_youtube_ingest(
+                sync_id=result.sync_id,
+                target_months=list(result.compaction_targets),
                 requested_by="api",
             )
         return {
@@ -39,6 +45,7 @@ def ingest_browser_history_endpoint(
             "events_saved": result.events_saved,
             "received_at": result.received_at,
             "run_id": run.run_id if run else None,
+            "youtube_run_id": youtube_run.run_id if youtube_run else None,
         }
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from pipelines.sources.browser_history.youtube_metadata import (
+from pipelines.sources.youtube.metadata import (
     build_channel_master_rows,
     build_video_master_rows,
     enrich_watch_events_with_metadata,
@@ -121,21 +121,28 @@ def test_build_video_master_rows_from_api_response():
     row = rows[0]
     expected_keys = {
         "video_id",
-        "video_url",
-        "video_title",
+        "title",
         "channel_id",
         "channel_name",
+        "duration_seconds",
+        "view_count",
+        "like_count",
+        "comment_count",
+        "published_at",
+        "thumbnail_url",
+        "description",
+        "category_id",
+        "tags",
         "content_type",
-        "updated_at_utc",
+        "updated_at",
     }
     assert set(row.keys()) == expected_keys
     assert row["video_id"] == "dQw4w9WgXcQ"
-    assert row["video_url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-    assert row["video_title"] == "Rick Astley - Never Gonna Give You Up"
+    assert row["title"] == "Rick Astley - Never Gonna Give You Up"
     assert row["channel_id"] == "UCuAXFkgsw1L7xaCfnd5JJOw"
     assert row["channel_name"] == "Rick Astley"
     assert row["content_type"] == "video"
-    assert isinstance(row["updated_at_utc"], datetime)
+    assert isinstance(row["updated_at"], datetime)
 
 
 # --- Test 3: channel master 行の構築 ---
@@ -155,12 +162,19 @@ def test_build_channel_master_rows_from_api_response():
     expected_keys = {
         "channel_id",
         "channel_name",
-        "updated_at_utc",
+        "subscriber_count",
+        "video_count",
+        "view_count",
+        "published_at",
+        "thumbnail_url",
+        "description",
+        "country",
+        "updated_at",
     }
     assert set(row.keys()) == expected_keys
     assert row["channel_id"] == "UCuAXFkgsw1L7xaCfnd5JJOw"
     assert row["channel_name"] == "Rick Astley"
-    assert isinstance(row["updated_at_utc"], datetime)
+    assert isinstance(row["updated_at"], datetime)
 
 
 # --- Test 4: watch event へのメタデータ反映 ---
@@ -176,26 +190,24 @@ def test_fill_watch_event_metadata_from_video_master():
     video_master = [
         {
             "video_id": "vid1",
-            "video_url": "https://www.youtube.com/watch?v=vid1",
-            "video_title": "API Title 1",
+            "title": "API Title 1",
             "channel_id": "ch1",
             "channel_name": "Channel One",
             "content_type": "video",
-            "updated_at_utc": datetime(2026, 4, 21, 12, 0, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 4, 21, 12, 0, tzinfo=timezone.utc),
         },
         {
             "video_id": "vid2",
-            "video_url": "https://www.youtube.com/watch?v=vid2",
-            "video_title": "API Title 2",
+            "title": "API Title 2",
             "channel_id": "ch2",
             "channel_name": "Channel Two",
             "content_type": "short",
-            "updated_at_utc": datetime(2026, 4, 21, 12, 0, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 4, 21, 12, 0, tzinfo=timezone.utc),
         },
     ]
 
     # Act
-    enriched = enrich_watch_events_with_metadata(events, video_master)
+    enriched = enrich_watch_events_with_metadata(events, video_master, [])
 
     # Assert
     assert len(enriched) == 2
@@ -231,20 +243,23 @@ def test_save_video_and_channel_master_parquet():
     """video と channel の master parquet が storage 経由で保存される。"""
     # Arrange
     mock_storage = MagicMock()
-    mock_storage.save_parquet.return_value = "some/key.parquet"
-    video_rows = [{"video_id": "v1", "updated_at_utc": "2026-04-21"}]
-    channel_rows = [{"channel_id": "ch1", "updated_at_utc": "2026-04-21"}]
+    mock_storage.save_video_master.return_value = "videos/key.parquet"
+    mock_storage.save_channel_master.return_value = "channels/key.parquet"
+    video_rows = [{"video_id": "v1", "updated_at": "2026-04-21"}]
+    channel_rows = [{"channel_id": "ch1", "updated_at": "2026-04-21"}]
 
     # Act
-    success = save_youtube_masters(mock_storage, video_rows, channel_rows)
+    success = save_youtube_masters(
+        mock_storage,
+        video_rows,
+        channel_rows,
+        sync_id="sync-1",
+    )
 
     # Assert
     assert success is True
-    assert mock_storage.save_parquet.call_count == 2
-    video_call = mock_storage.save_parquet.call_args_list[0]
-    channel_call = mock_storage.save_parquet.call_args_list[1]
-    assert video_call.kwargs["prefix"] == "master/youtube/videos"
-    assert channel_call.kwargs["prefix"] == "master/youtube/channels"
+    mock_storage.save_video_master.assert_called_once()
+    mock_storage.save_channel_master.assert_called_once()
 
 
 # --- Test 7: 全出力保存後にのみ state 更新対象としてイベントが返る ---

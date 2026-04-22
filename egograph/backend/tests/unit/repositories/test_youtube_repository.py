@@ -1,5 +1,6 @@
 """YouTube Repository層のテスト。"""
 
+from contextlib import ExitStack
 from datetime import date
 from unittest.mock import MagicMock, patch
 
@@ -27,9 +28,6 @@ class TestYouTubeRepository:
 
     def test_get_watch_events(self, youtube_with_sample_data):
         """視聴イベントを取得。"""
-        # Arrange
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
         with patch(
             "backend.infrastructure.database.DuckDBConnection"
         ) as mock_conn_class:
@@ -38,10 +36,27 @@ class TestYouTubeRepository:
             mock_conn.__exit__ = MagicMock(return_value=False)
             mock_conn_class.return_value = mock_conn
 
-            with patch(
-                "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-                return_value=[watch_events_path],
-            ):
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries._generate_partition_paths",
+                        return_value=[
+                            youtube_with_sample_data.test_watch_events_parquet_path
+                        ],
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries.get_videos_parquet_path",
+                        return_value=youtube_with_sample_data.test_videos_parquet_path,
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries.get_channels_parquet_path",
+                        return_value=youtube_with_sample_data.test_channels_parquet_path,
+                    )
+                )
                 # Act
                 repo = YouTubeRepository(_mock_r2_config())
                 result = repo.get_watch_events(date(2024, 1, 1), date(2024, 1, 3))
@@ -53,9 +68,6 @@ class TestYouTubeRepository:
 
     def test_get_watching_stats(self, youtube_with_sample_data):
         """視聴統計を取得。"""
-        # Arrange
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
         with patch(
             "backend.infrastructure.database.DuckDBConnection"
         ) as mock_conn_class:
@@ -64,10 +76,27 @@ class TestYouTubeRepository:
             mock_conn.__exit__ = MagicMock(return_value=False)
             mock_conn_class.return_value = mock_conn
 
-            with patch(
-                "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-                return_value=[watch_events_path],
-            ):
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries._generate_partition_paths",
+                        return_value=[
+                            youtube_with_sample_data.test_watch_events_parquet_path
+                        ],
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries.get_videos_parquet_path",
+                        return_value=youtube_with_sample_data.test_videos_parquet_path,
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries.get_channels_parquet_path",
+                        return_value=youtube_with_sample_data.test_channels_parquet_path,
+                    )
+                )
                 # Act
                 repo = YouTubeRepository(_mock_r2_config())
                 result = repo.get_watching_stats(
@@ -82,9 +111,6 @@ class TestYouTubeRepository:
 
     def test_get_top_videos(self, youtube_with_sample_data):
         """トップ動画を取得。"""
-        # Arrange
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
         with patch(
             "backend.infrastructure.database.DuckDBConnection"
         ) as mock_conn_class:
@@ -93,10 +119,27 @@ class TestYouTubeRepository:
             mock_conn.__exit__ = MagicMock(return_value=False)
             mock_conn_class.return_value = mock_conn
 
-            with patch(
-                "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-                return_value=[watch_events_path],
-            ):
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries._generate_partition_paths",
+                        return_value=[
+                            youtube_with_sample_data.test_watch_events_parquet_path
+                        ],
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries.get_videos_parquet_path",
+                        return_value=youtube_with_sample_data.test_videos_parquet_path,
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries.get_channels_parquet_path",
+                        return_value=youtube_with_sample_data.test_channels_parquet_path,
+                    )
+                )
                 # Act
                 repo = YouTubeRepository(_mock_r2_config())
                 result = repo.get_top_videos(date(2024, 1, 1), date(2024, 1, 3))
@@ -108,9 +151,6 @@ class TestYouTubeRepository:
 
     def test_get_top_channels(self, youtube_with_sample_data):
         """トップチャンネルを取得。"""
-        # Arrange
-        watch_events_path = youtube_with_sample_data.test_watch_events_parquet_path
-
         with patch(
             "backend.infrastructure.database.DuckDBConnection"
         ) as mock_conn_class:
@@ -119,10 +159,27 @@ class TestYouTubeRepository:
             mock_conn.__exit__ = MagicMock(return_value=False)
             mock_conn_class.return_value = mock_conn
 
-            with patch(
-                "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-                return_value=[watch_events_path],
-            ):
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries._generate_partition_paths",
+                        return_value=[
+                            youtube_with_sample_data.test_watch_events_parquet_path
+                        ],
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries.get_videos_parquet_path",
+                        return_value=youtube_with_sample_data.test_videos_parquet_path,
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "backend.infrastructure.database.youtube_queries.get_channels_parquet_path",
+                        return_value=youtube_with_sample_data.test_channels_parquet_path,
+                    )
+                )
                 # Act
                 repo = YouTubeRepository(_mock_r2_config())
                 result = repo.get_top_channels(date(2024, 1, 1), date(2024, 1, 3))

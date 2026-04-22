@@ -24,6 +24,7 @@ CompactionTarget = tuple[int, int]
 CompactionEventEnqueuer = Callable[[Mapping[str, object]], str]
 
 _BROWSER_HISTORY_COMPACT_WORKFLOW_ID = "browser_history_compact_workflow"
+_YOUTUBE_INGEST_WORKFLOW_ID = "youtube_ingest_workflow"
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,31 @@ def enqueue_browser_history_compaction_event(
             "queued_reason": "event_enqueue",
             "payload": {
                 "compaction_targets": target_list,
+            },
+        }
+    )
+
+
+def enqueue_youtube_ingest_event(
+    *,
+    sync_id: str,
+    target_months: Iterable[CompactionTarget],
+    enqueue_run: CompactionEventEnqueuer,
+    workflow_id: str = _YOUTUBE_INGEST_WORKFLOW_ID,
+) -> str | None:
+    """YouTube 派生 ingest 用 event run を enqueue する。"""
+    month_list = [{"year": year, "month": month} for year, month in target_months]
+    if not month_list:
+        return None
+
+    return enqueue_run(
+        {
+            "workflow_id": workflow_id,
+            "trigger_type": "event",
+            "queued_reason": "event_enqueue",
+            "payload": {
+                "sync_id": sync_id,
+                "target_months": month_list,
             },
         }
     )
