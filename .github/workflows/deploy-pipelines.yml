@@ -1,0 +1,73 @@
+name: Deploy Pipelines
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "egograph/pipelines/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/deploy-pipelines.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --all-packages
+
+      - name: Run pipelines tests
+        run: |
+          uv run pytest egograph/pipelines/tests/unit \
+                        egograph/pipelines/tests/integration \
+                        egograph/pipelines/tests/e2e \
+                        -v --cov=pipelines --cov-report=xml --cov-report=term
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Join Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/egograph/repo
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+            /root/.local/bin/uv sync --all-packages
+            sudo systemctl restart egograph-pipelines
+            for i in $(seq 1 10); do
+              if curl -fsS http://127.0.0.1:8001/v1/health; then
+                echo "Health check passed"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "=== Health check failed after 20s ==="
+            sudo journalctl -u egograph-pipelines --since "1 min ago" --no-pager
+            exit 1

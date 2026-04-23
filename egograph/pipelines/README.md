@@ -185,4 +185,4 @@ egograph/pipelines/
 | テスト戦略 | [docs/20.egograph/pipelines/testing-strategy.md](../../docs/20.egograph/pipelines/testing-strategy.md) |
 | データソース一覧 | [docs/20.egograph/pipelines/README.md](../../docs/20.egograph/pipelines/README.md) |
 | データ戦略 | [docs/10.architecture/data-strategy.md](../../docs/10.architecture/data-strategy.md) |
-| デプロイ手順 | [docs/50.deploy/backend.md](../../docs/50.deploy/backend.md) |
+| デプロイ手順 | [docs/50.deploy/pipelines.md](../../docs/50.deploy/pipelines.md) |

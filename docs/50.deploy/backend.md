@@ -1,8 +1,10 @@
-# Backend / Pipelines Deploy (LXC + Tailscale)
+# Backend Deploy (LXC + Tailscale)
 
-本番バックエンドと Pipelines Service を Proxmox LXC (Ubuntu) にデプロイする手順。
+本番バックエンドを Proxmox LXC (Ubuntu) にデプロイする手順。
 Tailscale HTTPS を使用し、リバースプロキシは省略する。
 ローカルファースト運用のため、外部公開は前提にしない。
+
+Pipelines Service のデプロイは [pipelines.md](./pipelines.md) を参照。
 
 ## 1. LXC 構成
 
@@ -132,17 +134,12 @@ uv run python -c "import duckdb; conn = duckdb.connect(); print(conn.execute(\"S
 
 ## 5. systemd 常駐
 
-systemdで `backend` と `pipelines` を別プロセス常駐化し、障害時は自動復旧させる。
+systemdで `backend` を別プロセス常駐化し、障害時は自動復旧させる。
 `WorkingDirectory` と `.env` のパスは固定で運用する。
-
-管理するunitは以下の2つ
 
 - `egograph-backend.service`
   - 読み取り/チャット API を提供する FastAPI 本体
   - `pipelines` 停止中でも起動できるよう、hard dependency は張らない
-- `egograph-pipelines.service`
-  - ingest / compact / local mirror sync を実行する常駐 service
-  - 内部の APScheduler が定期実行を担うため systemd timer は使わない
 
 `/etc/systemd/system/egograph-backend.service`:
 
@@ -192,83 +189,6 @@ sudo systemctl start egograph-backend
 sudo systemctl status egograph-backend
 ```
 
-### 5.1 pipelines service
-
-ingest / compact / local mirror sync の定期実行と Browser History 受信 API は
-`pipelines` が担当する。
-backend は `repo` の兄弟 `data/parquet` に local mirror がなければ R2 compacted parquet
-へフォールバックして起動できるため、`egograph-pipelines.service` への hard dependency は
-設定しない。
-
-`/etc/systemd/system/egograph-pipelines.service`:
-
-```ini
-[Unit]
-Description=EgoGraph Pipelines Service
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/egograph/repo
-EnvironmentFile=/opt/egograph/repo/egograph/pipelines/.env
-Environment=USE_ENV_FILE=false
-ExecStart=/root/.local/bin/uv run python -m pipelines.main serve --host 127.0.0.1 --port 8001
-Restart=always
-RestartSec=10
-User=root
-Group=root
-
-[Install]
-WantedBy=multi-user.target
-```
-
-作成:
-
-```bash
-sudo touch /etc/systemd/system/egograph-pipelines.service
-sudo nano /etc/systemd/system/egograph-pipelines.service
-```
-
-起動前に `egograph/pipelines/.env` を作成する。
-`.env.example` はユーザー固有値を中心に載せており、
-未記載のスケジューラ/バッチサイズ等はコード既定値を使う。
-
-```bash
-sudo cp /opt/egograph/repo/egograph/pipelines/.env.example /opt/egograph/repo/egograph/pipelines/.env
-```
-
-```bash
-sudo nano /opt/egograph/repo/egograph/pipelines/.env
-```
-
-`egograph/pipelines/.env` に `PIPELINES_API_KEY` を必ず設定する。
-未設定なら `/v1/health` 以外の API リクエストは 500 エラーとなる。
-
-起動確認:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable egograph-pipelines
-sudo systemctl start egograph-pipelines
-sudo systemctl status egograph-pipelines
-journalctl -u egograph-pipelines.service -n 100 --no-pager
-```
-
-### 5.2 Pipelines API / CLI の疎通確認
-
-CLI で workflow と run 状態を確認する。
-主要コマンドはエージェント運用しやすいよう `--json` 出力を使う。
-
-```bash
-cd /opt/egograph/repo
-uv run python -m pipelines.main workflow list --json
-uv run python -m pipelines.main run list --json
-```
-
-Browser History 拡張機能の送信先 `Server URL` は backend ではなく
-`egograph-pipelines.service` 側の URL を設定する。
-
 ## 6. GitHub Actions で main をデプロイ
 
 main への push をトリガーに本番へデプロイする。
@@ -278,18 +198,19 @@ main への push をトリガーに本番へデプロイする。
 
 - LXC に SSH 鍵を配置
 - GitHub Secrets に以下を登録:
-  - `TS_AUTHKEY` (Tailscale Auth Key)
+  - `TS_OAUTH_CLIENT_ID` (Tailscale OAuth Client ID)
+  - `TS_OAUTH_SECRET` (Tailscale OAuth Secret)
   - `SSH_HOST` (egograph-prod の Tailscale FQDN)
   - `SSH_USER` (`root`)
   - `SSH_KEY` (deploy 用の秘密鍵)
 
 ### 6.2 GitHub Secrets の取得と登録
 
-#### TS_AUTHKEY (Tailscale)
+#### Tailscale OAuth
 
 1. Tailscale 管理画面 (Admin Console) を開く
-2. `Settings` → `Keys` で Auth Key を作成
-3. 期限と再利用可否を設定し、生成されたキーをコピー
+2. `Settings` → `OAuth clients` で OAuth Client を作成
+3. `Tag` に `tag:ci` を付与し、生成された Client ID と Secret をコピー
 
 #### SSH_KEY (Deploy 用秘密鍵)
 
@@ -339,32 +260,11 @@ GitHub Secrets に登録するのは **秘密鍵の中身**。
 
 GitHub リポジトリの `Settings` → `Secrets and variables` → `Actions` で以下を追加:
 
-- `TS_AUTHKEY`: Tailscale Auth Key
+- `TS_OAUTH_CLIENT_ID`: Tailscale OAuth Client ID
+- `TS_OAUTH_SECRET`: Tailscale OAuth Secret
 - `SSH_HOST`: 例 `egograph-prod.<tailnet>.ts.net`
 - `SSH_USER`: `root`
 - `SSH_KEY`: `egograph_deploy_key` の内容 (秘密鍵)
-
-### 6.3 削除できる GitHub Secrets
-
-`.github/workflows/job-ingest-*.yml` を削除したため、以下の ingest 専用 secrets は
-GitHub Actions から参照されなくなる。
-他用途で使っていなければ GitHub Secrets から削除し、
-`/opt/egograph/repo/egograph/pipelines/.env` へ集約する。
-
-| 削除候補 Secret | 移行先 `.env` キー |
-| --------------- | ------------------- |
-| `SPOTIFY_CLIENT_ID` | `SPOTIFY_CLIENT_ID` |
-| `SPOTIFY_CLIENT_SECRET` | `SPOTIFY_CLIENT_SECRET` |
-| `SPOTIFY_REFRESH_TOKEN` | `SPOTIFY_REFRESH_TOKEN` |
-| `EGOGRAPH_GITHUB_PAT` | `GITHUB_PAT` |
-| `EGOGRAPH_GITHUB_LOGIN` | `GITHUB_LOGIN` |
-| `YOUTUBE_API_KEY` | `YOUTUBE_API_KEY` |
-| `GOOGLE_COOKIE_ACCOUNT1` | `GOOGLE_COOKIE_ACCOUNT1` |
-| `GOOGLE_COOKIE_ACCOUNT2` | `GOOGLE_COOKIE_ACCOUNT2` |
-| `R2_ENDPOINT_URL` | `R2_ENDPOINT_URL` |
-| `R2_ACCESS_KEY_ID` | `R2_ACCESS_KEY_ID` |
-| `R2_SECRET_ACCESS_KEY` | `R2_SECRET_ACCESS_KEY` |
-| `R2_BUCKET_NAME` | `R2_BUCKET_NAME` |
 
 ## 7. 変更フロー（手動）
 
@@ -374,9 +274,8 @@ CI を使わずに更新する場合:
 cd /opt/egograph/repo
 git fetch origin main
 git reset --hard origin/main
-uv sync
+uv sync --all-packages
 sudo systemctl restart egograph-backend
-sudo systemctl restart egograph-pipelines
 ```
 
 **注意**: `git reset --hard` はローカルの変更を破棄します。本番環境での直接変更は推奨しません。
