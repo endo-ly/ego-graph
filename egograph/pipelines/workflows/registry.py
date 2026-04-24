@@ -155,7 +155,10 @@ def get_workflows() -> dict[str, WorkflowDefinition]:
         WorkflowDefinition(
             workflow_id="browser_history_compact_workflow",
             name="Browser history compact workflow",
-            description="Compact browser history immediately after ingest",
+            description=(
+                "Compact browser history from events/ "
+                "for maintenance/reprocessing"
+            ),
             steps=(
                 _inprocess_step(
                     "run_browser_history_compact",

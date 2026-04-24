@@ -29,7 +29,9 @@ def _payload(items: list[dict] | None = None) -> BrowserHistoryPayload:
 def test_pipeline_success_path():
     storage = MagicMock()
     storage.save_raw_json.return_value = "raw/key.json"
-    storage.save_parquet.return_value = "events/key.parquet"
+    storage.save_compacted_page_views.return_value = (
+        "compacted/events/browser_history/page_views/year=2026/month=03/data.parquet"
+    )
 
     result = run_browser_history_pipeline(
         _payload(),
@@ -57,7 +59,7 @@ def test_pipeline_raises_when_raw_save_fails():
 def test_pipeline_raises_when_events_save_fails():
     storage = MagicMock()
     storage.save_raw_json.return_value = "raw/key.json"
-    storage.save_parquet.return_value = None
+    storage.save_compacted_page_views.return_value = None
 
     with pytest.raises(RuntimeError, match="Failed to save browser history events"):
         run_browser_history_pipeline(_payload(), storage)

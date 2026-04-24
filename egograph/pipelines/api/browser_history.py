@@ -26,25 +26,31 @@ def ingest_browser_history_endpoint(
     _: None = Depends(verify_api_key),
     service: PipelineService = Depends(get_service),
 ) -> dict:
-    """Browser History payload を保存し、即時 compact run を enqueue する。"""
+    """Browser History payload を保存し、YouTube ingest run を enqueue する。"""
     try:
         validated_payload = BrowserHistoryPayload.model_validate(payload)
         result = run_browser_history_ingest(validated_payload)
-        run = None
+        youtube_run = None
         if result.compaction_targets:
-            run = service.enqueue_browser_history_compact(
-                list(result.compaction_targets),
-                sync_id=result.sync_id,
-                target_months=list(result.compaction_targets),
-                requested_by="api",
-            )
+            try:
+                youtube_run = service.enqueue_youtube_ingest(
+                    sync_id=result.sync_id,
+                    target_months=list(result.compaction_targets),
+                    requested_by="api",
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue youtube ingest for sync_id=%s",
+                    result.sync_id,
+                )
+                youtube_run = None
         return {
             "sync_id": result.sync_id,
             "accepted": result.accepted,
             "raw_saved": result.raw_saved,
             "events_saved": result.events_saved,
             "received_at": result.received_at,
-            "run_id": run.run_id if run else None,
+            "youtube_run_id": youtube_run.run_id if youtube_run else None,
         }
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -6,6 +6,7 @@ service オーケストレーション境界の結合を検証する。
 """
 
 import time
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from urllib.parse import parse_qs, unquote, urlparse
@@ -121,8 +122,6 @@ def test_browser_history_ingest_api_executes_compaction_pipeline_end_to_end(
 ):
     """Browser History POST から compacted parquet 保存まで通しで実行できる。"""
     # Arrange
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%H:%M:%S")
@@ -170,32 +169,26 @@ def test_browser_history_ingest_api_executes_compaction_pipeline_end_to_end(
             assert body["accepted"] == 1
             assert body["raw_saved"] is True
             assert body["events_saved"] is True
-            assert body["run_id"]
+            assert body["youtube_run_id"]
 
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
                 run_response = client.get(
-                    f"/v1/runs/{body['run_id']}",
+                    f"/v1/runs/{body['youtube_run_id']}",
                     headers={"X-API-Key": "test-api-key"},
                 )
                 assert run_response.status_code == 200
                 run_detail = run_response.json()
                 if run_detail["run"]["status"] == "succeeded":
-                    assert run_detail["run"]["result_summary"] == {
-                        "provider": "browser_history",
-                        "operation": "compact",
-                        "target_months": ["2026-04"],
-                    }
                     assert run_detail["steps"][0]["status"] == "succeeded"
                     break
                 if run_detail["run"]["status"] == "failed":
                     raise AssertionError(run_detail["run"]["last_error_message"])
                 time.sleep(0.05)
             else:
-                raise AssertionError("browser history compaction run did not succeed")
+                raise AssertionError("youtube ingest run did not succeed")
 
         object_keys = [key for _, key in memory_s3.objects]
-        year_month = now.strftime("%Y/%m")
         year_month_day = now.strftime("%Y/%m/%d")
         assert any(
             key.startswith(f"raw/browser_history/chrome/{year_month_day}/")
@@ -203,7 +196,8 @@ def test_browser_history_ingest_api_executes_compaction_pipeline_end_to_end(
         )
         assert any(
             key.startswith(
-                f"events/browser_history/page_views/year={now.year}/month={now.month:02d}/"
+                f"compacted/events/browser_history/page_views/"
+                f"year={now.year}/month={now.month:02d}/data.parquet"
             )
             for key in object_keys
         )

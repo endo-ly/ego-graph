@@ -1,6 +1,8 @@
 import json
+from io import BytesIO
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 from botocore.exceptions import ClientError
 from pipelines.sources.browser_history.storage import BrowserHistoryStorage
@@ -32,20 +34,6 @@ class TestBrowserHistoryStorage:
         assert key is not None
         assert key.startswith("raw/browser_history/edge/")
         assert key.endswith(".json")
-
-    def test_save_parquet_uses_expected_key_format(self):
-        with patch(
-            "pipelines.sources.browser_history.storage.pd.DataFrame.to_parquet"
-        ) as _mock_to_parquet:
-            key = self.storage.save_parquet(
-                [{"page_view_id": "pv1", "started_at_utc": "2026-03-22T08:31:12Z"}],
-                year=2026,
-                month=3,
-            )
-
-        assert key is not None
-        assert key.startswith("events/browser_history/page_views/year=2026/month=03/")
-        assert key.endswith(".parquet")
 
     def test_build_state_key_uses_source_browser_profile_granularity(self):
         key = self.storage.build_state_key("home pc", "edge", "Profile 1")
@@ -145,3 +133,153 @@ class TestBrowserHistoryStorage:
             pytest.raises(RuntimeError, match="r2 down"),
         ):
             self.storage.compact_month(year=2026, month=3)
+
+    def test_save_compacted_page_views_first_write_uses_if_none_match(self):
+        """既存ファイルがない場合、IfNoneMatch='*' で書き込む。"""
+        self.mock_s3.get_object.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey", "Message": "Not Found"}},
+            "GetObject",
+        )
+        with (
+            patch(
+                "pipelines.sources.browser_history.storage.compact_records",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "pipelines.sources.browser_history.storage.dataframe_to_parquet_bytes",
+                return_value=b"parquet-data",
+            ),
+        ):
+            key = self.storage.save_compacted_page_views(
+                [{"page_view_id": "pv1", "ingested_at_utc": "2026-03-22T12:00:00Z"}],
+                year=2026,
+                month=3,
+            )
+
+        assert key == (
+            "compacted/events/browser_history/page_views/"
+            "year=2026/month=03/data.parquet"
+        )
+        put_kwargs = self.mock_s3.put_object.call_args.kwargs
+        assert put_kwargs["IfNoneMatch"] == "*"
+        assert "IfMatch" not in put_kwargs
+
+    def test_save_compacted_page_views_existing_uses_if_match(self):
+        """既存ファイルがある場合、ETag を IfMatch に渡す。"""
+        existing_df = pd.DataFrame(
+            [{"page_view_id": "pv1", "ingested_at_utc": "2026-03-22T10:00:00Z"}]
+        )
+        buffer = BytesIO()
+        existing_df.to_parquet(buffer, index=False, engine="pyarrow")
+        buffer.seek(0)
+
+        self.mock_s3.get_object.return_value = {
+            "Body": buffer,
+            "ETag": '"abc123"',
+        }
+        with (
+            patch(
+                "pipelines.sources.browser_history.storage.compact_records",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "pipelines.sources.browser_history.storage.dataframe_to_parquet_bytes",
+                return_value=b"parquet-data",
+            ),
+        ):
+            key = self.storage.save_compacted_page_views(
+                [{"page_view_id": "pv2", "ingested_at_utc": "2026-03-22T12:00:00Z"}],
+                year=2026,
+                month=3,
+            )
+
+        assert key is not None
+        put_kwargs = self.mock_s3.put_object.call_args.kwargs
+        assert put_kwargs["IfMatch"] == '"abc123"'
+        assert "IfNoneMatch" not in put_kwargs
+
+    def test_save_compacted_page_views_retries_on_precondition_failed(self):
+        """412 Conflict のときはリトライして保存する。"""
+        self.mock_s3.get_object.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey", "Message": "Not Found"}},
+            "GetObject",
+        )
+        precondition_error = ClientError(
+            {
+                "Error": {
+                    "Code": "PreconditionFailed",
+                    "Message": "etag mismatch",
+                },
+                "ResponseMetadata": {"HTTPStatusCode": 412},
+            },
+            "PutObject",
+        )
+        self.mock_s3.put_object.side_effect = [
+            precondition_error,
+            {"ResponseMetadata": {"HTTPStatusCode": 200}},
+        ]
+        with (
+            patch(
+                "pipelines.sources.browser_history.storage.time.sleep",
+                lambda _: None,
+            ),
+            patch(
+                "pipelines.sources.browser_history.storage.compact_records",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "pipelines.sources.browser_history.storage.dataframe_to_parquet_bytes",
+                return_value=b"parquet-data",
+            ),
+        ):
+            key = self.storage.save_compacted_page_views(
+                [{"page_view_id": "pv1", "ingested_at_utc": "2026-03-22T12:00:00Z"}],
+                year=2026,
+                month=3,
+            )
+
+        assert key == (
+            "compacted/events/browser_history/page_views/"
+            "year=2026/month=03/data.parquet"
+        )
+        assert self.mock_s3.put_object.call_count == 2
+
+    def test_save_compacted_page_views_returns_none_after_max_retries(self):
+        """リトライ上限に達したら None を返す。"""
+        self.mock_s3.get_object.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey", "Message": "Not Found"}},
+            "GetObject",
+        )
+        precondition_error = ClientError(
+            {
+                "Error": {
+                    "Code": "PreconditionFailed",
+                    "Message": "etag mismatch",
+                },
+                "ResponseMetadata": {"HTTPStatusCode": 412},
+            },
+            "PutObject",
+        )
+        self.mock_s3.put_object.side_effect = precondition_error
+        with (
+            patch(
+                "pipelines.sources.browser_history.storage.time.sleep",
+                lambda _: None,
+            ),
+            patch(
+                "pipelines.sources.browser_history.storage.compact_records",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "pipelines.sources.browser_history.storage.dataframe_to_parquet_bytes",
+                return_value=b"parquet-data",
+            ),
+        ):
+            key = self.storage.save_compacted_page_views(
+                [{"page_view_id": "pv1", "ingested_at_utc": "2026-03-22T12:00:00Z"}],
+                year=2026,
+                month=3,
+            )
+
+        assert key is None
+        assert self.mock_s3.put_object.call_count == 3

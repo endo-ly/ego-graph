@@ -2,6 +2,8 @@
 
 import json
 import logging
+import random
+import time
 import uuid
 from datetime import datetime, timezone
 from io import BytesIO
@@ -22,6 +24,9 @@ from pipelines.sources.common.compaction import (
 
 logger = logging.getLogger(__name__)
 
+_MAX_COMPACTED_SAVE_RETRIES = 3
+_COMPACTED_SAVE_BACKOFF_SECONDS = 0.2
+
 
 def _normalize_path(path: str) -> str:
     return path.rstrip("/") + "/"
@@ -32,7 +37,7 @@ def _key_part(value: str) -> str:
 
 
 class BrowserHistoryStorage:
-    """Browser history の raw/events/state 保存を扱う。"""
+    """Browser history の raw/compacted/state 保存を扱う。"""
 
     def __init__(
         self,
@@ -93,35 +98,114 @@ class BrowserHistoryStorage:
             return None
         return key
 
-    def save_parquet(
+    def save_compacted_page_views(
         self,
         rows: list[dict[str, Any]],
         *,
         year: int,
         month: int,
-        prefix: str = "browser_history/page_views",
+        dataset_path: str = "browser_history/page_views",
+        dedupe_key: str = "page_view_id",
+        sort_by: str | None = "ingested_at_utc",
     ) -> str | None:
-        """events parquet を保存する。"""
+        """既存 compacted に新規行をマージして保存する。
+
+        楽観ロック (ETag) で同時書き込みを防ぐ。
+        競合時はリトライで再マージする。
+        """
         if not rows:
             return None
-        key = (
-            f"{self.events_path}{prefix}/year={year}/month={month:02d}/"
-            f"{uuid.uuid4()}.parquet"
+
+        key = build_compacted_key(
+            self.compacted_path,
+            data_domain="events",
+            dataset_path=dataset_path,
+            year=year,
+            month=month,
         )
-        try:
-            buffer = BytesIO()
-            pd.DataFrame(rows).to_parquet(buffer, index=False, engine="pyarrow")
-            buffer.seek(0)
-            self.s3.put_object(
-                Bucket=self.bucket_name,
-                Key=key,
-                Body=buffer.getvalue(),
-                ContentType="application/octet-stream",
+
+        for attempt in range(_MAX_COMPACTED_SAVE_RETRIES):
+            existing_rows: list[dict[str, Any]] = []
+            etag: str | None = None
+
+            try:
+                response = self.s3.get_object(Bucket=self.bucket_name, Key=key)
+                existing_df = pd.read_parquet(
+                    BytesIO(response["Body"].read()), engine="pyarrow"
+                )
+                existing_rows = existing_df.to_dict(orient="records")
+                raw_etag = response.get("ETag")
+                etag = raw_etag if isinstance(raw_etag, str) else None
+            except ClientError as exc:
+                if exc.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                    existing_rows = []
+                    etag = None
+                else:
+                    logger.exception("Failed to read existing compacted: key=%s", key)
+                    raise
+
+            merged_df = compact_records(
+                existing_rows + rows,
+                dedupe_key=dedupe_key,
+                sort_by=sort_by,
             )
-        except Exception:
-            logger.exception("Failed to save browser history parquet")
-            return None
-        return key
+
+            try:
+                put_kwargs: dict[str, Any] = {}
+                if etag is not None:
+                    put_kwargs["IfMatch"] = etag
+                else:
+                    put_kwargs["IfNoneMatch"] = "*"
+
+                self.s3.put_object(
+                    Bucket=self.bucket_name,
+                    Key=key,
+                    Body=dataframe_to_parquet_bytes(merged_df),
+                    ContentType="application/octet-stream",
+                    **put_kwargs,
+                )
+                logger.info(
+                    "Saved compacted browser history page_views: "
+                    "key=%s rows=%d attempt=%d",
+                    key,
+                    len(merged_df),
+                    attempt + 1,
+                )
+                return key
+            except ClientError as exc:
+                error_code = exc.response.get("Error", {}).get("Code")
+                status_code = exc.response.get("ResponseMetadata", {}).get(
+                    "HTTPStatusCode"
+                )
+                is_conflict = (
+                    error_code in {"PreconditionFailed", "ConditionalRequestConflict"}
+                    or status_code == 412
+                )
+                if not is_conflict:
+                    logger.exception("Failed to save compacted page_views: key=%s", key)
+                    return None
+
+                if attempt >= _MAX_COMPACTED_SAVE_RETRIES - 1:
+                    logger.error(
+                        "Compacted page_views save conflict exceeded retries: key=%s",
+                        key,
+                    )
+                    return None
+
+                sleep_seconds = _COMPACTED_SAVE_BACKOFF_SECONDS * (
+                    2**attempt
+                ) + random.uniform(0.0, 0.05)
+                logger.warning(
+                    "Compacted page_views save conflict (attempt %d/%d). "
+                    "Retrying in %.2fs: key=%s",
+                    attempt + 1,
+                    _MAX_COMPACTED_SAVE_RETRIES,
+                    sleep_seconds,
+                    key,
+                )
+                time.sleep(sleep_seconds)
+
+        return None
 
     def get_state(
         self,

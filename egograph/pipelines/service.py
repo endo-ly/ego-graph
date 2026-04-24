@@ -172,33 +172,25 @@ class PipelineService:
             raise WorkflowNotFoundError(f"step log not found: {run_id}/{step_id}")
         return self.log_store.read_log(steps[-1].log_path or "")
 
-    def enqueue_browser_history_compact(
+    def enqueue_youtube_ingest(
         self,
-        targets: list[tuple[int, int]],
         *,
-        sync_id: str | None = None,
-        target_months: list[tuple[int, int]] | None = None,
+        sync_id: str,
+        target_months: list[tuple[int, int]],
         requested_by: str = "api",
     ) -> WorkflowRun:
-        """Browser History ingest 後の即時 compact run を積む。
+        """Browser History ingest 後の YouTube 派生 ingest run を積む。
 
-        sync_id / target_months を渡すと
-        compact 完了後に YouTube ingest を enqueue する。
+        ingest 時に compacted へ直接保存するため、即座に YouTube
+        ingest を実行できる。
         """
-        result_summary: dict = {
-            "compaction_targets": [
-                {"year": year, "month": month} for year, month in targets
-            ]
-        }
-        if sync_id and target_months:
-            result_summary["youtube_ingest"] = {
+        return self.scheduler.enqueue_event_run(
+            workflow_id="youtube_ingest_workflow",
+            requested_by=requested_by,
+            result_summary={
                 "sync_id": sync_id,
                 "target_months": [
                     {"year": year, "month": month} for year, month in target_months
                 ],
-            }
-        return self.scheduler.enqueue_event_run(
-            workflow_id="browser_history_compact_workflow",
-            requested_by=requested_by,
-            result_summary=result_summary,
+            },
         )

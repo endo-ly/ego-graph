@@ -14,8 +14,6 @@ from pipelines.sources.browser_history.ingest_pipeline import (
 )
 from pipelines.sources.browser_history.pipeline import (
     compact_from_event_context,
-    enqueue_browser_history_compaction_event,
-    enqueue_youtube_ingest_event,
     run_browser_history_compact_maintenance,
     run_browser_history_ingest,
 )
@@ -33,71 +31,8 @@ def _payload() -> BrowserHistoryPayload:
     )
 
 
-def test_enqueue_browser_history_compaction_event_returns_none_without_targets():
-    """targets が空なら event enqueue を行わない。"""
-    result = enqueue_browser_history_compaction_event((), lambda payload: "run-1")
-
-    assert result is None
-
-
-def test_enqueue_browser_history_compaction_event_builds_event_payload():
-    """targets を event enqueue 用 payload に変換する。"""
-    captured: dict[str, object] = {}
-
-    def enqueue_run(payload):
-        captured.update(payload)
-        return "run-1"
-
-    run_id = enqueue_browser_history_compaction_event(
-        ((2026, 4), (2026, 3)),
-        enqueue_run,
-    )
-
-    assert run_id == "run-1"
-    assert captured == {
-        "workflow_id": "browser_history_compact_workflow",
-        "trigger_type": "event",
-        "queued_reason": "event_enqueue",
-        "payload": {
-            "compaction_targets": [
-                {"year": 2026, "month": 4},
-                {"year": 2026, "month": 3},
-            ],
-        },
-    }
-
-
-def test_enqueue_youtube_ingest_event_builds_event_payload():
-    """YouTube 派生 ingest 用 payload を組み立てる。"""
-    captured: dict[str, object] = {}
-
-    def enqueue_run(payload):
-        captured.update(payload)
-        return "run-youtube-1"
-
-    run_id = enqueue_youtube_ingest_event(
-        sync_id="sync-123",
-        target_months=((2026, 4), (2026, 3)),
-        enqueue_run=enqueue_run,
-    )
-
-    assert run_id == "run-youtube-1"
-    assert captured == {
-        "workflow_id": "youtube_ingest_workflow",
-        "trigger_type": "event",
-        "queued_reason": "event_enqueue",
-        "payload": {
-            "sync_id": "sync-123",
-            "target_months": [
-                {"year": 2026, "month": 4},
-                {"year": 2026, "month": 3},
-            ],
-        },
-    }
-
-
-def test_run_browser_history_ingest_returns_compact_run_id(monkeypatch):
-    """ingest 成功後、compaction target があれば event run id を結果へ含める。"""
+def test_run_browser_history_ingest_returns_pipeline_result(monkeypatch):
+    """ingest 成功後、結果を BrowserHistoryIngestResult として返す。"""
     expected_received_at = datetime(2026, 4, 4, 12, 0, tzinfo=timezone.utc)
     dummy_storage = object()
 
@@ -121,12 +56,10 @@ def test_run_browser_history_ingest_returns_compact_run_id(monkeypatch):
         _payload(),
         storage=dummy_storage,
         received_at=expected_received_at,
-        enqueue_run=lambda _: "run-compact-1",
     )
 
     assert result.sync_id == "12345678-1234-5678-1234-567812345678"
     assert result.compaction_targets == ((2026, 4),)
-    assert result.compact_run_id == "run-compact-1"
     assert result.to_summary_dict() == {
         "sync_id": "12345678-1234-5678-1234-567812345678",
         "accepted": 2,
@@ -134,7 +67,6 @@ def test_run_browser_history_ingest_returns_compact_run_id(monkeypatch):
         "events_saved": True,
         "received_at": "2026-04-04T12:00:00+00:00",
         "compaction_targets": [{"year": 2026, "month": 4}],
-        "compact_run_id": "run-compact-1",
     }
 
 

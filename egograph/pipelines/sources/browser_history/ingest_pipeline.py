@@ -33,7 +33,7 @@ def run_browser_history_pipeline(
     *,
     received_at: datetime | None = None,
 ) -> BrowserHistoryPipelineResult:
-    """payload を raw/events/state へ保存する。"""
+    """payload を raw/compacted/state へ保存する。"""
     normalized_received_at = received_at or datetime.now(timezone.utc)
     accepted = len(payload.items)
 
@@ -61,11 +61,10 @@ def run_browser_history_pipeline(
             monthly_rows[(started_at.year, started_at.month)].append(row)
 
         for (year, month), partition_rows in monthly_rows.items():
-            saved_key = storage.save_parquet(
+            saved_key = storage.save_compacted_page_views(
                 partition_rows,
                 year=year,
                 month=month,
-                prefix="browser_history/page_views",
             )
             if not saved_key:
                 raise RuntimeError(

@@ -1,12 +1,14 @@
 """Browser History ingest のインテグレーションテスト。
 
-MemoryS3 モックを使用し、payload → raw/events/state 保存を検証する。
+MemoryS3 モックを使用し、payload → raw/compacted/state 保存を検証する。
 """
 
+import json
 from io import BytesIO
 from unittest.mock import patch
 
 import pandas as pd
+from botocore.exceptions import ClientError
 
 from pipelines.sources.browser_history.pipeline import run_browser_history_pipeline
 from pipelines.sources.browser_history.schema import BrowserHistoryPayload
@@ -36,7 +38,7 @@ class _MemoryS3:
     def __init__(self):
         self.objects: dict[str, bytes] = {}
 
-    def put_object(self, *, Bucket, Key, Body, ContentType):  # noqa: N803
+    def put_object(self, *, Bucket, Key, Body, ContentType, **kwargs):  # noqa: N803
         if isinstance(Body, str):
             body = Body.encode("utf-8")
         else:
@@ -45,7 +47,12 @@ class _MemoryS3:
         return {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
     def get_object(self, *, Bucket, Key):  # noqa: N803
-        return {"Body": BytesIO(self.objects[Key])}
+        if Key not in self.objects:
+            raise ClientError(
+                {"Error": {"Code": "NoSuchKey", "Message": "Not Found"}},
+                "GetObject",
+            )
+        return {"Body": BytesIO(self.objects[Key]), "ETag": f'"{hash(Key):x}"'}
 
     def get_paginator(self, name: str):
         assert name == "list_objects_v2"
@@ -86,8 +93,8 @@ def _make_storage(memory_s3: _MemoryS3) -> BrowserHistoryStorage:
     )
 
 
-def test_ingest_saves_raw_events_and_state():
-    """Ingest が raw JSON, events Parquet, state を S3 に保存する。"""
+def test_ingest_saves_raw_compacted_and_state():
+    """Ingest が raw JSON, compacted Parquet, state を S3 に保存する。"""
     memory_s3 = _MemoryS3()
 
     with patch_storage_client(memory_s3):
@@ -102,9 +109,11 @@ def test_ingest_saves_raw_events_and_state():
             "raw data not found"
         )
         assert any(
-            key.startswith("events/browser_history/page_views/year=2026/month=03/")
+            key.startswith(
+                "compacted/events/browser_history/page_views/year=2026/month=03/"
+            )
             for key in keys
-        ), "events parquet not found"
+        ), "compacted parquet not found"
         assert "state/browser_history/device-1/edge/Default.json" in keys, (
             "state not found"
         )
@@ -135,13 +144,13 @@ def test_ingest_no_data_saves_state_only():
         assert not any(key.startswith("raw/") for key in keys), (
             "raw data should not be saved"
         )
-        assert not any(key.startswith("events/") for key in keys), (
-            "events should not be saved"
+        assert not any(key.startswith("compacted/") for key in keys), (
+            "compacted should not be saved"
         )
 
 
-def test_compact_deduplicates_duplicate_event_ids():
-    """Compaction が同一 visit_id のレコードを重複排除する。"""
+def test_duplicate_ingest_deduplicates_in_compacted():
+    """同一 visit_id の2回 ingest でも compacted は1行になる。"""
     memory_s3 = _MemoryS3()
 
     with patch_storage_client(memory_s3):
@@ -150,12 +159,12 @@ def test_compact_deduplicates_duplicate_event_ids():
         run_browser_history_pipeline(payload, storage)
         run_browser_history_pipeline(payload, storage)
 
-        key = storage.compact_month(year=2026, month=3)
-
-        assert key == (
-            "compacted/events/browser_history/page_views/year=2026/month=03/data.parquet"
+        compacted_key = (
+            "compacted/events/browser_history/page_views/"
+            "year=2026/month=03/data.parquet"
         )
-        df = pd.read_parquet(BytesIO(memory_s3.objects[key]))
+        assert compacted_key in memory_s3.objects
+        df = pd.read_parquet(BytesIO(memory_s3.objects[compacted_key]))
         assert len(df) == 1, f"Expected 1 deduplicated row, got {len(df)}"
 
 
@@ -190,8 +199,6 @@ def test_incremental_fetch_uses_state():
         run_browser_history_pipeline(payload2, storage)
 
         # state が更新されている
-        import json
-
         state = json.loads(memory_s3.objects[state_key])
         assert state["sync_id"] == "2f4377e4-8c80-4ef4-a6bb-7f9350dbd6cf"
         assert state["last_accepted_count"] == 1

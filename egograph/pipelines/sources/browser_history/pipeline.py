@@ -1,7 +1,7 @@
 """Browser history ingest/compact pipeline entrypoints."""
 
 import logging
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -21,15 +21,11 @@ from pipelines.sources.common.settings import PipelinesSettings
 logger = logging.getLogger(__name__)
 
 CompactionTarget = tuple[int, int]
-CompactionEventEnqueuer = Callable[[Mapping[str, object]], str]
-
-_BROWSER_HISTORY_COMPACT_WORKFLOW_ID = "browser_history_compact_workflow"
-_YOUTUBE_INGEST_WORKFLOW_ID = "youtube_ingest_workflow"
 
 
 @dataclass(frozen=True)
 class BrowserHistoryIngestResult:
-    """Browser history ingest と compaction event enqueue の結果。"""
+    """Browser history ingest の結果。"""
 
     sync_id: str
     accepted: int
@@ -37,16 +33,13 @@ class BrowserHistoryIngestResult:
     events_saved: bool
     received_at: datetime
     compaction_targets: tuple[CompactionTarget, ...]
-    compact_run_id: str | None = None
 
     @classmethod
     def from_pipeline_result(
         cls,
         result: BrowserHistoryPipelineResult,
-        *,
-        compact_run_id: str | None = None,
     ) -> "BrowserHistoryIngestResult":
-        """ingest 結果へ enqueue run id を付与して返す。"""
+        """ingest pipeline の結果を ingest result へ変換する。"""
         return cls(
             sync_id=result.sync_id,
             accepted=result.accepted,
@@ -54,7 +47,6 @@ class BrowserHistoryIngestResult:
             events_saved=result.events_saved,
             received_at=result.received_at,
             compaction_targets=result.compaction_targets,
-            compact_run_id=compact_run_id,
         )
 
     def to_summary_dict(self) -> dict[str, object]:
@@ -90,79 +82,21 @@ def _resolve_browser_history_storage(
     )
 
 
-def enqueue_browser_history_compaction_event(
-    compaction_targets: Iterable[CompactionTarget],
-    enqueue_run: CompactionEventEnqueuer,
-    *,
-    workflow_id: str = _BROWSER_HISTORY_COMPACT_WORKFLOW_ID,
-) -> str | None:
-    """compaction targets を event run として enqueue する。"""
-    target_list = [{"year": year, "month": month} for year, month in compaction_targets]
-    if not target_list:
-        return None
-
-    return enqueue_run(
-        {
-            "workflow_id": workflow_id,
-            "trigger_type": "event",
-            "queued_reason": "event_enqueue",
-            "payload": {
-                "compaction_targets": target_list,
-            },
-        }
-    )
-
-
-def enqueue_youtube_ingest_event(
-    *,
-    sync_id: str,
-    target_months: Iterable[CompactionTarget],
-    enqueue_run: CompactionEventEnqueuer,
-    workflow_id: str = _YOUTUBE_INGEST_WORKFLOW_ID,
-) -> str | None:
-    """YouTube 派生 ingest 用 event run を enqueue する。"""
-    month_list = [{"year": year, "month": month} for year, month in target_months]
-    if not month_list:
-        return None
-
-    return enqueue_run(
-        {
-            "workflow_id": workflow_id,
-            "trigger_type": "event",
-            "queued_reason": "event_enqueue",
-            "payload": {
-                "sync_id": sync_id,
-                "target_months": month_list,
-            },
-        }
-    )
-
-
 def run_browser_history_ingest(
     payload: BrowserHistoryPayload,
     *,
     config: Config | None = None,
     storage: BrowserHistoryStorage | None = None,
     received_at: datetime | None = None,
-    enqueue_run: CompactionEventEnqueuer | None = None,
 ) -> BrowserHistoryIngestResult:
-    """Browser History payload を保存し、必要なら compact event を enqueue する。"""
+    """Browser History payload を compacted へ保存する。"""
     resolved_storage = _resolve_browser_history_storage(config, storage)
     result = run_browser_history_pipeline(
         payload,
         resolved_storage,
         received_at=received_at or datetime.now(timezone.utc),
     )
-    compact_run_id = None
-    if enqueue_run is not None:
-        compact_run_id = enqueue_browser_history_compaction_event(
-            result.compaction_targets,
-            enqueue_run,
-        )
-    return BrowserHistoryIngestResult.from_pipeline_result(
-        result,
-        compact_run_id=compact_run_id,
-    )
+    return BrowserHistoryIngestResult.from_pipeline_result(result)
 
 
 def run_browser_history_compact(
@@ -198,11 +132,11 @@ def run_browser_history_compact_maintenance(
 
 
 def compact_from_event_context(run: WorkflowRun) -> dict[str, object]:
-    """event run の result_summary から対象月を取り出して compact し、
-    続けて YouTube ingest を enqueue する。
+    """event run の result_summary から対象月を取り出して compact する。
 
-    result_summary に youtube_ingest (sync_id, target_months) が含まれていれば
-    compact 成功後に YouTube ingest ワークフローを event として積む。
+    maintenance workflow から定期実行される。
+    ingest 時は直接 compacted に保存するため、この関数は
+    events/ に残った古いファイルの再 compact 用。
     """
     raw_summary = run.result_summary or {}
     raw_targets = raw_summary.get("compaction_targets")
@@ -213,96 +147,7 @@ def compact_from_event_context(run: WorkflowRun) -> dict[str, object]:
             "operation": "compact",
             "target_months": [],
         }
-    result = run_browser_history_compact(targets)
-
-    # compact 成功後に YouTube ingest を enqueue
-    youtube_context = raw_summary.get("youtube_ingest")
-    if youtube_context and isinstance(youtube_context, dict):
-        _enqueue_youtube_ingest_via_db(youtube_context)
-
-    return result
-
-
-def _enqueue_youtube_ingest_via_db(
-    youtube_context: dict[str, Any],
-) -> None:
-    """DB に直接接続して YouTube ingest event run を enqueue する。
-
-    step 関数は service にアクセスできないため、最小限の DB 接続を
-    構築して enqueue する。
-    """
-    import threading  # noqa: PLC0415
-    from datetime import UTC, datetime  # noqa: PLC0415
-
-    from pipelines.config import PipelinesConfig  # noqa: PLC0415
-    from pipelines.domain.workflow import (  # noqa: PLC0415
-        QueuedReason,
-        TriggerType,
-    )
-    from pipelines.infrastructure.db.connection import (  # noqa: PLC0415
-        connect as db_connect,
-    )
-    from pipelines.infrastructure.db.schema import initialize_schema  # noqa: PLC0415
-    from pipelines.infrastructure.db.workflow_repository import (  # noqa: PLC0415
-        WorkflowRepository,
-    )
-    from pipelines.workflows.registry import get_workflows  # noqa: PLC0415
-
-    sync_id = youtube_context.get("sync_id")
-    raw_months = youtube_context.get("target_months")
-    if not isinstance(sync_id, str) or not sync_id.strip():
-        logger.warning("youtube_ingest context missing sync_id, skipping enqueue")
-        return
-    if not isinstance(raw_months, list) or not raw_months:
-        logger.warning("youtube_ingest context missing target_months, skipping enqueue")
-        return
-
-    target_months = [
-        {"year": m["year"], "month": m["month"]}
-        for m in raw_months
-        if isinstance(m, dict)
-        and isinstance(m.get("year"), int)
-        and isinstance(m.get("month"), int)
-    ]
-    if not target_months:
-        logger.warning(
-            "youtube_ingest context has no valid target_months, skipping enqueue"
-        )
-        return
-
-    try:
-        config = PipelinesConfig()
-        conn = db_connect(config.database_path)
-        initialize_schema(conn)
-        db_mutex = threading.RLock()
-        workflow_repo = WorkflowRepository(conn, mutex=db_mutex)
-        workflow_repo.register_workflows(get_workflows())
-
-        from pipelines.infrastructure.db.run_repository import (  # noqa: PLC0415
-            RunRepository,
-        )
-
-        run_repo = RunRepository(workflow_repo, conn, mutex=db_mutex)
-        run_repo.enqueue_run(
-            workflow_id=_YOUTUBE_INGEST_WORKFLOW_ID,
-            trigger_type=TriggerType.EVENT,
-            queued_reason=QueuedReason.EVENT_ENQUEUE,
-            requested_by="compact_step",
-            scheduled_at=datetime.now(tz=UTC),
-            result_summary={
-                "sync_id": sync_id,
-                "target_months": target_months,
-            },
-        )
-        logger.info(
-            "Enqueued youtube_ingest_workflow for sync_id=%s after compact",
-            sync_id,
-        )
-    except Exception:
-        logger.exception(
-            "Failed to enqueue youtube_ingest_workflow for sync_id=%s",
-            sync_id,
-        )
+    return run_browser_history_compact(targets)
 
 
 def _parse_event_targets(raw_targets: Any) -> tuple[CompactionTarget, ...]:

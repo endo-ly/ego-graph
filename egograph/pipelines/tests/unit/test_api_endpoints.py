@@ -135,8 +135,8 @@ def test_cancel_run_idempotent_for_non_queued_run(tmp_path):
         assert cancel_again.json()["status"] == "canceled"
 
 
-def test_browser_history_ingest_returns_202_with_compact_run(tmp_path):
-    """Browser history ingest は compact run 情報を返す。"""
+def test_browser_history_ingest_returns_202_with_youtube_run(tmp_path):
+    """Browser history ingest は YouTube ingest run 情報を返す。"""
     config = PipelinesConfig(
         database_path=tmp_path / "state.sqlite3",
         logs_root=tmp_path / "logs",
@@ -145,8 +145,8 @@ def test_browser_history_ingest_returns_202_with_compact_run(tmp_path):
     app = create_app(config)
     app.dependency_overrides[verify_api_key] = lambda: None
     fake_service = SimpleNamespace(
-        enqueue_browser_history_compact=lambda *args, **kwargs: SimpleNamespace(
-            run_id="compact-run-1"
+        enqueue_youtube_ingest=lambda *args, **kwargs: SimpleNamespace(
+            run_id="youtube-run-1"
         ),
     )
     app.dependency_overrides[get_service] = lambda: fake_service
@@ -160,17 +160,64 @@ def test_browser_history_ingest_returns_202_with_compact_run(tmp_path):
         compaction_targets=((2026, 4),),
     )
 
-    with patch(
-        "pipelines.api.browser_history.BrowserHistoryPayload.model_validate",
-        return_value=object(),
-    ), patch(
-        "pipelines.api.browser_history.run_browser_history_ingest",
-        return_value=result,
-    ), TestClient(app) as client:
+    with (
+        patch(
+            "pipelines.api.browser_history.BrowserHistoryPayload.model_validate",
+            return_value=object(),
+        ),
+        patch(
+            "pipelines.api.browser_history.run_browser_history_ingest",
+            return_value=result,
+        ),
+        TestClient(app) as client,
+    ):
         response = client.post("/v1/ingest/browser-history", json={"dummy": "payload"})
 
     assert response.status_code == 202
     body = response.json()
-    assert body["run_id"] == "compact-run-1"
     assert body["sync_id"] == "sync-1"
-    assert "youtube_run_id" not in body
+    assert body["youtube_run_id"] == "youtube-run-1"
+
+
+def test_browser_history_ingest_returns_202_when_youtube_enqueue_fails(tmp_path):
+    """YouTube enqueue が失敗しても ingest は 202 を返す。"""
+    config = PipelinesConfig(
+        database_path=tmp_path / "state.sqlite3",
+        logs_root=tmp_path / "logs",
+        dispatcher_poll_seconds=60,
+    )
+    app = create_app(config)
+    app.dependency_overrides[verify_api_key] = lambda: None
+    fake_service = SimpleNamespace(
+        enqueue_youtube_ingest=lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("scheduler down")
+        ),
+    )
+    app.dependency_overrides[get_service] = lambda: fake_service
+
+    result = SimpleNamespace(
+        sync_id="sync-1",
+        accepted=1,
+        raw_saved=True,
+        events_saved=True,
+        received_at="2026-04-22T00:00:00+00:00",
+        compaction_targets=((2026, 4),),
+    )
+
+    with (
+        patch(
+            "pipelines.api.browser_history.BrowserHistoryPayload.model_validate",
+            return_value=object(),
+        ),
+        patch(
+            "pipelines.api.browser_history.run_browser_history_ingest",
+            return_value=result,
+        ),
+        TestClient(app) as client,
+    ):
+        response = client.post("/v1/ingest/browser-history", json={"dummy": "payload"})
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["sync_id"] == "sync-1"
+    assert body["youtube_run_id"] is None
