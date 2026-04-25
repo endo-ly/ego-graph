@@ -125,7 +125,7 @@ RAGの限界（分析ができない）を克服するため、**構造化デー
 ## 7. プロジェクト構造
 
 ```
-ego-graph/
+egograph/
 ├── docs/                    # ドキュメント
 ├── ingest/                  # データ収集
 │   ├── spotify/             # Spotify Collector

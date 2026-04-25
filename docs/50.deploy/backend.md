@@ -98,7 +98,7 @@ GitHub Secrets には載せない運用を想定。
 sudo mkdir -p /opt/egograph
 sudo chown -R root:root /opt/egograph
 cd /opt/egograph
-git clone https://github.com/endo-ava/ego-graph repo
+git clone https://github.com/endo-ava/egograph repo
 ```
 
 ## 4. 依存同期

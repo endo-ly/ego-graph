@@ -191,7 +191,7 @@ watch event として扱うのは、動画を一意に特定できる URL のみ
 ### 5.1 ディレクトリ構造
 
 ```text
-s3://ego-graph/
+s3://egograph/
   ├── events/youtube/
   │   └── watch_events/
   │       └── year=YYYY/
@@ -210,11 +210,11 @@ s3://ego-graph/
 
 ### 5.2 保存パス例
 
-- **Watch Events**: `s3://ego-graph/events/youtube/watch_events/year=2026/month=04/sync_id=abc123.parquet`
-- **Videos Master**: `s3://ego-graph/master/youtube/videos/data.parquet`
-- **Channels Master**: `s3://ego-graph/master/youtube/channels/data.parquet`
-- **Raw**: `s3://ego-graph/raw/browser_history/2026-04-21T120000.json` を原本として参照
-- **State**: `s3://ego-graph/state/youtube/browser_history_syncs/abc123.json`
+- **Watch Events**: `s3://egograph/events/youtube/watch_events/year=2026/month=04/sync_id=abc123.parquet`
+- **Videos Master**: `s3://egograph/master/youtube/videos/data.parquet`
+- **Channels Master**: `s3://egograph/master/youtube/channels/data.parquet`
+- **Raw**: `s3://egograph/raw/browser_history/2026-04-21T120000.json` を原本として参照
+- **State**: `s3://egograph/state/youtube/browser_history_syncs/abc123.json`
 
 ---
 

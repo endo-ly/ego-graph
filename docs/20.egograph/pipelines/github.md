@@ -129,7 +129,7 @@ GitHubのコミット履歴、Pull Request、Issueなどのアクティビティ
 ### 5.1 ディレクトリ構造
 
 ```text
-s3://ego-graph/
+s3://egograph/
   ├── events/github/
   │   ├── commits/
   │   │   └── year=YYYY/
@@ -147,10 +147,10 @@ s3://ego-graph/
 
 ### 5.2 保存パス例
 
-- **Commits**: `s3://ego-graph/events/github/commits/year=2024/month=01/abc123.parquet`
-- **Pull Requests**: `s3://ego-graph/events/github/pull_requests/year=2024/month=01/def456.parquet`
-- **Raw**: `s3://ego-graph/raw/github/2024-01-01T120000.json`
-- **State**: `s3://ego-graph/state/github_worklog_ingest_state.json`
+- **Commits**: `s3://egograph/events/github/commits/year=2024/month=01/abc123.parquet`
+- **Pull Requests**: `s3://egograph/events/github/pull_requests/year=2024/month=01/def456.parquet`
+- **Raw**: `s3://egograph/raw/github/2024-01-01T120000.json`
+- **State**: `s3://egograph/state/github_worklog_ingest_state.json`
 
 ## 6. 検索・活用シナリオ
 

@@ -4,7 +4,7 @@
 
 基本的には、requirements-definition Skillやbrainstreaming Skill を使用した際の要件まとめが配置されています。
 
-実装が完了したものは、`ego-graph/docs/99.archive/done_requirements`に移動してください。
+実装が完了したものは、`egograph/docs/99.archive/done_requirements`に移動してください。
 
 ## テンプレート
 

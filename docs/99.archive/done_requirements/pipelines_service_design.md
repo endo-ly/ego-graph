@@ -14,7 +14,7 @@ status: draft
 version: 0.1.0
 created: 2026-04-04
 updated: 2026-04-04
-issue: https://github.com/endo-ava/ego-graph/issues/72
+issue: https://github.com/endo-ava/egograph/issues/72
 ---
 
 # EgoGraph Pipelines Service 設計メモ

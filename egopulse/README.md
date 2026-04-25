@@ -7,7 +7,7 @@ TUI / Web UI / Discord / Telegram を単一バイナリで提供。Rust (Tokio) 
 
 ```bash
 # インストール（リリースバイナリ）
-curl -fsSL https://raw.githubusercontent.com/endo-ava/ego-graph/main/scripts/install-egopulse.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endo-ava/egograph/main/scripts/install-egopulse.sh | bash
 
 # 初期セットアップ（対話型TUIウィザード → ~/.egopulse/egopulse.config.yaml を生成）
 egopulse setup

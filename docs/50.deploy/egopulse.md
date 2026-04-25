@@ -19,13 +19,13 @@ Tailscale HTTPS による公開はオプションとして記載する。
 スクリプトが OS/アーキテクチャを自動検出し、GitHub Releases から最新バイナリをダウンロード・配置する。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endo-ava/ego-graph/main/scripts/install-egopulse.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endo-ava/egograph/main/scripts/install-egopulse.sh | bash
 ```
 
 環境変数 `EGOPULSE_INSTALL_DIR` でインストール先を指定できる（デフォルト: `/usr/local/bin`、書き込み不可なら `$HOME/.local/bin` にフォールバック）。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endo-ava/ego-graph/main/scripts/install-egopulse.sh | EGOPULSE_INSTALL_DIR="$HOME/.local/bin" bash
+curl -fsSL https://raw.githubusercontent.com/endo-ava/egograph/main/scripts/install-egopulse.sh | EGOPULSE_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 確認:
@@ -44,7 +44,7 @@ sudo mkdir -p /usr/local/bin
 
 # 最新のリリースバイナリをダウンロード（x86_64 Linux の場合）
 # 完全なURLは GitHub Releases で確認してください
-curl -fsSL -o egopulse.tar.gz "https://github.com/endo-ava/ego-graph/releases/latest/download/egopulse-<version>-x86_64-unknown-linux-gnu.tar.gz"
+curl -fsSL -o egopulse.tar.gz "https://github.com/endo-ava/egograph/releases/latest/download/egopulse-<version>-x86_64-unknown-linux-gnu.tar.gz"
 tar -xzf egopulse.tar.gz
 sudo mv egopulse /usr/local/bin/egopulse
 ```
@@ -79,8 +79,8 @@ nvm install --lts
 ビルド:
 
 ```bash
-git clone https://github.com/endo-ava/ego-graph.git
-cd ego-graph
+git clone https://github.com/endo-ava/egograph.git
+cd egograph
 cargo build --release -p egopulse
 sudo install -m 0755 target/release/egopulse /usr/local/bin/egopulse
 ```
@@ -284,7 +284,7 @@ journalctl -u egopulse.service -p err --no-pager
 ### ワンライナーの場合
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endo-ava/ego-graph/main/scripts/install-egopulse.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endo-ava/egograph/main/scripts/install-egopulse.sh | bash
 egopulse gateway restart
 ```
 
@@ -292,7 +292,7 @@ egopulse gateway restart
 
 ```bash
 # 最新バイナリをダウンロードして上書き
-curl -fsSL -o egopulse.tar.gz "https://github.com/endo-ava/ego-graph/releases/latest/download/egopulse-<version>-x86_64-unknown-linux-gnu.tar.gz"
+curl -fsSL -o egopulse.tar.gz "https://github.com/endo-ava/egograph/releases/latest/download/egopulse-<version>-x86_64-unknown-linux-gnu.tar.gz"
 tar -xzf egopulse.tar.gz
 sudo mv egopulse /usr/local/bin/egopulse
 egopulse gateway restart
@@ -301,7 +301,7 @@ egopulse gateway restart
 ### ソースビルドの場合
 
 ```bash
-cd /path/to/ego-graph
+cd /path/to/egograph
 git pull
 cargo build --release -p egopulse
 sudo install -m 0755 target/release/egopulse /usr/local/bin/egopulse

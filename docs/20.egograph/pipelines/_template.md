@@ -188,7 +188,7 @@
 ### 5.1 ディレクトリ構造
 
 ```text
-s3://ego-graph/
+s3://egograph/
   ├── events/[source]/
   │   └── [category]/
   │       └── year=YYYY/
@@ -205,10 +205,10 @@ s3://ego-graph/
 
 ### 5.2 保存パス例
 
-- **Events**: `s3://ego-graph/events/[source]/[category]/year=2024/month=01/{uuid}.parquet`
-- **Master**: `s3://ego-graph/master/[source]/[category]/{uuid}.parquet`
-- **Raw**: `s3://ego-graph/raw/[source]/{timestamp}.json`
-- **State**: `s3://ego-graph/state/[source]_ingest_state.json`
+- **Events**: `s3://egograph/events/[source]/[category]/year=2024/month=01/{uuid}.parquet`
+- **Master**: `s3://egograph/master/[source]/[category]/{uuid}.parquet`
+- **Raw**: `s3://egograph/raw/[source]/{timestamp}.json`
+- **State**: `s3://egograph/state/[source]_ingest_state.json`
 
 ---
 

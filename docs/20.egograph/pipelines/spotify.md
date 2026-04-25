@@ -158,7 +158,7 @@ Spotifyの再生履歴を取り込み、分析（Analytics）を実現する。C
 ### 5.1 ディレクトリ構造
 
 ```text
-s3://ego-graph/
+s3://egograph/
   ├── events/spotify/
   │   └── plays/
   │       └── year=YYYY/
@@ -179,11 +179,11 @@ s3://ego-graph/
 
 ### 5.2 保存パス例
 
-- **Plays (Events)**: `s3://ego-graph/events/spotify/plays/year=2024/month=01/abc123.parquet`
-- **Tracks (Master)**: `s3://ego-graph/master/spotify/tracks/year=2024/month=01/def456.parquet`
-- **Artists (Master)**: `s3://ego-graph/master/spotify/artists/ghi789.parquet`
-- **Raw**: `s3://ego-graph/raw/spotify/2024-01-01T120000.json`
-- **State**: `s3://ego-graph/state/spotify_ingest_state.json`
+- **Plays (Events)**: `s3://egograph/events/spotify/plays/year=2024/month=01/abc123.parquet`
+- **Tracks (Master)**: `s3://egograph/master/spotify/tracks/year=2024/month=01/def456.parquet`
+- **Artists (Master)**: `s3://egograph/master/spotify/artists/ghi789.parquet`
+- **Raw**: `s3://egograph/raw/spotify/2024-01-01T120000.json`
+- **State**: `s3://egograph/state/spotify_ingest_state.json`
 
 ---
 
