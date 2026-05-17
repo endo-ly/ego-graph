@@ -35,13 +35,13 @@ class BrowserHistoryQueryParams:
 def _generate_browser_history_partition_paths(
     bucket: str,
     events_path: str,
-    start_date: date,
-    end_date: date,
+    utc_start: datetime,
+    utc_end: datetime,
 ) -> list[str]:
     """指定期間のBrowser Historyパーティションパスを生成する。"""
     paths: list[str] = []
-    current = start_date.replace(day=1)
-    end_month = end_date.replace(day=1)
+    current = date(utc_start.year, utc_start.month, 1)
+    end_month = date(utc_end.year, utc_end.month, 1)
 
     while current <= end_month:
         paths.append(
@@ -66,14 +66,14 @@ def _resolve_partition_paths(params: BrowserHistoryQueryParams) -> list[str]:
             params.r2_config,
             data_domain="events",
             dataset_path="browser_history/page_views",
-            start_date=params.start_date,
-            end_date=params.end_date,
+            utc_start=params.utc_start,
+            utc_end=params.utc_end,
         )
     return _generate_browser_history_partition_paths(
         params.bucket,
         params.events_path,
-        params.start_date,
-        params.end_date,
+        params.utc_start,
+        params.utc_end,
     )
 
 

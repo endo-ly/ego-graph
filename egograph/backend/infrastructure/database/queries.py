@@ -57,24 +57,23 @@ def get_parquet_path(bucket: str, events_path: str) -> str:
 
 
 def _generate_partition_paths(
-    bucket: str, events_path: str, start_date: date, end_date: date
+    bucket: str, events_path: str, utc_start: datetime, utc_end: datetime
 ) -> list[str]:
     """指定期間の月パーティションに対応するParquetパスリストを生成します。
 
     Args:
         bucket: R2バケット名
         events_path: イベントデータのパスプレフィックス
-        start_date: 開始日
-        end_date: 終了日
+        utc_start: 開始時刻 (naive UTC)
+        utc_end: 終了時刻 (naive UTC, 排他)
 
     Returns:
         月パーティションごとのS3パスリスト
-        （例: ["s3://bucket/events/spotify/plays/year=2024/month=11/**/*.parquet",
-              ...]）
     """
     paths: list[str] = []
-    current = start_date.replace(day=1)  # 月初に正規化
-    end_month = end_date.replace(day=1)
+    current = date(utc_start.year, utc_start.month, 1)
+    # utc_end は排他だが、その月のデータを含む可能性があるため end の月も含める
+    end_month = date(utc_end.year, utc_end.month, 1)
 
     while current <= end_month:
         path = SPOTIFY_PLAYS_PARTITION_PATH.format(
@@ -85,7 +84,6 @@ def _generate_partition_paths(
         )
         paths.append(path)
 
-        # 次の月へ
         if current.month == 12:
             current = current.replace(year=current.year + 1, month=1)
         else:
@@ -94,8 +92,8 @@ def _generate_partition_paths(
     logger.debug(
         "Generated %d partition paths for period %s to %s",
         len(paths),
-        start_date,
-        end_date,
+        utc_start,
+        utc_end,
     )
     return paths
 
@@ -106,11 +104,11 @@ def _resolve_partition_paths(params: QueryParams) -> list[str]:
             params.r2_config,
             data_domain="events",
             dataset_path="spotify/plays",
-            start_date=params.start_date,
-            end_date=params.end_date,
+            utc_start=params.utc_start,
+            utc_end=params.utc_end,
         )
     return _generate_partition_paths(
-        params.bucket, params.events_path, params.start_date, params.end_date
+        params.bucket, params.events_path, params.utc_start, params.utc_end
     )
 
 

@@ -57,6 +57,13 @@ def test_spotify_queries_read_local_compacted_parquet(duckdb_conn, tmp_path):
         / "month=01"
     )
     spotify_dir.mkdir(parents=True)
+    # utc_end が 2/1 なので 2月の空パーティションも必要
+    _empty_spotify = (local_root / "compacted" / "events" / "spotify" / "plays" / "year=2024" / "month=02")
+    _empty_spotify.mkdir(parents=True)
+    pd.DataFrame({
+        "play_id": [], "played_at_utc": [], "track_id": [],
+        "track_name": [], "artist_names": [], "ms_played": [],
+    }).to_parquet(_empty_spotify / "data.parquet")
 
     pd.DataFrame(
         {
@@ -114,6 +121,19 @@ def test_github_queries_read_local_compacted_parquet(duckdb_conn, tmp_path):
     )
     pr_dir.mkdir(parents=True)
     commit_dir.mkdir(parents=True)
+    # utc_end が 2/1 なので 2月の空パーティションも必要
+    for _ds, _cols in [
+        ("pull_requests", ["pr_event_id", "pr_key", "owner", "repo", "repo_full_name",
+         "pr_number", "action", "state", "is_merged", "title", "labels",
+         "created_at_utc", "updated_at_utc", "closed_at_utc", "merged_at_utc",
+         "additions", "deletions", "changed_files_count", "reviews_count", "commits_count"]),
+        ("commits", ["commit_event_id", "owner", "repo", "repo_full_name",
+         "sha", "message", "committed_at_utc", "changed_files_count",
+         "additions", "deletions"]),
+    ]:
+        _dir = (local_root / "compacted" / "events" / "github" / _ds / "year=2024" / "month=02")
+        _dir.mkdir(parents=True)
+        pd.DataFrame({c: [] for c in _cols}).to_parquet(_dir / "data.parquet")
 
     pd.DataFrame(
         {
@@ -198,6 +218,14 @@ def test_browser_history_queries_read_local_compacted_parquet(duckdb_conn, tmp_p
         / "month=03"
     )
     browser_dir.mkdir(parents=True)
+    # utc_end が 3/22 なので 4月の空パーティションも必要
+    _empty_bh = (local_root / "compacted" / "events" / "browser_history" / "page_views" / "year=2026" / "month=04")
+    _empty_bh.mkdir(parents=True)
+    pd.DataFrame({
+        "page_view_id": [], "started_at_utc": [], "ended_at_utc": [],
+        "url": [], "title": [], "browser": [], "profile": [],
+        "transition": [], "visit_span_count": [],
+    }).to_parquet(_empty_bh / "data.parquet")
 
     pd.DataFrame(
         {
@@ -251,9 +279,23 @@ def test_browser_history_queries_read_local_compacted_parquet(duckdb_conn, tmp_p
 
 
 def test_spotify_queries_with_jst_timezone(duckdb_conn, tmp_path):
-    """Asia/Tokyo で日付境界をまたぐデータが正しく取得できること。"""
+    """Asia/Tokyo で日付境界をまたぐデータが正しく取得できること。
+
+    JST 2024-01-01 のデータは UTC では 12/31 15:00 〜 01/01 15:00 にまたがる。
+    パーティションは UTC ベースで year=2023/month=12 と year=2024/month=01 に
+    分割されている前提。両方読み取れて初めて正しい。
+    """
     local_root = tmp_path / "mirror"
-    spotify_dir = (
+    dec_dir = (
+        local_root
+        / "compacted"
+        / "events"
+        / "spotify"
+        / "plays"
+        / "year=2023"
+        / "month=12"
+    )
+    jan_dir = (
         local_root
         / "compacted"
         / "events"
@@ -262,35 +304,40 @@ def test_spotify_queries_with_jst_timezone(duckdb_conn, tmp_path):
         / "year=2024"
         / "month=01"
     )
-    spotify_dir.mkdir(parents=True)
+    dec_dir.mkdir(parents=True)
+    jan_dir.mkdir(parents=True)
 
-    # JST 2024-01-01 01:00 = UTC 2023-12-31 16:00 (前年)
-    # JST 2024-01-01 23:30 = UTC 2024-01-01 14:30
-    # JST 2024-01-02 00:30 = UTC 2024-01-01 15:30
+    # play_1: JST 2024-01-01 01:00 = UTC 2023-12-31 16:00 → year=2023/month=12
+    # play_2: JST 2024-01-01 23:30 = UTC 2024-01-01 14:30 → year=2024/month=01
+    # play_3: JST 2024-01-02 00:30 = UTC 2024-01-01 15:30 → year=2024/month=01 (範囲外)
     pd.DataFrame(
         {
-            "play_id": ["play_1", "play_2", "play_3"],
-            "played_at_utc": pd.to_datetime(
-                [
-                    "2023-12-31 16:00:00",
-                    "2024-01-01 14:30:00",
-                    "2024-01-01 15:30:00",
-                ]
-            ),
-            "track_id": ["track_1", "track_2", "track_3"],
-            "track_name": ["Song A", "Song B", "Song C"],
-            "artist_names": [["Artist X"], ["Artist Y"], ["Artist Z"]],
-            "ms_played": [180000, 180000, 180000],
+            "play_id": ["play_1"],
+            "played_at_utc": pd.to_datetime(["2023-12-31 16:00:00"]),
+            "track_id": ["track_1"],
+            "track_name": ["Song A (prev month)"],
+            "artist_names": [["Artist X"]],
+            "ms_played": [180000],
         }
-    ).to_parquet(spotify_dir / "data.parquet")
+    ).to_parquet(dec_dir / "data.parquet")
+
+    pd.DataFrame(
+        {
+            "play_id": ["play_2", "play_3"],
+            "played_at_utc": pd.to_datetime(
+                ["2024-01-01 14:30:00", "2024-01-01 15:30:00"]
+            ),
+            "track_id": ["track_2", "track_3"],
+            "track_name": ["Song B", "Song C (excluded)"],
+            "artist_names": [["Artist Y"], ["Artist Z"]],
+            "ms_played": [180000, 180000],
+        }
+    ).to_parquet(jan_dir / "data.parquet")
 
     jst = ZoneInfo("Asia/Tokyo")
     utc_start, utc_end = to_utc_range(date(2024, 1, 1), date(2024, 1, 1), jst)
-
     # utc_start = 2023-12-31 15:00, utc_end = 2024-01-01 15:00
-    # play_2 (14:30) < utc_start (15:00) → 除外
-    # play_1 (16:00): 15:00 <= 16:00 < 15:00 → 含まれる
-    # play_3 (15:30): 15:00 <= 15:30 < 15:00 → 含まれる
+
     params = QueryParams(
         conn=duckdb_conn,
         bucket="test-bucket",
@@ -306,12 +353,17 @@ def test_spotify_queries_with_jst_timezone(duckdb_conn, tmp_path):
     top_tracks = get_top_tracks(params, limit=5)
     listening_stats = get_listening_stats(params, granularity="day")
 
-    # JST 1/1 = UTC [12/31 15:00, 01/01 15:00)
-    # play_1 (UTC 12/31 16:00 = JST 1/1 01:00) → 含まれる
-    # play_2 (UTC 01/01 14:30 = JST 1/1 23:30) → 含まれる
-    # play_3 (UTC 01/01 15:30 = JST 1/2 00:30) → utc_end で除外
-    assert len(top_tracks) == 2
-    assert {t["track_name"] for t in top_tracks} == {"Song A", "Song B"}
+    # JST 1/1 に含まれるのは play_1 (前月パーティション) と play_2 (当月)
+    # play_3 は utc_end で除外される
+    assert len(top_tracks) == 2, (
+        f"Expected 2 tracks (cross-partition), got {len(top_tracks)}"
+    )
+    track_names = {t["track_name"] for t in top_tracks}
+    assert "Song A (prev month)" in track_names, (
+        "前月パーティションのデータが欠損しています"
+    )
+    assert "Song B" in track_names
+    assert "Song C (excluded)" not in track_names
     # バケットは JST 日付で "2024-01-01"
     assert len(listening_stats) == 1
     assert listening_stats[0]["period"] == "2024-01-01"

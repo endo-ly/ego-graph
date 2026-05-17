@@ -1,6 +1,6 @@
 """YouTube クエリ層のテスト。"""
 
-from datetime import date, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import Mock, patch
 
 import pandas as pd
@@ -102,17 +102,14 @@ class TestGeneratePartitionPaths:
 
     def test_generates_single_month_path(self):
         """1ヶ月分のパスを生成。"""
-        # Arrange
         bucket = "my-bucket"
         events_path = "events/"
-        start = date(2024, 1, 1)
-        end = date(2024, 1, 31)
+        start = datetime(2024, 1, 1)
+        end = datetime(2024, 2, 1)
 
-        # Act
         paths = _generate_partition_paths(bucket, events_path, start, end)
 
-        # Assert
-        assert len(paths) == 1
+        assert len(paths) == 2  # Jan + Feb
         assert (
             paths[0]
             == "s3://my-bucket/events/youtube/watch_events/year=2024/month=01/**/*.parquet"
@@ -120,17 +117,14 @@ class TestGeneratePartitionPaths:
 
     def test_generates_multiple_month_paths(self):
         """複数月のパスを生成。"""
-        # Arrange
         bucket = "test-bucket"
         events_path = "data/"
-        start = date(2024, 11, 15)
-        end = date(2025, 1, 15)
+        start = datetime(2024, 11, 15)
+        end = datetime(2025, 2, 1)
 
-        # Act
         paths = _generate_partition_paths(bucket, events_path, start, end)
 
-        # Assert
-        assert len(paths) == 3
+        assert len(paths) == 4
         assert (
             paths[0]
             == "s3://test-bucket/data/youtube/watch_events/year=2024/month=11/**/*.parquet"
@@ -146,17 +140,14 @@ class TestGeneratePartitionPaths:
 
     def test_handles_year_boundary(self):
         """年をまたぐ期間を正しく処理。"""
-        # Arrange
         bucket = "bucket"
         events_path = "events/"
-        start = date(2023, 12, 1)
-        end = date(2024, 1, 31)
+        start = datetime(2023, 12, 1)
+        end = datetime(2024, 2, 1)
 
-        # Act
         paths = _generate_partition_paths(bucket, events_path, start, end)
 
-        # Assert
-        assert len(paths) == 2
+        assert len(paths) == 3
         assert "year=2023/month=12" in paths[0]
         assert "year=2024/month=01" in paths[1]
 

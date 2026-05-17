@@ -1,6 +1,6 @@
 """Browser History Queries層のテスト。"""
 
-from datetime import date, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import patch
 
 from backend.infrastructure.database import (
@@ -42,21 +42,22 @@ class TestGenerateBrowserHistoryPartitionPaths:
         paths = _generate_browser_history_partition_paths(
             bucket="test-bucket",
             events_path="events/",
-            start_date=date(2026, 3, 1),
-            end_date=date(2026, 3, 31),
+            utc_start=datetime(2026, 3, 1),
+            utc_end=datetime(2026, 4, 1),
         )
 
-        assert paths == [
+        assert len(paths) == 2  # Mar + Apr (utc_end が次月のため)
+        assert paths[0] == (
             "s3://test-bucket/events/browser_history/page_views/year=2026/month=03/**/*.parquet"
-        ]
+        )
 
     def test_generates_multiple_month_paths(self):
         """複数月期間のパスを生成する。"""
         paths = _generate_browser_history_partition_paths(
             bucket="test-bucket",
             events_path="events/",
-            start_date=date(2026, 3, 20),
-            end_date=date(2026, 5, 1),
+            utc_start=datetime(2026, 3, 20),
+            utc_end=datetime(2026, 5, 1),
         )
 
         assert len(paths) == 3

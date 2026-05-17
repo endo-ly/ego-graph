@@ -83,26 +83,14 @@ def _generate_partition_paths(
     path_template: str,
     bucket: str,
     events_path: str,
-    start_date: date,
-    end_date: date,
+    utc_start: datetime,
+    utc_end: datetime,
     log_label: str,
 ) -> list[str]:
-    """指定期間の月パーティションパスリストを生成します。
-
-    Args:
-        path_template: パスパターンテンプレート
-        bucket: R2バケット名
-        events_path: イベントデータのパスプレフィックス
-        start_date: 開始日
-        end_date: 終了日
-        log_label: ログ用ラベル
-
-    Returns:
-        月パーティションごとのS3パスリスト
-    """
+    """指定期間の月パーティションパスリストを生成します。"""
     paths: list[str] = []
-    current = start_date.replace(day=1)
-    end_month = end_date.replace(day=1)
+    current = date(utc_start.year, utc_start.month, 1)
+    end_month = date(utc_end.year, utc_end.month, 1)
 
     while current <= end_month:
         path = path_template.format(
@@ -122,31 +110,31 @@ def _generate_partition_paths(
         "Generated %d %s partition paths for period %s to %s",
         len(paths),
         log_label,
-        start_date,
-        end_date,
+        utc_start,
+        utc_end,
     )
     return paths
 
 
 def _generate_pr_partition_paths(
-    bucket: str, events_path: str, start_date: date, end_date: date
+    bucket: str, events_path: str, utc_start: datetime, utc_end: datetime
 ) -> list[str]:
     """指定期間の月パーティションに対応するPRイベントParquetパスリストを生成します。"""
     return _generate_partition_paths(
-        GITHUB_PRS_PARTITION_PATH, bucket, events_path, start_date, end_date, "PR"
+        GITHUB_PRS_PARTITION_PATH, bucket, events_path, utc_start, utc_end, "PR"
     )
 
 
 def _generate_commit_partition_paths(
-    bucket: str, events_path: str, start_date: date, end_date: date
+    bucket: str, events_path: str, utc_start: datetime, utc_end: datetime
 ) -> list[str]:
     """指定期間の月パーティションに対応するCommitイベントParquetパスリストを生成します。"""
     return _generate_partition_paths(
         GITHUB_COMMITS_PARTITION_PATH,
         bucket,
         events_path,
-        start_date,
-        end_date,
+        utc_start,
+        utc_end,
         "commit",
     )
 
@@ -157,11 +145,11 @@ def _resolve_pr_partition_paths(params: GitHubQueryParams) -> list[str]:
             params.r2_config,
             data_domain="events",
             dataset_path="github/pull_requests",
-            start_date=params.start_date,
-            end_date=params.end_date,
+            utc_start=params.utc_start,
+            utc_end=params.utc_end,
         )
     return _generate_pr_partition_paths(
-        params.bucket, params.events_path, params.start_date, params.end_date
+        params.bucket, params.events_path, params.utc_start, params.utc_end
     )
 
 
@@ -171,11 +159,11 @@ def _resolve_commit_partition_paths(params: GitHubQueryParams) -> list[str]:
             params.r2_config,
             data_domain="events",
             dataset_path="github/commits",
-            start_date=params.start_date,
-            end_date=params.end_date,
+            utc_start=params.utc_start,
+            utc_end=params.utc_end,
         )
     return _generate_commit_partition_paths(
-        params.bucket, params.events_path, params.start_date, params.end_date
+        params.bucket, params.events_path, params.utc_start, params.utc_end
     )
 
 

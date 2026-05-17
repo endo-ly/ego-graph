@@ -1,6 +1,6 @@
 """Database/Queries層のテスト。"""
 
-from datetime import date, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -42,17 +42,15 @@ class TestGeneratePartitionPaths:
 
     def test_generates_single_month_path(self):
         """1ヶ月分のパスを生成。"""
-        # Arrange: 同じ月の期間を準備
         bucket = "my-bucket"
         events_path = "events/"
-        start = date(2024, 1, 1)
-        end = date(2024, 1, 31)
+        start = datetime(2024, 1, 1)
+        end = datetime(2024, 2, 1)  # 排他、2/1 00:00 まで → Jan+Feb
 
-        # Act: パーティションパスを生成
         paths = _generate_partition_paths(bucket, events_path, start, end)
 
-        # Assert: 1ヶ月分のパスが生成されることを検証
-        assert len(paths) == 1
+        # utc_end が 2/1 なので 2月も含まれる（安全側に倒す）
+        assert len(paths) == 2
         assert (
             paths[0]
             == "s3://my-bucket/events/spotify/plays/year=2024/month=01/**/*.parquet"
@@ -60,17 +58,14 @@ class TestGeneratePartitionPaths:
 
     def test_generates_multiple_month_paths(self):
         """複数月のパスを生成。"""
-        # Arrange: 3ヶ月にわたる期間を準備
         bucket = "test-bucket"
         events_path = "data/"
-        start = date(2024, 11, 15)
-        end = date(2025, 1, 15)
+        start = datetime(2024, 11, 15)
+        end = datetime(2025, 2, 1)
 
-        # Act: パーティションパスを生成
         paths = _generate_partition_paths(bucket, events_path, start, end)
 
-        # Assert: 3ヶ月分のパスが生成されることを検証
-        assert len(paths) == 3
+        assert len(paths) == 4
         assert (
             paths[0]
             == "s3://test-bucket/data/spotify/plays/year=2024/month=11/**/*.parquet"
@@ -86,17 +81,14 @@ class TestGeneratePartitionPaths:
 
     def test_handles_year_boundary(self):
         """年をまたぐ期間を正しく処理。"""
-        # Arrange: 年をまたぐ期間を準備
         bucket = "bucket"
         events_path = "events/"
-        start = date(2023, 12, 1)
-        end = date(2024, 1, 31)
+        start = datetime(2023, 12, 1)
+        end = datetime(2024, 2, 1)
 
-        # Act: パーティションパスを生成
         paths = _generate_partition_paths(bucket, events_path, start, end)
 
-        # Assert: 年をまたぐ2ヶ月分のパスが生成されることを検証
-        assert len(paths) == 2
+        assert len(paths) == 3
         assert "year=2023/month=12" in paths[0]
         assert "year=2024/month=01" in paths[1]
 
