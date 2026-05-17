@@ -266,8 +266,8 @@ def get_watching_stats(
         {ctes}
         SELECT
             strftime(
-                watched_at_utc AT TIME ZONE '{params.tz_name}'
-                AT TIME ZONE 'UTC',
+                watched_at_utc AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}',
                 '{date_format_map[granularity]}'
             ) AS period,
             COUNT(*) AS watch_event_count,

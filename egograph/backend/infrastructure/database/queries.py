@@ -237,8 +237,8 @@ def get_listening_stats(
     query = f"""
         SELECT
             strftime(
-                played_at_utc AT TIME ZONE '{params.tz_name}'
-                AT TIME ZONE 'UTC',
+                played_at_utc AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}',
                 '{date_format}'
             ) as period,
             SUM(ms_played) as total_ms,

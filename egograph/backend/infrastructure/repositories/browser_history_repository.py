@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 class BrowserHistoryRepository:
     """Browser History の page view データを取得する。"""
 
-    def __init__(self, r2_config: R2Config, tz: ZoneInfo = ZoneInfo("UTC")):
+    def __init__(self, r2_config: R2Config, tz: ZoneInfo | None = None):
         self.r2_config = r2_config
-        self._tz = tz
+        self._tz = tz or ZoneInfo("UTC")
 
     def _build_params(
         self,

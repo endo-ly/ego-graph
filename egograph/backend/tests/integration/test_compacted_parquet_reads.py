@@ -2,6 +2,7 @@
 
 from datetime import date, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from pydantic import SecretStr
@@ -247,3 +248,70 @@ def test_browser_history_queries_read_local_compacted_parquet(duckdb_conn, tmp_p
     assert [row["page_view_id"] for row in page_views] == ["pv_2", "pv_1"]
     assert top_domains[0]["domain"] == "github.com"
     assert top_domains[0]["page_view_count"] == 2
+
+
+def test_spotify_queries_with_jst_timezone(duckdb_conn, tmp_path):
+    """Asia/Tokyo で日付境界をまたぐデータが正しく取得できること。"""
+    local_root = tmp_path / "mirror"
+    spotify_dir = (
+        local_root
+        / "compacted"
+        / "events"
+        / "spotify"
+        / "plays"
+        / "year=2024"
+        / "month=01"
+    )
+    spotify_dir.mkdir(parents=True)
+
+    # JST 2024-01-01 01:00 = UTC 2023-12-31 16:00 (前年)
+    # JST 2024-01-01 23:30 = UTC 2024-01-01 14:30
+    # JST 2024-01-02 00:30 = UTC 2024-01-01 15:30
+    pd.DataFrame(
+        {
+            "play_id": ["play_1", "play_2", "play_3"],
+            "played_at_utc": pd.to_datetime(
+                [
+                    "2023-12-31 16:00:00",
+                    "2024-01-01 14:30:00",
+                    "2024-01-01 15:30:00",
+                ]
+            ),
+            "track_id": ["track_1", "track_2", "track_3"],
+            "track_name": ["Song A", "Song B", "Song C"],
+            "artist_names": [["Artist X"], ["Artist Y"], ["Artist Z"]],
+            "ms_played": [180000, 180000, 180000],
+        }
+    ).to_parquet(spotify_dir / "data.parquet")
+
+    jst = ZoneInfo("Asia/Tokyo")
+    utc_start, utc_end = to_utc_range(date(2024, 1, 1), date(2024, 1, 1), jst)
+
+    # utc_start = 2023-12-31 15:00, utc_end = 2024-01-01 15:00
+    # play_2 (14:30) < utc_start (15:00) → 除外
+    # play_1 (16:00): 15:00 <= 16:00 < 15:00 → 含まれる
+    # play_3 (15:30): 15:00 <= 15:30 < 15:00 → 含まれる
+    params = QueryParams(
+        conn=duckdb_conn,
+        bucket="test-bucket",
+        events_path="events/",
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 1, 1),
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name="Asia/Tokyo",
+        r2_config=_build_config(local_root),
+    )
+
+    top_tracks = get_top_tracks(params, limit=5)
+    listening_stats = get_listening_stats(params, granularity="day")
+
+    # JST 1/1 = UTC [12/31 15:00, 01/01 15:00)
+    # play_1 (UTC 12/31 16:00 = JST 1/1 01:00) → 含まれる
+    # play_2 (UTC 01/01 14:30 = JST 1/1 23:30) → 含まれる
+    # play_3 (UTC 01/01 15:30 = JST 1/2 00:30) → utc_end で除外
+    assert len(top_tracks) == 2
+    assert {t["track_name"] for t in top_tracks} == {"Song A", "Song B"}
+    # バケットは JST 日付で "2024-01-01"
+    assert len(listening_stats) == 1
+    assert listening_stats[0]["period"] == "2024-01-01"

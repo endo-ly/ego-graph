@@ -62,7 +62,7 @@ class TestToUtcRange:
         assert end == datetime(2026, 1, 16, 5, 0, 0)
 
     def test_returns_naive_datetime(self):
-        """返り値が naive datetime（tzinfo=None）であること。"""
+        """返り値が naive datetime (tzinfo=None) であること。"""
         start, end = to_utc_range(date(2024, 1, 1), date(2024, 1, 1), ZoneInfo("UTC"))
         assert start.tzinfo is None
         assert end.tzinfo is None

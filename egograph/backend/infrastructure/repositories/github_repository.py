@@ -31,7 +31,7 @@ class GitHubRepository:
     R2 上の Parquet ファイルに直接クエリを発行します。
     """
 
-    def __init__(self, r2_config: R2Config, tz: ZoneInfo = ZoneInfo("UTC")):
+    def __init__(self, r2_config: R2Config, tz: ZoneInfo | None = None):
         """GitHubRepository を初期化します。
 
         Args:
@@ -39,7 +39,7 @@ class GitHubRepository:
             tz: クエリ時の日付解釈に使用するタイムゾーン
         """
         self.r2_config = r2_config
-        self._tz = tz
+        self._tz = tz or ZoneInfo("UTC")
 
     def _build_params(
         self,

@@ -551,8 +551,8 @@ def get_activity_stats(
         WITH pr_per_key AS (
             SELECT
                 strftime(
-                    pr.updated_at_utc AT TIME ZONE '{params.tz_name}'
-                    AT TIME ZONE 'UTC',
+                    pr.updated_at_utc AT TIME ZONE 'UTC'
+                    AT TIME ZONE '{params.tz_name}',
                     '{date_format}'
                 ) as period,
                 pr.pr_key,
@@ -583,8 +583,8 @@ def get_activity_stats(
         commit_stats AS (
             SELECT
                 strftime(
-                    c.committed_at_utc AT TIME ZONE '{params.tz_name}'
-                    AT TIME ZONE 'UTC',
+                    c.committed_at_utc AT TIME ZONE 'UTC'
+                    AT TIME ZONE '{params.tz_name}',
                     '{date_format}'
                 ) as period,
                 COUNT(*) as commits_count,
