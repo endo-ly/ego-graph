@@ -1,6 +1,6 @@
 """Integration tests that read actual compacted parquet files."""
 
-from datetime import date
+from datetime import date, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -24,6 +24,11 @@ from backend.infrastructure.database.queries import (
     get_listening_stats,
     get_top_tracks,
 )
+from backend.validators import to_utc_range
+
+
+def _utc_range(start_date: date, end_date: date):
+    return to_utc_range(start_date, end_date, timezone.utc)
 
 
 def _build_config(local_root: Path) -> R2Config:
@@ -65,12 +70,16 @@ def test_spotify_queries_read_local_compacted_parquet(duckdb_conn, tmp_path):
         }
     ).to_parquet(spotify_dir / "data.parquet")
 
+    utc_start, utc_end = _utc_range(date(2024, 1, 1), date(2024, 1, 31))
     params = QueryParams(
         conn=duckdb_conn,
         bucket="test-bucket",
         events_path="events/",
         start_date=date(2024, 1, 1),
         end_date=date(2024, 1, 31),
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name="UTC",
         r2_config=_build_config(local_root),
     )
 
@@ -151,6 +160,7 @@ def test_github_queries_read_local_compacted_parquet(duckdb_conn, tmp_path):
         }
     ).to_parquet(commit_dir / "data.parquet")
 
+    utc_start, utc_end = _utc_range(date(2024, 1, 1), date(2024, 1, 31))
     params = GitHubQueryParams(
         conn=duckdb_conn,
         bucket="test-bucket",
@@ -158,6 +168,9 @@ def test_github_queries_read_local_compacted_parquet(duckdb_conn, tmp_path):
         master_path="master/",
         start_date=date(2024, 1, 1),
         end_date=date(2024, 1, 31),
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name="UTC",
         r2_config=_build_config(local_root),
     )
 
@@ -215,12 +228,16 @@ def test_browser_history_queries_read_local_compacted_parquet(duckdb_conn, tmp_p
         }
     ).to_parquet(browser_dir / "data.parquet")
 
+    utc_start, utc_end = _utc_range(date(2026, 3, 20), date(2026, 3, 21))
     params = BrowserHistoryQueryParams(
         conn=duckdb_conn,
         bucket="test-bucket",
         events_path="events/",
         start_date=date(2026, 3, 20),
         end_date=date(2026, 3, 21),
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name="UTC",
         r2_config=_build_config(local_root),
     )
 

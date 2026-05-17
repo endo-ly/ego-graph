@@ -24,6 +24,7 @@ from backend.infrastructure.database import (
     get_top_tracks,
 )
 from backend.validators import (
+    to_utc_range,
     validate_date_range,
     validate_granularity,
     validate_limit,
@@ -66,12 +67,16 @@ async def get_top_tracks_endpoint(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     logger.info("Getting top tracks: %s to %s, limit=%s", start_date, end_date, limit)
+    utc_start, utc_end = to_utc_range(start, end, config.timezone)
     params = QueryParams(
         conn=db_connection,
         bucket=config.r2.bucket_name,
         events_path=config.r2.events_path,
         start_date=start,
         end_date=end,
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name=str(config.timezone),
     )
     return get_top_tracks(params, validated_limit)
 
@@ -113,11 +118,15 @@ async def get_listening_stats_endpoint(
         end_date,
         granularity,
     )
+    utc_start, utc_end = to_utc_range(start, end, config.timezone)
     params = QueryParams(
         conn=db_connection,
         bucket=config.r2.bucket_name,
         events_path=config.r2.events_path,
         start_date=start,
         end_date=end,
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name=str(config.timezone),
     )
     return get_listening_stats(params, validated_granularity)

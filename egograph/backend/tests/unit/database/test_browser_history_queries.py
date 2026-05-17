@@ -1,6 +1,6 @@
 """Browser History Queries層のテスト。"""
 
-from datetime import date
+from datetime import date, timezone
 from unittest.mock import patch
 
 from backend.infrastructure.database import (
@@ -11,6 +11,27 @@ from backend.infrastructure.database import (
 from backend.infrastructure.database.browser_history_queries import (
     _generate_browser_history_partition_paths,
 )
+from backend.validators import to_utc_range
+
+
+def _bqp(**overrides):
+    """テスト用 BrowserHistoryQueryParams ファクトリ。"""
+    defaults = dict(
+        bucket="test-bucket",
+        events_path="events/",
+        tz_name="UTC",
+    )
+    defaults.update(overrides)
+    sd = defaults.pop("start_date")
+    ed = defaults.pop("end_date")
+    utc_start, utc_end = to_utc_range(sd, ed, timezone.utc)
+    return BrowserHistoryQueryParams(
+        start_date=sd,
+        end_date=ed,
+        utc_start=utc_start,
+        utc_end=utc_end,
+        **defaults,
+    )
 
 
 class TestGenerateBrowserHistoryPartitionPaths:
@@ -58,7 +79,7 @@ class TestGetPageViews:
             "backend.infrastructure.database.browser_history_queries._generate_browser_history_partition_paths",
             return_value=[parquet_path],
         ):
-            params = BrowserHistoryQueryParams(
+            params = _bqp(
                 conn=browser_history_with_sample_data,
                 bucket="test-bucket",
                 events_path="events/",
@@ -78,7 +99,7 @@ class TestGetPageViews:
             "backend.infrastructure.database.browser_history_queries._generate_browser_history_partition_paths",
             return_value=[parquet_path],
         ):
-            params = BrowserHistoryQueryParams(
+            params = _bqp(
                 conn=browser_history_with_sample_data,
                 bucket="test-bucket",
                 events_path="events/",
@@ -109,7 +130,7 @@ class TestGetTopDomains:
             "backend.infrastructure.database.browser_history_queries._generate_browser_history_partition_paths",
             return_value=[parquet_path],
         ):
-            params = BrowserHistoryQueryParams(
+            params = _bqp(
                 conn=browser_history_with_sample_data,
                 bucket="test-bucket",
                 events_path="events/",
@@ -135,7 +156,7 @@ class TestGetTopDomains:
             "backend.infrastructure.database.browser_history_queries._generate_browser_history_partition_paths",
             return_value=[parquet_path],
         ):
-            params = BrowserHistoryQueryParams(
+            params = _bqp(
                 conn=browser_history_with_sample_data,
                 bucket="test-bucket",
                 events_path="events/",

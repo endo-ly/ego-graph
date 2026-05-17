@@ -3,6 +3,7 @@
 import logging
 from datetime import date
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from backend.config import R2Config
 from backend.infrastructure.database import (
@@ -11,6 +12,7 @@ from backend.infrastructure.database import (
     get_page_views,
     get_top_domains,
 )
+from backend.validators import to_utc_range
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +20,28 @@ logger = logging.getLogger(__name__)
 class BrowserHistoryRepository:
     """Browser History の page view データを取得する。"""
 
-    def __init__(self, r2_config: R2Config):
+    def __init__(self, r2_config: R2Config, tz: ZoneInfo = ZoneInfo("UTC")):
         self.r2_config = r2_config
+        self._tz = tz
+
+    def _build_params(
+        self,
+        conn: DuckDBConnection,
+        start_date: date,
+        end_date: date,
+    ) -> BrowserHistoryQueryParams:
+        utc_start, utc_end = to_utc_range(start_date, end_date, self._tz)
+        return BrowserHistoryQueryParams(
+            conn=conn,
+            bucket=self.r2_config.bucket_name,
+            events_path=self.r2_config.events_path,
+            start_date=start_date,
+            end_date=end_date,
+            utc_start=utc_start,
+            utc_end=utc_end,
+            tz_name=str(self._tz),
+            r2_config=self.r2_config,
+        )
 
     def _run_query(
         self,
@@ -33,14 +55,7 @@ class BrowserHistoryRepository:
         log_label: str,
     ) -> list[dict[str, Any]]:
         with DuckDBConnection(self.r2_config) as conn:
-            params = BrowserHistoryQueryParams(
-                conn=conn,
-                bucket=self.r2_config.bucket_name,
-                events_path=self.r2_config.events_path,
-                start_date=start_date,
-                end_date=end_date,
-                r2_config=self.r2_config,
-            )
+            params = self._build_params(conn, start_date, end_date)
             result = query_func(
                 params,
                 browser=browser,

@@ -219,6 +219,6 @@ def test_create_mcp_server_with_none_r2(mock_backend_config):
         result = _run_list_tools(server)
 
     # Assert: build_tool_registry が None で呼ばれ、ツール0件で返ることを検証
-    mock_build.assert_called_once_with(None)
+    mock_build.assert_called_once_with(None, tz=mock_backend_config.timezone)
     assert isinstance(server, FastMCP)
     assert result.tools == []

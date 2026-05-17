@@ -4,7 +4,6 @@
 """
 
 
-
 class TestMcpEndpoint:
     """MCPエンドポイントの統合テスト。"""
 

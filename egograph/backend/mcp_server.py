@@ -33,7 +33,7 @@ def create_mcp_server(config: BackendConfig) -> FastMCP:
         transport_security=config.mcp_transport_security,
     )
 
-    registry = build_tool_registry(config.r2)
+    registry = build_tool_registry(config.r2, tz=config.timezone)
 
     server = mcp._mcp_server
 

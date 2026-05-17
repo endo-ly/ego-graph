@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import duckdb
@@ -24,6 +24,9 @@ class YouTubeQueryParams:
     master_path: str
     start_date: date
     end_date: date
+    utc_start: datetime
+    utc_end: datetime
+    tz_name: str = "UTC"
 
 
 YOUTUBE_WATCH_EVENTS_PATH = (
@@ -186,13 +189,15 @@ def _build_enriched_cte(
     ctes.append(
         "filtered_watch_events AS ("
         "SELECT * FROM read_parquet(?) "
-        "WHERE watched_at_utc::DATE BETWEEN ? AND ?)"
+        "WHERE watched_at_utc >= ? AND watched_at_utc < ?)"
     )
-    sql_params.extend([
-        _resolve_watch_event_paths(params),
-        params.start_date,
-        params.end_date,
-    ])
+    sql_params.extend(
+        [
+            _resolve_watch_event_paths(params),
+            params.utc_start,
+            params.utc_end,
+        ]
+    )
 
     ctes.append(
         "enriched_watch_events AS ("
@@ -260,7 +265,11 @@ def get_watching_stats(
         WITH
         {ctes}
         SELECT
-            strftime(watched_at_utc::DATE, '{date_format_map[granularity]}') AS period,
+            strftime(
+                watched_at_utc AT TIME ZONE '{params.tz_name}'
+                AT TIME ZONE 'UTC',
+                '{date_format_map[granularity]}'
+            ) AS period,
             COUNT(*) AS watch_event_count,
             COUNT(DISTINCT video_id) AS unique_video_count,
             COUNT(DISTINCT CASE

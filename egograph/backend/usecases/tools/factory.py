@@ -1,5 +1,7 @@
 """ツールレジストリの構築ヘルパー。"""
 
+from zoneinfo import ZoneInfo
+
 from backend.config import R2Config
 from backend.domain.tools.browser_history.page_views import (
     GetPageViewsTool,
@@ -29,24 +31,29 @@ from backend.infrastructure.repositories import (
 from backend.usecases.tools.registry import ToolRegistry
 
 
-def build_tool_registry(r2_config: R2Config | None) -> ToolRegistry:
+def build_tool_registry(
+    r2_config: R2Config | None,
+    tz: ZoneInfo | None = None,
+) -> ToolRegistry:
     """R2設定に応じたツールレジストリを構築する。"""
     tool_registry = ToolRegistry()
 
     if not r2_config:
         return tool_registry
 
+    effective_tz = tz or ZoneInfo("UTC")
+
     # Spotifyツール
-    spotify_repository = SpotifyRepository(r2_config)
+    spotify_repository = SpotifyRepository(r2_config, tz=effective_tz)
     tool_registry.register(GetTopTracksTool(spotify_repository))
     tool_registry.register(GetListeningStatsTool(spotify_repository))
 
-    browser_history_repository = BrowserHistoryRepository(r2_config)
+    browser_history_repository = BrowserHistoryRepository(r2_config, tz=effective_tz)
     tool_registry.register(GetPageViewsTool(browser_history_repository))
     tool_registry.register(GetTopDomainsTool(browser_history_repository))
 
     # GitHubツール
-    github_repository = GitHubRepository(r2_config)
+    github_repository = GitHubRepository(r2_config, tz=effective_tz)
     tool_registry.register(GetPullRequestsTool(github_repository))
     tool_registry.register(GetCommitsTool(github_repository))
     tool_registry.register(GetRepositoriesTool(github_repository))
@@ -57,7 +64,7 @@ def build_tool_registry(r2_config: R2Config | None) -> ToolRegistry:
     tool_registry.register(DataQueryTool(r2_config))
 
     # YouTubeツール
-    youtube_repository = YouTubeRepository(r2_config)
+    youtube_repository = YouTubeRepository(r2_config, tz=effective_tz)
     tool_registry.register(GetYouTubeWatchEventsTool(youtube_repository))
     tool_registry.register(GetYouTubeWatchingStatsTool(youtube_repository))
     tool_registry.register(GetYouTubeTopVideosTool(youtube_repository))

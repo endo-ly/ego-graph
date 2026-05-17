@@ -1,7 +1,7 @@
 """Browser History データ用のSQLクエリテンプレートとヘルパー関数。"""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import duckdb
@@ -26,6 +26,9 @@ class BrowserHistoryQueryParams:
     events_path: str
     start_date: date
     end_date: date
+    utc_start: datetime
+    utc_end: datetime
+    tz_name: str = "UTC"
     r2_config: R2Config | None = None
 
 
@@ -95,7 +98,7 @@ def get_page_views(
             transition,
             visit_span_count
         FROM read_parquet(?)
-        WHERE started_at_utc::DATE BETWEEN ? AND ?
+        WHERE started_at_utc >= ? AND started_at_utc < ?
           AND (? IS NULL OR browser = ?)
           AND (? IS NULL OR profile = ?)
         ORDER BY started_at_utc DESC
@@ -106,8 +109,8 @@ def get_page_views(
         sql,
         [
             partition_paths,
-            params.start_date,
-            params.end_date,
+            params.utc_start,
+            params.utc_end,
             browser,
             browser,
             profile,
@@ -132,7 +135,7 @@ def get_top_domains(
                 NULLIF(regexp_extract(url, '^[a-zA-Z]+://([^/?#]+)', 1), '') AS domain,
                 url
             FROM read_parquet(?)
-            WHERE started_at_utc::DATE BETWEEN ? AND ?
+            WHERE started_at_utc >= ? AND started_at_utc < ?
               AND (? IS NULL OR browser = ?)
               AND (? IS NULL OR profile = ?)
         )
@@ -151,8 +154,8 @@ def get_top_domains(
         sql,
         [
             partition_paths,
-            params.start_date,
-            params.end_date,
+            params.utc_start,
+            params.utc_end,
             browser,
             browser,
             profile,

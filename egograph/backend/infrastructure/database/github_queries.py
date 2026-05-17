@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import duckdb
@@ -24,6 +24,9 @@ class GitHubQueryParams:
     master_path: str
     start_date: date
     end_date: date
+    utc_start: datetime
+    utc_end: datetime
+    tz_name: str = "UTC"
     r2_config: R2Config | None = None
 
 
@@ -290,10 +293,10 @@ def get_pull_requests(
             reviews_count,
             commits_count
         FROM read_parquet(?)
-        WHERE updated_at_utc::DATE BETWEEN ? AND ?
+        WHERE updated_at_utc >= ? AND updated_at_utc < ?
     """
 
-    query_params: list[Any] = [partition_paths, params.start_date, params.end_date]
+    query_params: list[Any] = [partition_paths, params.utc_start, params.utc_end]
 
     if owner:
         query += " AND owner = ?"
@@ -373,10 +376,10 @@ def get_commits(
             additions,
             deletions
         FROM read_parquet(?)
-        WHERE committed_at_utc::DATE BETWEEN ? AND ?
+        WHERE committed_at_utc >= ? AND committed_at_utc < ?
     """
 
-    query_params: list[Any] = [partition_paths, params.start_date, params.end_date]
+    query_params: list[Any] = [partition_paths, params.utc_start, params.utc_end]
 
     if owner:
         query += " AND owner = ?"
@@ -547,7 +550,11 @@ def get_activity_stats(
     query = f"""
         WITH pr_per_key AS (
             SELECT
-                strftime(pr.updated_at_utc::DATE, '{date_format}') as period,
+                strftime(
+                    pr.updated_at_utc AT TIME ZONE '{params.tz_name}'
+                    AT TIME ZONE 'UTC',
+                    '{date_format}'
+                ) as period,
                 pr.pr_key,
                 MAX(CASE WHEN pr.action = 'opened' THEN 1 ELSE 0 END) as is_opened,
                 MAX(CASE WHEN pr.action = 'merged' THEN 1 ELSE 0 END) as is_merged,
@@ -560,7 +567,7 @@ def get_activity_stats(
                     0
                 ) as deletions
             FROM read_parquet(?) pr
-            WHERE pr.updated_at_utc::DATE BETWEEN ? AND ?
+            WHERE pr.updated_at_utc >= ? AND pr.updated_at_utc < ?
             GROUP BY period, pr.pr_key
         ),
         pr_stats AS (
@@ -575,12 +582,16 @@ def get_activity_stats(
         ),
         commit_stats AS (
             SELECT
-                strftime(c.committed_at_utc::DATE, '{date_format}') as period,
+                strftime(
+                    c.committed_at_utc AT TIME ZONE '{params.tz_name}'
+                    AT TIME ZONE 'UTC',
+                    '{date_format}'
+                ) as period,
                 COUNT(*) as commits_count,
                 COALESCE(SUM(c.additions), 0) as commit_additions,
                 COALESCE(SUM(c.deletions), 0) as commit_deletions
             FROM read_parquet(?) c
-            WHERE c.committed_at_utc::DATE BETWEEN ? AND ?
+            WHERE c.committed_at_utc >= ? AND c.committed_at_utc < ?
             GROUP BY period
         )
         SELECT
@@ -607,11 +618,11 @@ def get_activity_stats(
         query,
         [
             pr_partition_paths,
-            params.start_date,
-            params.end_date,
+            params.utc_start,
+            params.utc_end,
             commit_partition_paths,
-            params.start_date,
-            params.end_date,
+            params.utc_start,
+            params.utc_end,
         ],
     )
 
@@ -666,7 +677,7 @@ def get_repo_summary_stats(
                 ) as deletions,
                 MAX(CASE WHEN pr.action = 'merged' THEN 1 ELSE 0 END) as is_merged
             FROM read_parquet(?) pr
-            WHERE pr.updated_at_utc::DATE BETWEEN ? AND ?
+            WHERE pr.updated_at_utc >= ? AND pr.updated_at_utc < ?
             GROUP BY pr.owner, pr.repo, pr.repo_full_name, pr.pr_key
         ),
         pr_summary AS (
@@ -692,7 +703,7 @@ def get_repo_summary_stats(
                 COALESCE(SUM(c.deletions), 0) as commit_deletions,
                 MAX(c.committed_at_utc) as last_commit_at
             FROM read_parquet(?) c
-            WHERE c.committed_at_utc::DATE BETWEEN ? AND ?
+            WHERE c.committed_at_utc >= ? AND c.committed_at_utc < ?
             GROUP BY c.owner, c.repo, c.repo_full_name
         )
         SELECT
@@ -715,11 +726,11 @@ def get_repo_summary_stats(
 
     query_params: list[Any] = [
         pr_partition_paths,
-        params.start_date,
-        params.end_date,
+        params.utc_start,
+        params.utc_end,
         commit_partition_paths,
-        params.start_date,
-        params.end_date,
+        params.utc_start,
+        params.utc_end,
     ]
 
     if owner:

@@ -5,7 +5,7 @@ LLMを介さず、直接GitHub Worklogデータを取得するためのREST API�
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime
 
 import duckdb
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -33,6 +33,7 @@ from backend.infrastructure.database import (
     get_repositories,
 )
 from backend.validators import (
+    to_utc_range,
     validate_date_range,
     validate_granularity,
     validate_limit,
@@ -88,6 +89,7 @@ def get_pull_requests_endpoint(
         state,
         limit,
     )
+    utc_start, utc_end = to_utc_range(start, end, config.timezone)
     params = GitHubQueryParams(
         conn=db_connection,
         bucket=config.r2.bucket_name,
@@ -95,6 +97,9 @@ def get_pull_requests_endpoint(
         master_path=config.r2.master_path,
         start_date=start,
         end_date=end,
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name=str(config.timezone),
     )
     return get_pull_requests(
         params, owner=owner, repo=repo, state=state, limit=validated_limit
@@ -143,6 +148,7 @@ def get_commits_endpoint(
         repo,
         limit,
     )
+    utc_start, utc_end = to_utc_range(start, end, config.timezone)
     params = GitHubQueryParams(
         conn=db_connection,
         bucket=config.r2.bucket_name,
@@ -150,6 +156,9 @@ def get_commits_endpoint(
         master_path=config.r2.master_path,
         start_date=start,
         end_date=end,
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name=str(config.timezone),
     )
     return get_commits(params, owner=owner, repo=repo, limit=validated_limit)
 
@@ -183,8 +192,11 @@ def get_repositories_endpoint(
         bucket=config.r2.bucket_name,
         events_path=config.r2.events_path,
         master_path=config.r2.master_path,
-        start_date=date.min,
-        end_date=date.max,
+        start_date=date(1, 1, 1),
+        end_date=date(9999, 12, 31),
+        utc_start=datetime.min,
+        utc_end=datetime.max,
+        tz_name=str(config.timezone),
     )
     return get_repositories(params, owner=owner, limit=validated_limit)
 
@@ -225,6 +237,7 @@ def get_activity_stats_endpoint(
         end_date,
         granularity,
     )
+    utc_start, utc_end = to_utc_range(start, end, config.timezone)
     params = GitHubQueryParams(
         conn=db_connection,
         bucket=config.r2.bucket_name,
@@ -232,6 +245,9 @@ def get_activity_stats_endpoint(
         master_path=config.r2.master_path,
         start_date=start,
         end_date=end,
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name=str(config.timezone),
     )
     return get_activity_stats(params, granularity=validated_granularity)
 
@@ -272,6 +288,7 @@ def get_repo_summary_stats_endpoint(
         owner,
         repo,
     )
+    utc_start, utc_end = to_utc_range(start, end, config.timezone)
     params = GitHubQueryParams(
         conn=db_connection,
         bucket=config.r2.bucket_name,
@@ -279,5 +296,8 @@ def get_repo_summary_stats_endpoint(
         master_path=config.r2.master_path,
         start_date=start,
         end_date=end,
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name=str(config.timezone),
     )
     return get_repo_summary_stats(params, owner=owner, repo_name=repo)

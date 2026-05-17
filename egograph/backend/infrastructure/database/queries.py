@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import duckdb
@@ -30,6 +30,9 @@ class QueryParams:
     events_path: str
     start_date: date
     end_date: date
+    utc_start: datetime
+    utc_end: datetime
+    tz_name: str = "UTC"
     r2_config: R2Config | None = None
 
 
@@ -164,7 +167,7 @@ def get_top_tracks(
             COUNT(*) as play_count,
             SUM(ms_played) / ? as total_minutes
         FROM read_parquet(?)
-        WHERE played_at_utc::DATE BETWEEN ? AND ?
+        WHERE played_at_utc >= ? AND played_at_utc < ?
         GROUP BY track_name, artist
         ORDER BY play_count DESC
         LIMIT ?
@@ -181,8 +184,8 @@ def get_top_tracks(
         [
             MS_TO_MINUTES_FACTOR,
             partition_paths,
-            params.start_date,
-            params.end_date,
+            params.utc_start,
+            params.utc_end,
             limit,
         ],
     )
@@ -230,15 +233,19 @@ def get_listening_stats(
     date_format = date_format_map[granularity]
 
     # DuckDBのstrftimeフォーマット文字列は動的に埋める必要があるため
-    # 例外的にf-stringを使用
+    # 例外的にf-stringを使用（tz_nameは文字列埋め込み）
     query = f"""
         SELECT
-            strftime(played_at_utc::DATE, '{date_format}') as period,
+            strftime(
+                played_at_utc AT TIME ZONE '{params.tz_name}'
+                AT TIME ZONE 'UTC',
+                '{date_format}'
+            ) as period,
             SUM(ms_played) as total_ms,
             COUNT(*) as track_count,
             COUNT(DISTINCT track_id) as unique_tracks
         FROM read_parquet(?)
-        WHERE played_at_utc::DATE BETWEEN ? AND ?
+        WHERE played_at_utc >= ? AND played_at_utc < ?
         GROUP BY period
         ORDER BY period ASC
     """
@@ -250,7 +257,7 @@ def get_listening_stats(
         granularity,
     )
     return execute_query(
-        params.conn, query, [partition_paths, params.start_date, params.end_date]
+        params.conn, query, [partition_paths, params.utc_start, params.utc_end]
     )
 
 

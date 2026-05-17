@@ -1,6 +1,6 @@
 """YouTube クエリ層のテスト。"""
 
-from datetime import date
+from datetime import date, timezone
 from unittest.mock import Mock, patch
 
 import pandas as pd
@@ -23,6 +23,28 @@ from backend.infrastructure.database.youtube_queries import (
     get_watching_stats,
 )
 from backend.tests.fixtures.youtube import patch_youtube_paths
+from backend.validators import to_utc_range
+
+
+def _yqp(**overrides):
+    """テスト用 YouTubeQueryParams ファクトリ。"""
+    defaults = dict(
+        bucket="test-bucket",
+        events_path="events/",
+        master_path="master/",
+        tz_name="UTC",
+    )
+    defaults.update(overrides)
+    sd = defaults.pop("start_date")
+    ed = defaults.pop("end_date")
+    utc_start, utc_end = to_utc_range(sd, ed, timezone.utc)
+    return YouTubeQueryParams(
+        start_date=sd,
+        end_date=ed,
+        utc_start=utc_start,
+        utc_end=utc_end,
+        **defaults,
+    )
 
 
 class TestYouTubeQueryParams:
@@ -31,7 +53,7 @@ class TestYouTubeQueryParams:
     def test_creates_params(self, duckdb_conn):
         """YouTubeQueryParamsを作成。"""
         # Arrange & Act
-        params = YouTubeQueryParams(
+        params = _yqp(
             conn=duckdb_conn,
             bucket="test-bucket",
             events_path="events/",
@@ -148,7 +170,7 @@ class TestResolveWatchEventPaths:
         execute_result = Mock()
         execute_result.fetchone.return_value = (0,)
         conn.execute.return_value = execute_result
-        params = YouTubeQueryParams(
+        params = _yqp(
             conn=conn,
             bucket="test-bucket",
             events_path="events/",
@@ -229,7 +251,7 @@ class TestGetWatchEvents:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -252,7 +274,7 @@ class TestGetWatchEvents:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act: 2024-01-01のデータのみ取得
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -272,7 +294,7 @@ class TestGetWatchEvents:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act: limit=2で取得
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -288,7 +310,7 @@ class TestGetWatchEvents:
     def test_applies_default_limit_when_limit_is_none(self, youtube_with_sample_data):
         """limit未指定でも bounded query として実行する。"""
         with patch_youtube_paths(youtube_with_sample_data):
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket="test-bucket",
                 events_path="events/",
@@ -318,7 +340,7 @@ class TestGetWatchingStats:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -342,7 +364,7 @@ class TestGetWatchingStats:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -363,7 +385,7 @@ class TestGetWatchingStats:
         bucket = "test-bucket"
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -378,7 +400,7 @@ class TestGetWatchingStats:
     def test_uses_iso_year_for_week_granularity(self, youtube_with_sample_data):
         """週集計は ISO 年フォーマットを使う。"""
         with patch_youtube_paths(youtube_with_sample_data):
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket="test-bucket",
                 events_path="events/",
@@ -406,7 +428,7 @@ class TestGetTopVideos:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -429,7 +451,7 @@ class TestGetTopVideos:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act: limit=2で取得
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -449,7 +471,7 @@ class TestGetTopVideos:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -474,7 +496,7 @@ class TestGetTopChannels:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -498,7 +520,7 @@ class TestGetTopChannels:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act: limit=2で取得
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -518,7 +540,7 @@ class TestGetTopChannels:
         events_path = "events/"
         with patch_youtube_paths(youtube_with_sample_data):
             # Act
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_with_sample_data,
                 bucket=bucket,
                 events_path=events_path,
@@ -582,7 +604,7 @@ class TestMissingMasterData:
     def test_get_watch_events_without_master(self, youtube_without_master_data):
         """マスターなしでも watch events を取得できる。"""
         with patch_youtube_paths(youtube_without_master_data):
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_without_master_data,
                 bucket="test-bucket",
                 events_path="events/",
@@ -602,7 +624,7 @@ class TestMissingMasterData:
     def test_get_watching_stats_without_master(self, youtube_without_master_data):
         """マスターなしでも視聴統計を取得できる。"""
         with patch_youtube_paths(youtube_without_master_data):
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_without_master_data,
                 bucket="test-bucket",
                 events_path="events/",
@@ -619,7 +641,7 @@ class TestMissingMasterData:
     def test_get_top_videos_without_master(self, youtube_without_master_data):
         """マスターなしでもトップ動画を取得できる。"""
         with patch_youtube_paths(youtube_without_master_data):
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_without_master_data,
                 bucket="test-bucket",
                 events_path="events/",
@@ -639,7 +661,7 @@ class TestMissingMasterData:
     def test_get_top_channels_without_master(self, youtube_without_master_data):
         """マスターなしでもトップチャンネルを取得できる。"""
         with patch_youtube_paths(youtube_without_master_data):
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_without_master_data,
                 bucket="test-bucket",
                 events_path="events/",
@@ -657,7 +679,7 @@ class TestMissingMasterData:
     def test_build_enriched_cte_without_master(self, youtube_without_master_data):
         """マスターなしの場合、CTE に read_parquet パラメータが含まれない。"""
         with patch_youtube_paths(youtube_without_master_data):
-            params = YouTubeQueryParams(
+            params = _yqp(
                 conn=youtube_without_master_data,
                 bucket="test-bucket",
                 events_path="events/",
