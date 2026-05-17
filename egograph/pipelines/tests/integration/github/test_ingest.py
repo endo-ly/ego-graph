@@ -112,7 +112,10 @@ def _mock_github_api(
 @responses.activate
 def test_ingest_saves_raw_events_and_state():
     """Ingest が raw JSON, events Parquet, ingest state を S3 に保存する。"""
-    current_month = "2026-04"
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    current_month = f"{now.year}-{now.month:02d}"
     pr = {
         **MOCK_PULL_REQUEST_RESPONSE,
         "created_at": f"{current_month}-01T00:00:00Z",

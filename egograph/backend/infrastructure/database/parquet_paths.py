@@ -1,7 +1,7 @@
 """Compacted parquet path resolution helpers."""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from backend.config import R2Config
@@ -21,10 +21,11 @@ def _normalize_path(path: str) -> str:
     return path.rstrip("/") + "/"
 
 
-def _iter_months(start_date: date, end_date: date) -> list[PartitionRef]:
+def _iter_months(utc_start: datetime, utc_end: datetime) -> list[PartitionRef]:
+    """UTC datetime range から月パーティションのリストを生成する。"""
     refs: list[PartitionRef] = []
-    current = start_date.replace(day=1)
-    end_month = end_date.replace(day=1)
+    current = date(utc_start.year, utc_start.month, 1)
+    end_month = date(utc_end.year, utc_end.month, 1)
 
     while current <= end_month:
         refs.append(PartitionRef(year=current.year, month=current.month))
@@ -69,12 +70,12 @@ def build_partition_paths(
     config: R2Config,
     data_domain: str,
     dataset_path: str,
-    start_date: date,
-    end_date: date,
+    utc_start: datetime,
+    utc_end: datetime,
 ) -> list[str]:
     """Build month-scoped parquet paths for compacted datasets."""
     paths: list[str] = []
-    for partition in _iter_months(start_date, end_date):
+    for partition in _iter_months(utc_start, utc_end):
         local_path = (
             _build_local_compacted_file(
                 config.local_parquet_root, data_domain, dataset_path, partition

@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import duckdb
@@ -24,6 +24,9 @@ class YouTubeQueryParams:
     master_path: str
     start_date: date
     end_date: date
+    utc_start: datetime
+    utc_end: datetime
+    tz_name: str = "UTC"
 
 
 YOUTUBE_WATCH_EVENTS_PATH = (
@@ -50,12 +53,12 @@ def get_channels_parquet_path(bucket: str, master_path: str) -> str:
 
 
 def _generate_partition_paths(
-    bucket: str, events_path: str, start_date: date, end_date: date
+    bucket: str, events_path: str, utc_start: datetime, utc_end: datetime
 ) -> list[str]:
     """指定期間の月パーティションに対応するParquetパスリストを生成します。"""
     paths: list[str] = []
-    current = start_date.replace(day=1)
-    end_month = end_date.replace(day=1)
+    current = date(utc_start.year, utc_start.month, 1)
+    end_month = date(utc_end.year, utc_end.month, 1)
 
     while current <= end_month:
         paths.append(
@@ -74,8 +77,8 @@ def _generate_partition_paths(
     logger.debug(
         "Generated %d partition paths for period %s to %s",
         len(paths),
-        start_date,
-        end_date,
+        utc_start,
+        utc_end,
     )
     return paths
 
@@ -83,7 +86,7 @@ def _generate_partition_paths(
 def _resolve_watch_event_paths(params: YouTubeQueryParams) -> list[str]:
     """実在する月パーティションのみを返し、未作成時は全体globへフォールバックする。"""
     partition_paths = _generate_partition_paths(
-        params.bucket, params.events_path, params.start_date, params.end_date
+        params.bucket, params.events_path, params.utc_start, params.utc_end
     )
     existing_paths: list[str] = []
 
@@ -186,13 +189,15 @@ def _build_enriched_cte(
     ctes.append(
         "filtered_watch_events AS ("
         "SELECT * FROM read_parquet(?) "
-        "WHERE watched_at_utc::DATE BETWEEN ? AND ?)"
+        "WHERE watched_at_utc >= ? AND watched_at_utc < ?)"
     )
-    sql_params.extend([
-        _resolve_watch_event_paths(params),
-        params.start_date,
-        params.end_date,
-    ])
+    sql_params.extend(
+        [
+            _resolve_watch_event_paths(params),
+            params.utc_start,
+            params.utc_end,
+        ]
+    )
 
     ctes.append(
         "enriched_watch_events AS ("
@@ -260,7 +265,11 @@ def get_watching_stats(
         WITH
         {ctes}
         SELECT
-            strftime(watched_at_utc::DATE, '{date_format_map[granularity]}') AS period,
+            strftime(
+                watched_at_utc AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}',
+                '{date_format_map[granularity]}'
+            ) AS period,
             COUNT(*) AS watch_event_count,
             COUNT(DISTINCT video_id) AS unique_video_count,
             COUNT(DISTINCT CASE

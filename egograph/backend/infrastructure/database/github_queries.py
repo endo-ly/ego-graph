@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import duckdb
@@ -24,6 +24,9 @@ class GitHubQueryParams:
     master_path: str
     start_date: date
     end_date: date
+    utc_start: datetime
+    utc_end: datetime
+    tz_name: str = "UTC"
     r2_config: R2Config | None = None
 
 
@@ -80,26 +83,14 @@ def _generate_partition_paths(
     path_template: str,
     bucket: str,
     events_path: str,
-    start_date: date,
-    end_date: date,
+    utc_start: datetime,
+    utc_end: datetime,
     log_label: str,
 ) -> list[str]:
-    """指定期間の月パーティションパスリストを生成します。
-
-    Args:
-        path_template: パスパターンテンプレート
-        bucket: R2バケット名
-        events_path: イベントデータのパスプレフィックス
-        start_date: 開始日
-        end_date: 終了日
-        log_label: ログ用ラベル
-
-    Returns:
-        月パーティションごとのS3パスリスト
-    """
+    """指定期間の月パーティションパスリストを生成します。"""
     paths: list[str] = []
-    current = start_date.replace(day=1)
-    end_month = end_date.replace(day=1)
+    current = date(utc_start.year, utc_start.month, 1)
+    end_month = date(utc_end.year, utc_end.month, 1)
 
     while current <= end_month:
         path = path_template.format(
@@ -119,31 +110,31 @@ def _generate_partition_paths(
         "Generated %d %s partition paths for period %s to %s",
         len(paths),
         log_label,
-        start_date,
-        end_date,
+        utc_start,
+        utc_end,
     )
     return paths
 
 
 def _generate_pr_partition_paths(
-    bucket: str, events_path: str, start_date: date, end_date: date
+    bucket: str, events_path: str, utc_start: datetime, utc_end: datetime
 ) -> list[str]:
     """指定期間の月パーティションに対応するPRイベントParquetパスリストを生成します。"""
     return _generate_partition_paths(
-        GITHUB_PRS_PARTITION_PATH, bucket, events_path, start_date, end_date, "PR"
+        GITHUB_PRS_PARTITION_PATH, bucket, events_path, utc_start, utc_end, "PR"
     )
 
 
 def _generate_commit_partition_paths(
-    bucket: str, events_path: str, start_date: date, end_date: date
+    bucket: str, events_path: str, utc_start: datetime, utc_end: datetime
 ) -> list[str]:
     """指定期間の月パーティションに対応するCommitイベントParquetパスリストを生成します。"""
     return _generate_partition_paths(
         GITHUB_COMMITS_PARTITION_PATH,
         bucket,
         events_path,
-        start_date,
-        end_date,
+        utc_start,
+        utc_end,
         "commit",
     )
 
@@ -154,11 +145,11 @@ def _resolve_pr_partition_paths(params: GitHubQueryParams) -> list[str]:
             params.r2_config,
             data_domain="events",
             dataset_path="github/pull_requests",
-            start_date=params.start_date,
-            end_date=params.end_date,
+            utc_start=params.utc_start,
+            utc_end=params.utc_end,
         )
     return _generate_pr_partition_paths(
-        params.bucket, params.events_path, params.start_date, params.end_date
+        params.bucket, params.events_path, params.utc_start, params.utc_end
     )
 
 
@@ -168,11 +159,11 @@ def _resolve_commit_partition_paths(params: GitHubQueryParams) -> list[str]:
             params.r2_config,
             data_domain="events",
             dataset_path="github/commits",
-            start_date=params.start_date,
-            end_date=params.end_date,
+            utc_start=params.utc_start,
+            utc_end=params.utc_end,
         )
     return _generate_commit_partition_paths(
-        params.bucket, params.events_path, params.start_date, params.end_date
+        params.bucket, params.events_path, params.utc_start, params.utc_end
     )
 
 
@@ -290,10 +281,10 @@ def get_pull_requests(
             reviews_count,
             commits_count
         FROM read_parquet(?)
-        WHERE updated_at_utc::DATE BETWEEN ? AND ?
+        WHERE updated_at_utc >= ? AND updated_at_utc < ?
     """
 
-    query_params: list[Any] = [partition_paths, params.start_date, params.end_date]
+    query_params: list[Any] = [partition_paths, params.utc_start, params.utc_end]
 
     if owner:
         query += " AND owner = ?"
@@ -373,10 +364,10 @@ def get_commits(
             additions,
             deletions
         FROM read_parquet(?)
-        WHERE committed_at_utc::DATE BETWEEN ? AND ?
+        WHERE committed_at_utc >= ? AND committed_at_utc < ?
     """
 
-    query_params: list[Any] = [partition_paths, params.start_date, params.end_date]
+    query_params: list[Any] = [partition_paths, params.utc_start, params.utc_end]
 
     if owner:
         query += " AND owner = ?"
@@ -547,7 +538,11 @@ def get_activity_stats(
     query = f"""
         WITH pr_per_key AS (
             SELECT
-                strftime(pr.updated_at_utc::DATE, '{date_format}') as period,
+                strftime(
+                    pr.updated_at_utc AT TIME ZONE 'UTC'
+                    AT TIME ZONE '{params.tz_name}',
+                    '{date_format}'
+                ) as period,
                 pr.pr_key,
                 MAX(CASE WHEN pr.action = 'opened' THEN 1 ELSE 0 END) as is_opened,
                 MAX(CASE WHEN pr.action = 'merged' THEN 1 ELSE 0 END) as is_merged,
@@ -560,7 +555,7 @@ def get_activity_stats(
                     0
                 ) as deletions
             FROM read_parquet(?) pr
-            WHERE pr.updated_at_utc::DATE BETWEEN ? AND ?
+            WHERE pr.updated_at_utc >= ? AND pr.updated_at_utc < ?
             GROUP BY period, pr.pr_key
         ),
         pr_stats AS (
@@ -575,12 +570,16 @@ def get_activity_stats(
         ),
         commit_stats AS (
             SELECT
-                strftime(c.committed_at_utc::DATE, '{date_format}') as period,
+                strftime(
+                    c.committed_at_utc AT TIME ZONE 'UTC'
+                    AT TIME ZONE '{params.tz_name}',
+                    '{date_format}'
+                ) as period,
                 COUNT(*) as commits_count,
                 COALESCE(SUM(c.additions), 0) as commit_additions,
                 COALESCE(SUM(c.deletions), 0) as commit_deletions
             FROM read_parquet(?) c
-            WHERE c.committed_at_utc::DATE BETWEEN ? AND ?
+            WHERE c.committed_at_utc >= ? AND c.committed_at_utc < ?
             GROUP BY period
         )
         SELECT
@@ -607,11 +606,11 @@ def get_activity_stats(
         query,
         [
             pr_partition_paths,
-            params.start_date,
-            params.end_date,
+            params.utc_start,
+            params.utc_end,
             commit_partition_paths,
-            params.start_date,
-            params.end_date,
+            params.utc_start,
+            params.utc_end,
         ],
     )
 
@@ -666,7 +665,7 @@ def get_repo_summary_stats(
                 ) as deletions,
                 MAX(CASE WHEN pr.action = 'merged' THEN 1 ELSE 0 END) as is_merged
             FROM read_parquet(?) pr
-            WHERE pr.updated_at_utc::DATE BETWEEN ? AND ?
+            WHERE pr.updated_at_utc >= ? AND pr.updated_at_utc < ?
             GROUP BY pr.owner, pr.repo, pr.repo_full_name, pr.pr_key
         ),
         pr_summary AS (
@@ -692,7 +691,7 @@ def get_repo_summary_stats(
                 COALESCE(SUM(c.deletions), 0) as commit_deletions,
                 MAX(c.committed_at_utc) as last_commit_at
             FROM read_parquet(?) c
-            WHERE c.committed_at_utc::DATE BETWEEN ? AND ?
+            WHERE c.committed_at_utc >= ? AND c.committed_at_utc < ?
             GROUP BY c.owner, c.repo, c.repo_full_name
         )
         SELECT
@@ -715,11 +714,11 @@ def get_repo_summary_stats(
 
     query_params: list[Any] = [
         pr_partition_paths,
-        params.start_date,
-        params.end_date,
+        params.utc_start,
+        params.utc_end,
         commit_partition_paths,
-        params.start_date,
-        params.end_date,
+        params.utc_start,
+        params.utc_end,
     ]
 
     if owner:

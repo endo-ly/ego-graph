@@ -181,11 +181,11 @@ def test_browser_history_ingest_api_executes_compaction_pipeline_end_to_end(
                 assert run_response.status_code == 200
                 run_detail = run_response.json()
                 if run_detail["run"]["status"] == "succeeded":
-                    assert run_detail["run"]["result_summary"] == {
-                        "provider": "browser_history",
-                        "operation": "compact",
-                        "target_months": ["2026-04"],
-                    }
+                    target_months = run_detail["run"]["result_summary"][
+                        "target_months"
+                    ]
+                    assert len(target_months) == 1
+                    assert target_months[0] == now.strftime("%Y-%m")
                     assert run_detail["steps"][0]["status"] == "succeeded"
                     break
                 if run_detail["run"]["status"] == "failed":
@@ -195,7 +195,6 @@ def test_browser_history_ingest_api_executes_compaction_pipeline_end_to_end(
                 raise AssertionError("browser history compaction run did not succeed")
 
         object_keys = [key for _, key in memory_s3.objects]
-        year_month = now.strftime("%Y/%m")
         year_month_day = now.strftime("%Y/%m/%d")
         assert any(
             key.startswith(f"raw/browser_history/chrome/{year_month_day}/")

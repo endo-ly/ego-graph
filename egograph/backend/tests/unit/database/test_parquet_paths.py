@@ -1,6 +1,6 @@
 """Compact parquet path resolution tests."""
 
-from datetime import date
+from datetime import datetime
 
 from pydantic import SecretStr
 
@@ -48,11 +48,12 @@ class TestBuildPartitionPaths:
             config,
             data_domain="events",
             dataset_path="spotify/plays",
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 1, 31),
+            utc_start=datetime(2024, 1, 1),
+            utc_end=datetime(2024, 2, 1),
         )
 
-        assert paths == [str(local_file)]
+        assert len(paths) == 2  # Jan + Feb (utc_end が次月)
+        assert paths[0] == str(local_file)
 
     def test_falls_back_to_r2_when_local_file_missing(self, tmp_path):
         config = _build_r2_config(local_parquet_root=str(tmp_path))
@@ -61,13 +62,14 @@ class TestBuildPartitionPaths:
             config,
             data_domain="events",
             dataset_path="spotify/plays",
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 1, 31),
+            utc_start=datetime(2024, 1, 1),
+            utc_end=datetime(2024, 2, 1),
         )
 
-        assert paths == [
+        assert len(paths) == 2
+        assert paths[0] == (
             "s3://test-bucket/compacted/events/spotify/plays/year=2024/month=01/data.parquet"
-        ]
+        )
 
 
 class TestBuildDatasetGlob:

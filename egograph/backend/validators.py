@@ -1,7 +1,8 @@
 """Backend入力バリデーションヘルパー。"""
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from backend.constants import MAX_LIMIT, MIN_LIMIT
 
@@ -45,3 +46,36 @@ def validate_granularity(granularity: str) -> str:
         allowed_list = ", ".join(sorted(allowed))
         raise ValueError(f"invalid_granularity: must be one of: {allowed_list}")
     return granularity
+
+
+def to_utc_range(
+    start_date: date,
+    end_date: date,
+    tz: ZoneInfo,
+) -> tuple[datetime, datetime]:
+    """日付範囲を環境TZと解釈し、UTCのnaive datetime範囲に変換する。
+
+    start_date は環境TZの 00:00:00、
+    end_date は翌日の環境TZ 00:00:00（< で比較するため）。
+    返り値は naive datetime（tzinfo=None）で、Parquetの TIMESTAMP カラムと
+    直接比較可能にする。
+
+    Args:
+        start_date: 開始日
+        end_date: 終了日（この日を含む）
+        tz: 環境タイムゾーン
+
+    Returns:
+        (utc_start, utc_end) — 両方とも naive datetime（UTC基準）
+
+    Example:
+        >>> to_utc_range(date(2026, 5, 17), date(2026, 5, 17), ZoneInfo("Asia/Tokyo"))
+        (datetime(2026, 5, 16, 15, 0), datetime(2026, 5, 17, 15, 0))
+    """
+    start_dt = datetime(start_date.year, start_date.month, start_date.day, tzinfo=tz)
+    end_dt = datetime(
+        end_date.year, end_date.month, end_date.day, tzinfo=tz
+    ) + timedelta(days=1)
+    utc_start = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
+    utc_end = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return utc_start, utc_end

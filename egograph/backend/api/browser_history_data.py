@@ -20,7 +20,7 @@ from backend.infrastructure.database import (
     get_page_views,
     get_top_domains,
 )
-from backend.validators import validate_date_range, validate_limit
+from backend.validators import to_utc_range, validate_date_range, validate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +41,16 @@ def _build_query_params(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    utc_start, utc_end = to_utc_range(start, end, config.timezone)
     params = BrowserHistoryQueryParams(
         conn=db_connection,
         bucket=config.r2.bucket_name,
         events_path=config.r2.events_path,
         start_date=start,
         end_date=end,
+        utc_start=utc_start,
+        utc_end=utc_end,
+        tz_name=str(config.timezone),
         r2_config=config.r2,
     )
     return params, validated_limit

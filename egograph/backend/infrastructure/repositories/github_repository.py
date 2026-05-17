@@ -5,8 +5,9 @@ DuckDB を使用して R2 の Parquet ファイルから直接データを取得
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from backend.config import R2Config
 from backend.infrastructure.database import (
@@ -18,6 +19,7 @@ from backend.infrastructure.database import (
     get_repo_summary_stats,
     get_repositories,
 )
+from backend.validators import to_utc_range
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +31,36 @@ class GitHubRepository:
     R2 上の Parquet ファイルに直接クエリを発行します。
     """
 
-    def __init__(self, r2_config: R2Config):
+    def __init__(self, r2_config: R2Config, tz: ZoneInfo | None = None):
         """GitHubRepository を初期化します。
 
         Args:
             r2_config: R2 設定
+            tz: クエリ時の日付解釈に使用するタイムゾーン
         """
         self.r2_config = r2_config
+        self._tz = tz or ZoneInfo("UTC")
+
+    def _build_params(
+        self,
+        conn: DuckDBConnection,
+        start_date: date,
+        end_date: date,
+    ) -> GitHubQueryParams:
+        """共通のクエリパラメータを構築する。"""
+        utc_start, utc_end = to_utc_range(start_date, end_date, self._tz)
+        return GitHubQueryParams(
+            conn=conn,
+            bucket=self.r2_config.bucket_name,
+            events_path=self.r2_config.events_path,
+            master_path=self.r2_config.master_path,
+            start_date=start_date,
+            end_date=end_date,
+            utc_start=utc_start,
+            utc_end=utc_end,
+            tz_name=str(self._tz),
+            r2_config=self.r2_config,
+        )
 
     def get_pull_requests(
         self,
@@ -63,15 +88,7 @@ class GitHubRepository:
             duckdb.Error: データベース操作に失敗した場合
         """
         with DuckDBConnection(self.r2_config) as conn:
-            params = GitHubQueryParams(
-                conn=conn,
-                bucket=self.r2_config.bucket_name,
-                events_path=self.r2_config.events_path,
-                master_path=self.r2_config.master_path,
-                start_date=start_date,
-                end_date=end_date,
-                r2_config=self.r2_config,
-            )
+            params = self._build_params(conn, start_date, end_date)
             result = get_pull_requests(
                 params,
                 owner=owner,
@@ -116,15 +133,7 @@ class GitHubRepository:
             duckdb.Error: データベース操作に失敗した場合
         """
         with DuckDBConnection(self.r2_config) as conn:
-            params = GitHubQueryParams(
-                conn=conn,
-                bucket=self.r2_config.bucket_name,
-                events_path=self.r2_config.events_path,
-                master_path=self.r2_config.master_path,
-                start_date=start_date,
-                end_date=end_date,
-                r2_config=self.r2_config,
-            )
+            params = self._build_params(conn, start_date, end_date)
             result = get_commits(params, owner=owner, repo=repo, limit=limit)
             logger.info(
                 "Retrieved commits: start_date=%s, end_date=%s, owner=%s, "
@@ -163,8 +172,11 @@ class GitHubRepository:
                 bucket=self.r2_config.bucket_name,
                 events_path=self.r2_config.events_path,
                 master_path=self.r2_config.master_path,
-                start_date=date.min,
-                end_date=date.max,
+                start_date=date(1, 1, 1),
+                end_date=date(9999, 12, 31),
+                utc_start=datetime.min,
+                utc_end=datetime.max,
+                tz_name=str(self._tz),
                 r2_config=self.r2_config,
             )
             result = get_repositories(params, owner=owner, repo=repo, limit=limit)
@@ -198,15 +210,7 @@ class GitHubRepository:
             ValueError: granularityが無効な場合
         """
         with DuckDBConnection(self.r2_config) as conn:
-            params = GitHubQueryParams(
-                conn=conn,
-                bucket=self.r2_config.bucket_name,
-                events_path=self.r2_config.events_path,
-                master_path=self.r2_config.master_path,
-                start_date=start_date,
-                end_date=end_date,
-                r2_config=self.r2_config,
-            )
+            params = self._build_params(conn, start_date, end_date)
             result = get_activity_stats(params, granularity=granularity)
             logger.info(
                 "Retrieved activity stats: start_date=%s, end_date=%s, "
@@ -240,15 +244,7 @@ class GitHubRepository:
             duckdb.Error: データベース操作に失敗した場合
         """
         with DuckDBConnection(self.r2_config) as conn:
-            params = GitHubQueryParams(
-                conn=conn,
-                bucket=self.r2_config.bucket_name,
-                events_path=self.r2_config.events_path,
-                master_path=self.r2_config.master_path,
-                start_date=start_date,
-                end_date=end_date,
-                r2_config=self.r2_config,
-            )
+            params = self._build_params(conn, start_date, end_date)
             result = get_repo_summary_stats(
                 params,
                 owner=owner,

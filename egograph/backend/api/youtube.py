@@ -74,7 +74,7 @@ async def get_watch_events_endpoint(
         limit,
     )
 
-    repository = YouTubeRepository(config.r2)
+    repository = YouTubeRepository(config.r2, tz=config.timezone)
     return repository.get_watch_events(start, end, validated_limit)
 
 
@@ -114,7 +114,7 @@ async def get_watching_stats_endpoint(
         granularity,
     )
 
-    repository = YouTubeRepository(config.r2)
+    repository = YouTubeRepository(config.r2, tz=config.timezone)
     return repository.get_watching_stats(start, end, validated_granularity)
 
 
@@ -157,7 +157,7 @@ async def get_top_videos_endpoint(
         limit,
     )
 
-    repository = YouTubeRepository(config.r2)
+    repository = YouTubeRepository(config.r2, tz=config.timezone)
     return repository.get_top_videos(start, end, validated_limit)
 
 
@@ -200,5 +200,5 @@ async def get_top_channels_endpoint(
         limit,
     )
 
-    repository = YouTubeRepository(config.r2)
+    repository = YouTubeRepository(config.r2, tz=config.timezone)
     return repository.get_top_channels(start, end, validated_limit)

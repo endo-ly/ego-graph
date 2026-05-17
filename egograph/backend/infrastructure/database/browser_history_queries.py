@@ -1,7 +1,7 @@
 """Browser History データ用のSQLクエリテンプレートとヘルパー関数。"""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import duckdb
@@ -26,19 +26,22 @@ class BrowserHistoryQueryParams:
     events_path: str
     start_date: date
     end_date: date
+    utc_start: datetime
+    utc_end: datetime
+    tz_name: str = "UTC"
     r2_config: R2Config | None = None
 
 
 def _generate_browser_history_partition_paths(
     bucket: str,
     events_path: str,
-    start_date: date,
-    end_date: date,
+    utc_start: datetime,
+    utc_end: datetime,
 ) -> list[str]:
     """指定期間のBrowser Historyパーティションパスを生成する。"""
     paths: list[str] = []
-    current = start_date.replace(day=1)
-    end_month = end_date.replace(day=1)
+    current = date(utc_start.year, utc_start.month, 1)
+    end_month = date(utc_end.year, utc_end.month, 1)
 
     while current <= end_month:
         paths.append(
@@ -63,14 +66,14 @@ def _resolve_partition_paths(params: BrowserHistoryQueryParams) -> list[str]:
             params.r2_config,
             data_domain="events",
             dataset_path="browser_history/page_views",
-            start_date=params.start_date,
-            end_date=params.end_date,
+            utc_start=params.utc_start,
+            utc_end=params.utc_end,
         )
     return _generate_browser_history_partition_paths(
         params.bucket,
         params.events_path,
-        params.start_date,
-        params.end_date,
+        params.utc_start,
+        params.utc_end,
     )
 
 
@@ -95,7 +98,7 @@ def get_page_views(
             transition,
             visit_span_count
         FROM read_parquet(?)
-        WHERE started_at_utc::DATE BETWEEN ? AND ?
+        WHERE started_at_utc >= ? AND started_at_utc < ?
           AND (? IS NULL OR browser = ?)
           AND (? IS NULL OR profile = ?)
         ORDER BY started_at_utc DESC
@@ -106,8 +109,8 @@ def get_page_views(
         sql,
         [
             partition_paths,
-            params.start_date,
-            params.end_date,
+            params.utc_start,
+            params.utc_end,
             browser,
             browser,
             profile,
@@ -132,7 +135,7 @@ def get_top_domains(
                 NULLIF(regexp_extract(url, '^[a-zA-Z]+://([^/?#]+)', 1), '') AS domain,
                 url
             FROM read_parquet(?)
-            WHERE started_at_utc::DATE BETWEEN ? AND ?
+            WHERE started_at_utc >= ? AND started_at_utc < ?
               AND (? IS NULL OR browser = ?)
               AND (? IS NULL OR profile = ?)
         )
@@ -151,8 +154,8 @@ def get_top_domains(
         sql,
         [
             partition_paths,
-            params.start_date,
-            params.end_date,
+            params.utc_start,
+            params.utc_end,
             browser,
             browser,
             profile,

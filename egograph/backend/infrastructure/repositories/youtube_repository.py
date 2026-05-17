@@ -8,6 +8,7 @@ import logging
 from collections.abc import Callable
 from datetime import date
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from backend.config import R2Config
 from backend.infrastructure.database import DuckDBConnection
@@ -18,6 +19,7 @@ from backend.infrastructure.database.youtube_queries import (
     get_watch_events,
     get_watching_stats,
 )
+from backend.validators import to_utc_range
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +31,34 @@ class YouTubeRepository:
     R2 上の Parquet ファイルに直接クエリを発行します。
     """
 
-    def __init__(self, r2_config: R2Config):
+    def __init__(self, r2_config: R2Config, tz: ZoneInfo | None = None):
         """YouTubeRepository を初期化します。
 
         Args:
             r2_config: R2 設定
+            tz: クエリ時の日付解釈に使用するタイムゾーン
         """
         self.r2_config = r2_config
+        self._tz = tz or ZoneInfo("UTC")
+
+    def _build_params(
+        self,
+        conn: DuckDBConnection,
+        start_date: date,
+        end_date: date,
+    ) -> YouTubeQueryParams:
+        utc_start, utc_end = to_utc_range(start_date, end_date, self._tz)
+        return YouTubeQueryParams(
+            conn=conn,
+            bucket=self.r2_config.bucket_name,
+            events_path=self.r2_config.events_path,
+            master_path=self.r2_config.master_path,
+            start_date=start_date,
+            end_date=end_date,
+            utc_start=utc_start,
+            utc_end=utc_end,
+            tz_name=str(self._tz),
+        )
 
     def _execute_query(
         self,
@@ -58,14 +81,7 @@ class YouTubeRepository:
             クエリ結果
         """
         with DuckDBConnection(self.r2_config) as conn:
-            params = YouTubeQueryParams(
-                conn=conn,
-                bucket=self.r2_config.bucket_name,
-                events_path=self.r2_config.events_path,
-                master_path=self.r2_config.master_path,
-                start_date=start_date,
-                end_date=end_date,
-            )
+            params = self._build_params(conn, start_date, end_date)
             result = query_func(params, **query_kwargs)
 
             # クエリパラメータをログに含める

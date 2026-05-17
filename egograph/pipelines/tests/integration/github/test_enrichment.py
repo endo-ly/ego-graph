@@ -48,10 +48,13 @@ def _build_config(memory_s3, **kwargs) -> Config:
 
 def _current_month_pr():
     """現在月の日付で PR モックデータを生成する。"""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
     return {
         **MOCK_PULL_REQUEST_RESPONSE,
-        "created_at": "2026-04-01T00:00:00Z",
-        "updated_at": "2026-04-01T01:00:00Z",
+        "created_at": f"{now.year}-{now.month:02d}-01T00:00:00Z",
+        "updated_at": f"{now.year}-{now.month:02d}-01T01:00:00Z",
         "head": {
             "ref": "feature-branch",
             "repo": {
@@ -64,13 +67,16 @@ def _current_month_pr():
 
 def _current_month_commit():
     """現在月の日付でコミットモックデータを生成する。"""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
     return {
         "sha": "abc123def456",
         "commit": {
             "author": {
                 "name": "Test User",
                 "email": "test@example.com",
-                "date": "2026-04-01T00:00:00Z",
+                "date": f"{now.year}-{now.month:02d}-01T00:00:00Z",
             },
             "message": "Test commit",
         },

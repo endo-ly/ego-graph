@@ -2,9 +2,10 @@
 
 import logging
 import os
+from zoneinfo import ZoneInfo
 
 from egograph_paths import PARQUET_DATA_DIR
-from pydantic import BaseModel, Field, SecretStr, ValidationError
+from pydantic import BaseModel, Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 環境変数で .env ファイルの使用を制御（デフォルトは使用）
@@ -47,6 +48,17 @@ class BackendConfig(BaseSettings):
 
     # ロギング
     log_level: str = Field("INFO", alias="LOG_LEVEL")
+
+    # タイムゾーン（クエリ時の日付解釈に使用。保存は常にUTC）
+    timezone: ZoneInfo = Field(ZoneInfo("UTC"), alias="TIMEZONE")
+
+    @field_validator("timezone", mode="before")
+    @classmethod
+    def _parse_timezone(cls, v: str | ZoneInfo) -> ZoneInfo:
+        """タイムゾーン文字列をZoneInfoに変換する。"""
+        if isinstance(v, ZoneInfo):
+            return v
+        return ZoneInfo(v)
 
     # サブ設定
     r2: R2Config | None = None
