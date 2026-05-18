@@ -1,6 +1,6 @@
 """GitHub 増分取得のインテグレーションテスト。
 
-ingest_state による cursor 指定の増分取得フローを検証する。
+ingest_state によるリポジトリごとの cursor 管理フローを検証する。
 """
 
 from datetime import datetime, timedelta, timezone
@@ -75,7 +75,7 @@ def test_incremental_fetch_uses_cursor():
     with _MemoryS3Server() as memory_s3:
         config = _build_config(memory_s3)
 
-        # 既存 state を投入
+        # 新形式の既存 state を投入
         storage = GitHubWorklogStorage(
             endpoint_url=memory_s3.endpoint_url,
             access_key_id="test-access-key",
@@ -85,8 +85,12 @@ def test_incremental_fetch_uses_cursor():
         now = datetime.now(timezone.utc)
         storage.save_ingest_state(
             {
-                "cursor_utc": (now - timedelta(days=1)).isoformat(),
-                "total_repos": 1,
+                "github_login": "test-user",
+                "repos": {
+                    "test-user/test-repo": {
+                        "cursor_utc": (now - timedelta(days=1)).isoformat(),
+                    },
+                },
                 "updated_at": (now - timedelta(days=1)).isoformat(),
             }
         )
@@ -103,7 +107,7 @@ def test_incremental_no_new_data_updates_cursor():
     with _MemoryS3Server() as memory_s3:
         config = _build_config(memory_s3)
 
-        # 既存 state を投入
+        # 新形式の既存 state を投入
         storage = GitHubWorklogStorage(
             endpoint_url=memory_s3.endpoint_url,
             access_key_id="test-access-key",
@@ -114,8 +118,12 @@ def test_incremental_no_new_data_updates_cursor():
         original_cursor = (now - timedelta(days=1)).isoformat()
         storage.save_ingest_state(
             {
-                "cursor_utc": original_cursor,
-                "total_repos": 1,
+                "github_login": "test-user",
+                "repos": {
+                    "test-user/test-repo": {
+                        "cursor_utc": original_cursor,
+                    },
+                },
                 "updated_at": original_cursor,
             }
         )
@@ -127,5 +135,121 @@ def test_incremental_no_new_data_updates_cursor():
 
         # 新規データなしでも cursor は更新される (now_utc にフォールバック)
         state = storage.get_ingest_state()
-        new_cursor = datetime.fromisoformat(state["cursor_utc"])
+        new_cursor = datetime.fromisoformat(
+            state["repos"]["test-user/test-repo"]["cursor_utc"]
+        )
         assert new_cursor >= now - timedelta(seconds=5)
+
+
+@responses.activate
+def test_legacy_state_migration():
+    """旧形式のstateが自動的に新形式に移行される。"""
+    with _MemoryS3Server() as memory_s3:
+        config = _build_config(memory_s3)
+
+        storage = GitHubWorklogStorage(
+            endpoint_url=memory_s3.endpoint_url,
+            access_key_id="test-access-key",
+            secret_access_key="test-secret-key",
+            bucket_name="test-bucket",
+        )
+        now = datetime.now(timezone.utc)
+        legacy_cursor = (now - timedelta(days=1)).isoformat()
+        # 旧形式のstate
+        storage.save_ingest_state(
+            {
+                "cursor_utc": legacy_cursor,
+                "total_repos": 1,
+                "updated_at": legacy_cursor,
+            }
+        )
+
+        _mock_github_api_base()
+
+        result = run_github_ingest(config=config)
+        assert result["status"] == "succeeded"
+
+        # 新形式のstateに移行されている
+        state = storage.get_ingest_state()
+        assert "repos" in state
+        assert "github_login" in state
+        assert state["github_login"] == "test-user"
+        assert "test-user/test-repo" in state["repos"]
+
+
+@responses.activate
+def test_login_change_resets_state():
+    """GitHub login が変更された場合、stateがリセットされフルフェッチされる。"""
+    with _MemoryS3Server() as memory_s3:
+        # 古いloginでstateを作成
+        r2 = R2Config(
+            endpoint_url=memory_s3.endpoint_url,
+            access_key_id="test-access-key",
+            secret_access_key=SecretStr("test-secret-key"),
+            bucket_name="test-bucket",
+        )
+        # 古いloginのconfig
+        old_config = Config(
+            github_worklog=GitHubWorklogConfig(
+                token=SecretStr("test-github-token"),
+                github_login="old-user",
+                target_repos=["old-user/old-repo"],
+                backfill_days=30,
+                fetch_commit_details=True,
+                max_commit_detail_requests_per_repo=10,
+            ),
+            duckdb=DuckDBConfig(r2=r2),
+        )
+
+        storage = GitHubWorklogStorage(
+            endpoint_url=memory_s3.endpoint_url,
+            access_key_id="test-access-key",
+            secret_access_key="test-secret-key",
+            bucket_name="test-bucket",
+        )
+        now = datetime.now(timezone.utc)
+        storage.save_ingest_state(
+            {
+                "github_login": "old-user",
+                "repos": {
+                    "old-user/old-repo": {
+                        "cursor_utc": (now - timedelta(days=1)).isoformat(),
+                    },
+                },
+                "updated_at": (now - timedelta(days=1)).isoformat(),
+            }
+        )
+
+        # 新しいloginのconfigで実行
+        base = "https://api.github.com"
+        responses.add(
+            responses.GET,
+            f"{base}/repos/old-user/old-repo",
+            json={
+                **MOCK_REPOSITORY_RESPONSE,
+                "full_name": "old-user/old-repo",
+                "owner": {"login": "old-user"},
+            },
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            f"{base}/repos/old-user/old-repo/pulls",
+            json=[],
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            f"{base}/repos/old-user/old-repo/commits",
+            json=[],
+            status=200,
+        )
+
+        result = run_github_ingest(config=old_config)
+        assert result["status"] == "succeeded"
+
+        # login変更によりstateがリセットされている
+        state = storage.get_ingest_state()
+        assert state["github_login"] == "old-user"
+        # 新しいrepoのcursorが保存されている（古いrepoのcursorは残らない）
+        assert "old-user/old-repo" in state["repos"]

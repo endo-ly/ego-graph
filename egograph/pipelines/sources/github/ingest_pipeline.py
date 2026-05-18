@@ -29,22 +29,74 @@ def _parse_iso_utc(value: str | None) -> datetime | None:
         return None
 
 
-def _resolve_since_iso(
+def _migrate_state(
     state: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """旧state形式を新形式に移行する。
+
+    旧形式: {"cursor_utc": "...", "total_repos": N}
+    新形式: {"github_login": "...", "repos": {"owner/repo": {"cursor_utc": "..."}}}
+
+    旧形式のcursor_utcは全リポジトリ共通の初期cursorとして扱う。
+    """
+    if state is None:
+        return {"github_login": None, "repos": {}}
+
+    # 新形式はそのまま返す
+    if "repos" in state:
+        return state
+
+    # 旧形式からの移行
+    cursor_utc = state.get("cursor_utc") or state.get("last_ingested_at")
+    migrated: dict[str, Any] = {"github_login": None, "repos": {}}
+    if cursor_utc:
+        migrated["global_cursor_utc"] = cursor_utc
+        logger.info(
+            "Migrating legacy state cursor to global_cursor_utc: %s", cursor_utc
+        )
+    return migrated
+
+
+def _resolve_since_iso(
+    repo_full_name: str,
+    state: dict[str, Any],
     backfill_days: int,
 ) -> str:
-    """増分取得開始時刻を決定する。"""
-    cursor = None
-    if state:
-        cursor = state.get("cursor_utc") or state.get("last_ingested_at")
+    """リポジトリ単位で増分取得開始時刻を決定する。
 
-    if cursor:
-        logger.info("Using incremental cursor: %s", cursor)
-        return cursor
+    優先順位:
+    1. 該当リポジトリのcursor_utc
+    2. 旧形式からの移行cursor (global_cursor_utc)
+    3. backfill_days に基づくフルフェッチ
+
+    Args:
+        repo_full_name: リポジトリのフルネーム (例: "owner/repo")
+        state: 現在のstate（新形式）
+        backfill_days: フルフェッチ時の遡及日数
+
+    Returns:
+        ISO8601形式の開始時刻文字列
+    """
+    repos_state = state.get("repos", {})
+    repo_cursor = repos_state.get(repo_full_name, {}).get("cursor_utc")
+
+    if repo_cursor:
+        logger.info(
+            "Using incremental cursor for %s: %s", repo_full_name, repo_cursor
+        )
+        return repo_cursor
+
+    # 旧形式からの移行cursor
+    global_cursor = state.get("global_cursor_utc")
+    if global_cursor:
+        logger.info(
+            "Using migrated global cursor for %s: %s", repo_full_name, global_cursor
+        )
+        return global_cursor
 
     start = datetime.now(timezone.utc) - timedelta(days=backfill_days)
     since = start.isoformat()
-    logger.info("No cursor found. Backfill mode since=%s", since)
+    logger.info("No cursor for %s. Backfill mode since=%s", repo_full_name, since)
     return since
 
 
@@ -91,20 +143,30 @@ def run_pipeline(config: Config) -> None:
         github_login=github_conf.github_login,
     )
 
-    # 状態を取得し、増分取得開始時刻を決定
-    state = storage.get_ingest_state()
-    since_iso = _resolve_since_iso(state, github_conf.backfill_days)
+    # 状態を取得・移行
+    raw_state = storage.get_ingest_state()
+    state = _migrate_state(raw_state)
+
+    # github_login 変更検知: 不一致時はstateをリセット
+    stored_login = state.get("github_login")
+    if stored_login is not None and stored_login != github_conf.github_login:
+        logger.warning(
+            "GitHub login changed: %s -> %s. Resetting state for full backfill.",
+            stored_login,
+            github_conf.github_login,
+        )
+        state = {"github_login": github_conf.github_login, "repos": {}}
+    elif not stored_login:
+        state["github_login"] = github_conf.github_login
 
     # ターゲットリポジトリを決定
     if github_conf.target_repos:
-        # 指定されたリポジトリのみを処理
         target_repos = github_conf.target_repos
-        logger.info(f"Processing {len(target_repos)} specified repositories")
+        logger.info("Processing %d specified repositories", len(target_repos))
     else:
-        # ユーザーの全リポジトリを取得
         all_repos = collector.get_user_repositories()
         target_repos = [r["full_name"] for r in all_repos]
-        logger.info(f"Found {len(target_repos)} personal repositories")
+        logger.info("Found %d personal repositories", len(target_repos))
 
     if not target_repos:
         logger.warning("No repositories to process. Exiting.")
@@ -123,20 +185,19 @@ def run_pipeline(config: Config) -> None:
     total_failed_repos = 0
 
     all_commits_data = []
-    max_cursor_candidate: datetime | None = None
-
-    def update_cursor_candidate(value: str | None) -> None:
-        nonlocal max_cursor_candidate
-        dt = _parse_iso_utc(value)
-        if dt is None:
-            return
-        if max_cursor_candidate is None or dt > max_cursor_candidate:
-            max_cursor_candidate = dt
+    # リポジトリごとのcursorを追跡
+    repo_cursors: dict[str, str] = {}
+    failed_repos: set[str] = set()
 
     for repo_full_name in target_repos:
         try:
             owner, repo = repo_full_name.split("/", 1)
-            logger.info(f"Processing repository: {repo_full_name}")
+            logger.info("Processing repository: %s", repo_full_name)
+
+            # リポジトリ単位のcursorを解決
+            since_iso = _resolve_since_iso(
+                repo_full_name, state, github_conf.backfill_days
+            )
 
             # Repository情報を取得
             repo_info = collector.get_repository(owner, repo)
@@ -149,12 +210,12 @@ def run_pipeline(config: Config) -> None:
                     )
                     total_failed_records += 1
             else:
-                logger.info(f"Skipping non-personal repo: {repo_full_name}")
+                logger.info("Skipping non-personal repo: %s", repo_full_name)
                 continue
 
             # PR一覧を取得
             prs = collector.get_pull_requests(owner, repo, since=since_iso)
-            logger.info(f"Found {len(prs)} PRs in {repo_full_name}")
+            logger.info("Found %d PRs in %s", len(prs), repo_full_name)
 
             # 各PRのレビュー数を取得
             for pr in prs:
@@ -173,8 +234,12 @@ def run_pipeline(config: Config) -> None:
                         pr["reviews_count"] = 0
                         total_failed_enrichment_api_calls += 1
 
+            # リポジトリ単位のcursor候補を追跡
+            max_cursor_candidate: datetime | None = None
             for pr in prs:
-                update_cursor_candidate(pr.get("updated_at"))
+                dt = _parse_iso_utc(pr.get("updated_at"))
+                if dt and (max_cursor_candidate is None or dt > max_cursor_candidate):
+                    max_cursor_candidate = dt
 
             total_prs += len(prs)
 
@@ -220,7 +285,7 @@ def run_pipeline(config: Config) -> None:
 
             # Repository Commitsを取得
             commits = collector.get_repository_commits(owner, repo, since=since_iso)
-            logger.info(f"Found {len(commits)} commits in {repo_full_name}")
+            logger.info("Found %d commits in %s", len(commits), repo_full_name)
 
             # 各Commitの詳細を取得（変更量メタデータ用）
             enriched_commits = []
@@ -255,7 +320,7 @@ def run_pipeline(config: Config) -> None:
                     commit_with_detail = {**commit, **detail}
                     enriched_commits.append(commit_with_detail)
                 except Exception as e:
-                    logger.warning(f"Failed to fetch detail for commit {sha}: {e}")
+                    logger.warning("Failed to fetch detail for commit %s: %s", sha, e)
                     detail_failures += 1
                     total_failed_enrichment_api_calls += 1
                     enriched_commits.append(commit)
@@ -277,7 +342,9 @@ def run_pipeline(config: Config) -> None:
             total_commits += len(commits_transformed)
 
             for commit in commits_transformed:
-                update_cursor_candidate(commit.get("committed_at_utc"))
+                dt = _parse_iso_utc(commit.get("committed_at_utc"))
+                if dt and (max_cursor_candidate is None or dt > max_cursor_candidate):
+                    max_cursor_candidate = dt
 
             # Commit生データを保存
             if commits:
@@ -286,13 +353,21 @@ def run_pipeline(config: Config) -> None:
                     logger.error("Failed to save raw commits for %s", repo_full_name)
                     total_failed_records += len(commits)
 
+            # リポジトリのcursorを記録
+            if max_cursor_candidate is not None:
+                repo_cursors[repo_full_name] = max_cursor_candidate.isoformat()
+            else:
+                now_utc = datetime.now(timezone.utc)
+                repo_cursors[repo_full_name] = now_utc.isoformat()
+
         except Exception:
             logger.exception("Failed to process repository %s", repo_full_name)
             total_failed_fatal_api_calls += 1
             total_failed_repos += 1
+            failed_repos.add(repo_full_name)
             continue
 
-    logger.info(f"Total collected: {total_prs} PRs, {total_commits} commits")
+    logger.info("Total collected: %d PRs, %d commits", total_prs, total_commits)
 
     # Commitイベントを年月でグループ化して保存
     commits_by_month = _group_commits_by_month(all_commits_data)
@@ -301,7 +376,7 @@ def run_pipeline(config: Config) -> None:
     for (year, month), commits in commits_by_month.items():
         stats = storage.save_commits_parquet_with_stats(commits, year, month)
         if stats["failed"] > 0:
-            logger.error(f"Failed to save commits Parquet for {year}-{month:02d}")
+            logger.error("Failed to save commits Parquet for %d-%02d", year, month)
             all_saved = False
         else:
             logger.info(
@@ -334,23 +409,40 @@ def run_pipeline(config: Config) -> None:
     )
     logger.info("Ingest enrichment API failures: %d", total_failed_enrichment_api_calls)
 
-    # 状態を更新
+    # 状態を更新（失敗リポジトリのcursorは更新しない）
+    now_utc = datetime.now(timezone.utc).isoformat()
+    repos_state: dict[str, dict[str, str]] = {}
+
+    for repo_full_name in target_repos:
+        if repo_full_name in failed_repos:
+            # 失敗リポジトリは旧cursorを維持
+            existing_cursor = (
+                state.get("repos", {})
+                .get(repo_full_name, {})
+                .get("cursor_utc")
+            )
+            if existing_cursor:
+                repos_state[repo_full_name] = {"cursor_utc": existing_cursor}
+            continue
+        if repo_full_name in repo_cursors:
+            repos_state[repo_full_name] = {
+                "cursor_utc": repo_cursors[repo_full_name]
+            }
+
+    new_state: dict[str, Any] = {
+        "github_login": github_conf.github_login,
+        "repos": repos_state,
+        "updated_at": now_utc,
+    }
+
     if all_saved and total_failed_fatal_api_calls == 0 and total_failed_repos == 0:
-        now_utc = datetime.now(timezone.utc).isoformat()
-        cursor = (
-            max_cursor_candidate.isoformat()
-            if max_cursor_candidate is not None
-            else now_utc
-        )
-        new_state = {
-            "cursor_utc": cursor,
-            "total_repos": len(target_repos),
-            "updated_at": now_utc,
-        }
         storage.save_ingest_state(new_state)
         logger.info("Pipeline completed successfully!")
     else:
-        logger.warning("Pipeline had failures. State not updated.")
+        storage.save_ingest_state(new_state)
+        logger.warning(
+            "Pipeline had failures. State partially updated (failed repos excluded)."
+        )
 
 
 def _group_commits_by_month(
@@ -370,7 +462,6 @@ def _group_commits_by_month(
         committed_date = commit.get("committed_at_utc")
         if committed_date:
             try:
-                # ISO 8601形式を解析
                 dt = datetime.fromisoformat(committed_date.replace("Z", "+00:00"))
                 grouped[(dt.year, dt.month)].append(commit)
             except (ValueError, AttributeError) as e:

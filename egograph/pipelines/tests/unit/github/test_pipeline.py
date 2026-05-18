@@ -7,7 +7,11 @@ from pipelines.sources.common.config import (
     GitHubWorklogConfig,
     R2Config,
 )
-from pipelines.sources.github.ingest_pipeline import _resolve_since_iso, run_pipeline
+from pipelines.sources.github.ingest_pipeline import (
+    _migrate_state,
+    _resolve_since_iso,
+    run_pipeline,
+)
 from pydantic import SecretStr
 
 
@@ -93,24 +97,83 @@ def _build_commit_detail() -> dict:
     }
 
 
-def test_resolve_since_iso_uses_cursor_if_exists():
-    state = {"cursor_utc": "2026-01-01T00:00:00+00:00"}
-    assert _resolve_since_iso(state, backfill_days=10) == "2026-01-01T00:00:00+00:00"
+class TestMigrateState:
+    def test_migrate_none_state(self):
+        result = _migrate_state(None)
+        assert result == {"github_login": None, "repos": {}}
+
+    def test_migrate_new_format_unchanged(self):
+        state = {
+            "github_login": "test-user",
+            "repos": {"test-user/repo": {"cursor_utc": "2026-01-01T00:00:00Z"}},
+        }
+        assert _migrate_state(state) is state
+
+    def test_migrate_legacy_cursor_utc(self):
+        state = {
+            "cursor_utc": "2026-01-01T00:00:00Z",
+            "total_repos": 1,
+        }
+        result = _migrate_state(state)
+        assert result == {
+            "github_login": None,
+            "global_cursor_utc": "2026-01-01T00:00:00Z",
+            "repos": {},
+        }
+
+    def test_migrate_legacy_last_ingested_at(self):
+        state = {
+            "last_ingested_at": "2026-01-01T00:00:00Z",
+        }
+        result = _migrate_state(state)
+        assert result == {
+            "github_login": None,
+            "global_cursor_utc": "2026-01-01T00:00:00Z",
+            "repos": {},
+        }
 
 
-def test_resolve_since_iso_uses_backfill_if_no_cursor():
-    since = _resolve_since_iso(None, backfill_days=7)
-    parsed = datetime.fromisoformat(since)
-    now = datetime.now(timezone.utc)
-    delta = now - parsed
-    assert timedelta(days=6, hours=23) < delta < timedelta(days=7, hours=1)
+class TestResolveSinceIso:
+    def test_uses_repo_cursor(self):
+        state = {
+            "repos": {
+                "test-user/test-repo": {"cursor_utc": "2026-01-01T00:00:00+00:00"},
+            },
+        }
+        assert (
+            _resolve_since_iso("test-user/test-repo", state, backfill_days=10)
+            == "2026-01-01T00:00:00+00:00"
+        )
+
+    def test_uses_global_cursor_when_no_repo_cursor(self):
+        state = {
+            "global_cursor_utc": "2026-01-01T00:00:00+00:00",
+            "repos": {},
+        }
+        assert (
+            _resolve_since_iso("test-user/test-repo", state, backfill_days=10)
+            == "2026-01-01T00:00:00+00:00"
+        )
+
+    def test_uses_backfill_when_no_cursor(self):
+        state = {"repos": {}}
+        since = _resolve_since_iso("test-user/test-repo", state, backfill_days=7)
+        parsed = datetime.fromisoformat(since)
+        now = datetime.now(timezone.utc)
+        delta = now - parsed
+        assert timedelta(days=6, hours=23) < delta < timedelta(days=7, hours=1)
 
 
 def test_run_pipeline_updates_state_on_enrichment_api_failure(monkeypatch):
     config = _build_config()
 
     storage = MagicMock()
-    storage.get_ingest_state.return_value = {"cursor_utc": "2026-01-01T00:00:00+00:00"}
+    storage.get_ingest_state.return_value = {
+        "github_login": "test-user",
+        "repos": {
+            "test-user/test-repo": {"cursor_utc": "2026-01-01T00:00:00+00:00"},
+        },
+    }
     storage.save_repo_master.return_value = "repo.parquet"
     storage.save_pr_events_parquet_with_stats.return_value = {
         "fetched": 1,
@@ -152,7 +215,12 @@ def test_run_pipeline_does_not_update_state_on_fatal_repo_failure(monkeypatch):
     config = _build_config()
 
     storage = MagicMock()
-    storage.get_ingest_state.return_value = {"cursor_utc": "2026-01-01T00:00:00+00:00"}
+    storage.get_ingest_state.return_value = {
+        "github_login": "test-user",
+        "repos": {
+            "test-user/test-repo": {"cursor_utc": "2026-01-01T00:00:00+00:00"},
+        },
+    }
 
     collector = MagicMock()
     collector.get_repository.side_effect = RuntimeError("fatal api failure")
@@ -168,14 +236,25 @@ def test_run_pipeline_does_not_update_state_on_fatal_repo_failure(monkeypatch):
 
     run_pipeline(config)
 
-    storage.save_ingest_state.assert_not_called()
+    # 致命的エラー時は state は保存されるが、失敗リポジトリのcursorは更新されない
+    storage.save_ingest_state.assert_called_once()
+    state_arg = storage.save_ingest_state.call_args[0][0]
+    # 失敗リポジトリは旧cursorを維持
+    assert state_arg["repos"]["test-user/test-repo"]["cursor_utc"] == (
+        "2026-01-01T00:00:00+00:00"
+    )
 
 
 def test_run_pipeline_uses_cursor_and_updates_state_on_success(monkeypatch):
     config = _build_config()
 
     storage = MagicMock()
-    storage.get_ingest_state.return_value = {"cursor_utc": "2026-01-01T00:00:00+00:00"}
+    storage.get_ingest_state.return_value = {
+        "github_login": "test-user",
+        "repos": {
+            "test-user/test-repo": {"cursor_utc": "2026-01-01T00:00:00+00:00"},
+        },
+    }
     storage.save_repo_master.return_value = "repo.parquet"
     storage.save_pr_events_parquet_with_stats.return_value = {
         "fetched": 1,
@@ -222,7 +301,10 @@ def test_run_pipeline_uses_cursor_and_updates_state_on_success(monkeypatch):
     )
     storage.save_ingest_state.assert_called_once()
     state_arg = storage.save_ingest_state.call_args[0][0]
-    assert state_arg["cursor_utc"] == "2026-01-03T00:00:00+00:00"
+    assert state_arg["github_login"] == "test-user"
+    assert state_arg["repos"]["test-user/test-repo"]["cursor_utc"] == (
+        "2026-01-03T00:00:00+00:00"
+    )
 
 
 def test_run_pipeline_skips_commit_detail_when_disabled(monkeypatch):
@@ -230,7 +312,12 @@ def test_run_pipeline_skips_commit_detail_when_disabled(monkeypatch):
     config.github_worklog.fetch_commit_details = False
 
     storage = MagicMock()
-    storage.get_ingest_state.return_value = {"cursor_utc": "2026-01-01T00:00:00+00:00"}
+    storage.get_ingest_state.return_value = {
+        "github_login": "test-user",
+        "repos": {
+            "test-user/test-repo": {"cursor_utc": "2026-01-01T00:00:00+00:00"},
+        },
+    }
     storage.save_repo_master.return_value = "repo.parquet"
     storage.save_pr_events_parquet_with_stats.return_value = {
         "fetched": 1,
@@ -265,3 +352,54 @@ def test_run_pipeline_skips_commit_detail_when_disabled(monkeypatch):
     run_pipeline(config)
 
     collector.get_commit_detail.assert_not_called()
+
+
+def test_run_pipeline_login_change_resets_state(monkeypatch):
+    """GitHub login が変更された場合、stateがリセットされる。"""
+    config = _build_config()
+
+    storage = MagicMock()
+    # 古いloginのstate
+    storage.get_ingest_state.return_value = {
+        "github_login": "old-user",
+        "repos": {
+            "old-user/repo": {"cursor_utc": "2026-01-01T00:00:00+00:00"},
+        },
+    }
+    storage.save_repo_master.return_value = "repo.parquet"
+    storage.save_pr_events_parquet_with_stats.return_value = {
+        "fetched": 0,
+        "new": 0,
+        "duplicates": 0,
+        "failed": 0,
+    }
+    storage.save_raw_prs.return_value = "pr.json"
+    storage.save_raw_commits.return_value = "commits.json"
+    storage.save_commits_parquet_with_stats.return_value = {
+        "fetched": 0,
+        "new": 0,
+        "duplicates": 0,
+        "failed": 0,
+    }
+
+    collector = MagicMock()
+    collector.get_repository.return_value = _build_personal_repo()
+    collector.get_pull_requests.return_value = []
+    collector.get_repository_commits.return_value = []
+
+    monkeypatch.setattr(
+        "pipelines.sources.github.ingest_pipeline.GitHubWorklogStorage",
+        lambda **_: storage,
+    )
+    monkeypatch.setattr(
+        "pipelines.sources.github.ingest_pipeline.GitHubWorklogCollector",
+        lambda **_: collector,
+    )
+
+    run_pipeline(config)
+
+    state_arg = storage.save_ingest_state.call_args[0][0]
+    assert state_arg["github_login"] == "test-user"
+    # 古いrepoのcursorは残らず、新しいrepoのcursorが保存される
+    assert "old-user/repo" not in state_arg["repos"]
+    assert "test-user/test-repo" in state_arg["repos"]
