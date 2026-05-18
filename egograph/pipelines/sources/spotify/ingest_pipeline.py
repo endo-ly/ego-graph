@@ -7,7 +7,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 import duckdb
-from dateutil import parser
 
 from pipelines.sources.common.config import Config
 from pipelines.sources.common.utils import iso8601_to_unix_ms
@@ -240,11 +239,10 @@ def _group_events_by_month(
 
     for event in events:
         played_at = event["played_at_utc"]
-        try:
-            dt = parser.parse(played_at)
-            grouped[(dt.year, dt.month)].append(event)
-        except (ValueError, parser.ParserError) as e:
-            logger.warning("Failed to parse date %s: %s", played_at, e)
+        if not isinstance(played_at, datetime):
+            logger.warning("Skipping event with invalid played_at_utc: %s", played_at)
+            continue
+        grouped[(played_at.year, played_at.month)].append(event)
 
     return grouped
 
