@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from pipelines.sources.spotify.transform import (
     transform_artist_info,
     transform_plays_to_events,
@@ -31,7 +33,7 @@ def test_transform_plays_to_events_basic():
     assert len(events) == 1
     event = events[0]
     assert event["play_id"] == "2023-10-27T10:00:00Z_track1"
-    assert event["played_at_utc"] == "2023-10-27T10:00:00Z"
+    assert event["played_at_utc"] == datetime(2023, 10, 27, 10, 0, tzinfo=timezone.utc)
     assert event["track_id"] == "track1"
     assert event["track_name"] == "Song A"
     assert event["artist_names"] == ["Artist A"]

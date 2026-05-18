@@ -44,9 +44,11 @@ def transform_play_item(item: dict[str, Any]) -> dict[str, Any] | None:
     track_id = track.get("id", "")
     context = item.get("context")
 
+    played_at_utc = datetime.fromisoformat(played_at_str) if played_at_str else None
+
     return {
         "play_id": _generate_play_id(played_at_str, track_id),
-        "played_at_utc": played_at_str,
+        "played_at_utc": played_at_utc,
         "track_id": track_id,
         "track_name": track.get("name", "Unknown"),
         "artist_ids": _extract_artist_ids(track),
