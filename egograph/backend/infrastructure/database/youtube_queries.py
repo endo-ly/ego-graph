@@ -189,7 +189,7 @@ def _build_enriched_cte(
     ctes.append(
         "filtered_watch_events AS ("
         "SELECT * FROM read_parquet(?) "
-        "WHERE watched_at_utc >= ? AND watched_at_utc < ?)"
+        "WHERE watched_at_utc::TIMESTAMP >= ? AND watched_at_utc::TIMESTAMP < ?)"
     )
     sql_params.extend(
         [
@@ -237,7 +237,7 @@ def get_watch_events(
             channel_name,
             content_type
         FROM enriched_watch_events
-        ORDER BY watched_at_utc DESC
+        ORDER BY watched_at_utc::TIMESTAMP DESC
         LIMIT COALESCE(?, {DEFAULT_WATCH_EVENTS_LIMIT})
     """
     cte_params.append(limit)
@@ -266,7 +266,7 @@ def get_watching_stats(
         {ctes}
         SELECT
             strftime(
-                watched_at_utc AT TIME ZONE 'UTC'
+                watched_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
                 AT TIME ZONE '{params.tz_name}',
                 '{date_format_map[granularity]}'
             ) AS period,

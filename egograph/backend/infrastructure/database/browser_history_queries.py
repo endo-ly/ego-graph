@@ -98,10 +98,10 @@ def get_page_views(
             transition,
             visit_span_count
         FROM read_parquet(?)
-        WHERE started_at_utc >= ? AND started_at_utc < ?
+        WHERE started_at_utc::TIMESTAMP >= ? AND started_at_utc::TIMESTAMP < ?
           AND (? IS NULL OR browser = ?)
           AND (? IS NULL OR profile = ?)
-        ORDER BY started_at_utc DESC
+        ORDER BY started_at_utc::TIMESTAMP DESC
         LIMIT ?
     """
     return execute_query(
@@ -135,7 +135,7 @@ def get_top_domains(
                 NULLIF(regexp_extract(url, '^[a-zA-Z]+://([^/?#]+)', 1), '') AS domain,
                 url
             FROM read_parquet(?)
-            WHERE started_at_utc >= ? AND started_at_utc < ?
+            WHERE started_at_utc::TIMESTAMP >= ? AND started_at_utc::TIMESTAMP < ?
               AND (? IS NULL OR browser = ?)
               AND (? IS NULL OR profile = ?)
         )

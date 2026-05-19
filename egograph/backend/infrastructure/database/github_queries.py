@@ -281,7 +281,7 @@ def get_pull_requests(
             reviews_count,
             commits_count
         FROM read_parquet(?)
-        WHERE updated_at_utc >= ? AND updated_at_utc < ?
+        WHERE updated_at_utc::TIMESTAMP >= ? AND updated_at_utc::TIMESTAMP < ?
     """
 
     query_params: list[Any] = [partition_paths, params.utc_start, params.utc_end]
@@ -298,7 +298,7 @@ def get_pull_requests(
         query += " AND state = ?"
         query_params.append(state)
 
-    query += " ORDER BY updated_at_utc DESC"
+    query += " ORDER BY updated_at_utc::TIMESTAMP DESC"
 
     if limit is not None:
         query += "\n        LIMIT ?"
@@ -364,7 +364,7 @@ def get_commits(
             additions,
             deletions
         FROM read_parquet(?)
-        WHERE committed_at_utc >= ? AND committed_at_utc < ?
+        WHERE committed_at_utc::TIMESTAMP >= ? AND committed_at_utc::TIMESTAMP < ?
     """
 
     query_params: list[Any] = [partition_paths, params.utc_start, params.utc_end]
@@ -377,7 +377,7 @@ def get_commits(
         query += " AND repo = ?"
         query_params.append(repo)
 
-    query += " ORDER BY committed_at_utc DESC"
+    query += " ORDER BY committed_at_utc::TIMESTAMP DESC"
 
     if limit is not None:
         query += "\n        LIMIT ?"
@@ -475,7 +475,7 @@ def get_repositories(
     if where_conditions:
         query += " WHERE " + " AND ".join(where_conditions)
 
-    query += " ORDER BY updated_at_utc DESC"
+    query += " ORDER BY updated_at_utc::TIMESTAMP DESC"
 
     if limit:
         query += " LIMIT ?"
@@ -539,7 +539,7 @@ def get_activity_stats(
         WITH pr_per_key AS (
             SELECT
                 strftime(
-                    pr.updated_at_utc AT TIME ZONE 'UTC'
+                    pr.updated_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
                     AT TIME ZONE '{params.tz_name}',
                     '{date_format}'
                 ) as period,
@@ -555,7 +555,7 @@ def get_activity_stats(
                     0
                 ) as deletions
             FROM read_parquet(?) pr
-            WHERE pr.updated_at_utc >= ? AND pr.updated_at_utc < ?
+            WHERE pr.updated_at_utc::TIMESTAMP >= ? AND pr.updated_at_utc::TIMESTAMP < ?
             GROUP BY period, pr.pr_key
         ),
         pr_stats AS (
@@ -571,7 +571,7 @@ def get_activity_stats(
         commit_stats AS (
             SELECT
                 strftime(
-                    c.committed_at_utc AT TIME ZONE 'UTC'
+                    c.committed_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
                     AT TIME ZONE '{params.tz_name}',
                     '{date_format}'
                 ) as period,
@@ -579,7 +579,8 @@ def get_activity_stats(
                 COALESCE(SUM(c.additions), 0) as commit_additions,
                 COALESCE(SUM(c.deletions), 0) as commit_deletions
             FROM read_parquet(?) c
-            WHERE c.committed_at_utc >= ? AND c.committed_at_utc < ?
+            WHERE c.committed_at_utc::TIMESTAMP >= ?
+              AND c.committed_at_utc::TIMESTAMP < ?
             GROUP BY period
         )
         SELECT
@@ -665,7 +666,7 @@ def get_repo_summary_stats(
                 ) as deletions,
                 MAX(CASE WHEN pr.action = 'merged' THEN 1 ELSE 0 END) as is_merged
             FROM read_parquet(?) pr
-            WHERE pr.updated_at_utc >= ? AND pr.updated_at_utc < ?
+            WHERE pr.updated_at_utc::TIMESTAMP >= ? AND pr.updated_at_utc::TIMESTAMP < ?
             GROUP BY pr.owner, pr.repo, pr.repo_full_name, pr.pr_key
         ),
         pr_summary AS (
@@ -691,7 +692,8 @@ def get_repo_summary_stats(
                 COALESCE(SUM(c.deletions), 0) as commit_deletions,
                 MAX(c.committed_at_utc) as last_commit_at
             FROM read_parquet(?) c
-            WHERE c.committed_at_utc >= ? AND c.committed_at_utc < ?
+            WHERE c.committed_at_utc::TIMESTAMP >= ?
+              AND c.committed_at_utc::TIMESTAMP < ?
             GROUP BY c.owner, c.repo, c.repo_full_name
         )
         SELECT

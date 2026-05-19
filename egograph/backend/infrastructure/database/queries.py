@@ -165,7 +165,7 @@ def get_top_tracks(
             COUNT(*) as play_count,
             SUM(ms_played) / ? as total_minutes
         FROM read_parquet(?)
-        WHERE played_at_utc >= ? AND played_at_utc < ?
+        WHERE played_at_utc::TIMESTAMP >= ? AND played_at_utc::TIMESTAMP < ?
         GROUP BY track_name, artist
         ORDER BY play_count DESC
         LIMIT ?
@@ -235,7 +235,7 @@ def get_listening_stats(
     query = f"""
         SELECT
             strftime(
-                played_at_utc AT TIME ZONE 'UTC'
+                played_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
                 AT TIME ZONE '{params.tz_name}',
                 '{date_format}'
             ) as period,
@@ -243,7 +243,7 @@ def get_listening_stats(
             COUNT(*) as track_count,
             COUNT(DISTINCT track_id) as unique_tracks
         FROM read_parquet(?)
-        WHERE played_at_utc >= ? AND played_at_utc < ?
+        WHERE played_at_utc::TIMESTAMP >= ? AND played_at_utc::TIMESTAMP < ?
         GROUP BY period
         ORDER BY period ASC
     """

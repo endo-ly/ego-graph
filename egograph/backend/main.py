@@ -11,9 +11,8 @@ import secrets
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from backend.api import browser_history_data, data, github, health, youtube
 from backend.config import BackendConfig
@@ -22,30 +21,48 @@ from backend.mcp_server import create_mcp_server
 logger = logging.getLogger(__name__)
 
 
-class _ApiKeyAuthMiddleware(BaseHTTPMiddleware):
+class _ApiKeyAuthMiddleware:
     """REST API と MCP エンドポイント全体に適用されるAPI Key認証。
 
     BACKEND_API_KEYが設定されている場合、全リクエストでX-API-Keyヘッダーを検証する。
     ヘルスチェックとドキュメントパスは除外。
     設定されていない場合は認証をスキップする。
+
+    BaseHTTPMiddleware ではなく純粋 ASGI ミドルウェアとして実装。
+    BaseHTTPMiddleware は app.mount() したサブアプリとの組み合わせで
+    "No response returned." を引き起こす既知の不具合があるため。
     """
 
     _PUBLIC_PATHS = frozenset(
         {"/v1/health", "/health", "/docs", "/redoc", "/openapi.json"}
     )
 
-    def __init__(self, app, api_key: str):
-        super().__init__(app)
+    def __init__(self, app: ASGIApp, api_key: str):
+        self.app = app
         self._api_key = api_key
 
-    async def dispatch(self, request: Request, call_next):
-        if request.url.path in self._PUBLIC_PATHS:
-            return await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        api_key = request.headers.get("x-api-key")
+        path = scope.get("path", "")
+        if path in self._PUBLIC_PATHS:
+            await self.app(scope, receive, send)
+            return
+
+        # scope["headers"] は [(b"key", b"value"), ...] 形式
+        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        api_key = headers.get("x-api-key", "")
+
         if not api_key or not secrets.compare_digest(api_key, self._api_key):
-            return JSONResponse(status_code=401, content={"detail": "Invalid API key"})
-        return await call_next(request)
+            response = JSONResponse(
+                status_code=401, content={"detail": "Invalid API key"}
+            )
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
 
 
 def create_app(config: BackendConfig | None = None) -> FastAPI:
