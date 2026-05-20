@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 from pipelines.sources.common.compaction import (
+    _unify_datetime_columns,
     build_compacted_key,
     compact_records,
     discover_available_months,
@@ -73,6 +74,82 @@ class TestCompactRecords:
         df = compact_records([], dedupe_key="track_id")
 
         assert df.empty
+
+
+class TestUnifyDatetimeColumns:
+    """_unify_datetime_columns tests."""
+
+    def test_unifies_mixed_timestamp_str_to_datetime(self):
+        """Timestamp と str が混在していても datetime に統一される。"""
+        df = pd.DataFrame({
+            "play_id": ["p1", "p2", "p3"],
+            "played_at_utc": [
+                pd.Timestamp("2024-05-01 10:00:00"),
+                "2024-05-02 11:00:00+00:00",
+                pd.Timestamp("2024-05-01 09:00:00"),
+            ],
+        })
+
+        result = _unify_datetime_columns(df)
+
+        assert result["played_at_utc"].dtype.name.startswith(
+            "datetime64[ns, UTC"
+        )
+        assert result.loc[0, "played_at_utc"] == pd.Timestamp(
+            "2024-05-01 10:00:00", tz="UTC"
+        )
+        assert result.loc[1, "played_at_utc"] == pd.Timestamp(
+            "2024-05-02 11:00:00", tz="UTC"
+        )
+
+    def test_leaves_homogeneous_str_unchanged(self):
+        """混在型でなければ型変換しない。"""
+        df = pd.DataFrame({
+            "track_id": ["t1", "t2"],
+            "label": ["a", "b"],
+        })
+
+        result = _unify_datetime_columns(df)
+
+        assert result["label"].dtype == object
+        assert list(result["label"]) == ["a", "b"]
+
+    def test_leaves_int_column_unchanged(self):
+        """整数カラムは無視される。"""
+        df = pd.DataFrame({
+            "id": [1, 2],
+            "played_at_utc": [
+                pd.Timestamp("2024-05-01 10:00:00"),
+                pd.Timestamp("2024-05-02 11:00:00"),
+            ],
+        })
+
+        result = _unify_datetime_columns(df)
+
+        assert result["id"].dtype == int
+        assert result["played_at_utc"].dtype.name.startswith("datetime64[ns")
+
+
+class TestCompactRecordsSortCanNowAssumeUnifiedTypes:
+    """compact_records は統一済みの型を受け取る前提で動作する。"""
+
+    def test_sorts_datetime_column_normally(self):
+        df = pd.DataFrame({
+            "play_id": ["p1", "p2", "p3"],
+            "played_at_utc": pd.to_datetime([
+                "2024-05-01 10:00:00+00:00",
+                "2024-05-02 11:00:00+00:00",
+                "2024-05-01 09:00:00+00:00",
+            ]),
+        })
+        records = df.to_dict(orient="records")
+
+        result = compact_records(records, dedupe_key="play_id", sort_by="played_at_utc")
+
+        assert len(result) == 3
+        assert result.iloc[0]["play_id"] == "p3"
+        assert result.iloc[1]["play_id"] == "p1"
+        assert result.iloc[2]["play_id"] == "p2"
 
 
 class TestResolveTargetMonths:

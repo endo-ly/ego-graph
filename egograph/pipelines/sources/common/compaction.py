@@ -18,6 +18,25 @@ def _normalize_path(path: str) -> str:
     return path.rstrip("/") + "/"
 
 
+def _unify_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """複数ファイルからのconcatでdatetime/strが混在したカラムをdatetimeに統一する。"""
+    for col in df.columns:
+        if df[col].dtype != object:
+            continue
+        non_null = df[col].dropna()
+        if len(non_null) == 0:
+            continue
+        sample = non_null.iloc[: min(len(non_null), 100)]
+        type_names = {type(v).__name__ for v in sample if v is not None}
+        datetime_types = {"Timestamp", "datetime"}
+        has_datetime = bool(type_names & datetime_types)
+        has_str = "str" in type_names
+
+        if has_datetime and has_str:
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+    return df
+
+
 def build_compacted_key(
     compacted_path: str,
     data_domain: str,
@@ -106,6 +125,7 @@ def read_parquet_records_from_prefix(
         return []
 
     combined = pd.concat(frames, ignore_index=True)
+    combined = _unify_datetime_columns(combined)
     return combined.to_dict(orient="records")
 
 
