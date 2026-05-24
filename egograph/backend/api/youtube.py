@@ -115,7 +115,9 @@ async def get_watching_stats_endpoint(
         granularity,
     )
 
-    return repository.get_watching_stats(db_connection, start, end, validated_granularity)
+    return repository.get_watching_stats(
+        db_connection, start, end, validated_granularity
+    )
 
 
 @router.get("/stats/top-videos", response_model=list[TopVideoResponse])

@@ -12,8 +12,8 @@ from zoneinfo import ZoneInfo
 import duckdb
 
 from backend.config import R2Config
-from backend.infrastructure.database.query_params import QueryParams
 from backend.infrastructure.database.queries import get_listening_stats, get_top_tracks
+from backend.infrastructure.database.query_params import QueryParams
 from backend.validators import to_utc_range
 
 logger = logging.getLogger(__name__)

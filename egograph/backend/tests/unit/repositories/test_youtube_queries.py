@@ -8,6 +8,7 @@ import pytest
 
 from backend.config import R2Config
 from backend.infrastructure.database.parquet_paths import build_partition_paths
+from backend.infrastructure.database.query_params import QueryParams
 from backend.infrastructure.database.youtube_queries import (
     DEFAULT_WATCH_EVENTS_LIMIT,
     _build_enriched_cte,
@@ -22,7 +23,6 @@ from backend.infrastructure.database.youtube_queries import (
     get_watch_events_parquet_path,
     get_watching_stats,
 )
-from backend.infrastructure.database.query_params import QueryParams
 from backend.tests.fixtures.youtube import patch_youtube_paths
 from backend.validators import to_utc_range
 
@@ -121,7 +121,9 @@ class TestBuildPartitionPaths:
         start = datetime(2024, 1, 1)
         end = datetime(2024, 2, 1)
 
-        paths = build_partition_paths(mock_r2_config, "events", "youtube/watch_events", start, end)
+        paths = build_partition_paths(
+            mock_r2_config, "events", "youtube/watch_events", start, end
+        )
 
         assert len(paths) == 2  # Jan + Feb
         assert "year=2024/month=01" in paths[0]
@@ -131,7 +133,9 @@ class TestBuildPartitionPaths:
         start = datetime(2024, 11, 15)
         end = datetime(2025, 2, 1)
 
-        paths = build_partition_paths(mock_r2_config, "events", "youtube/watch_events", start, end)
+        paths = build_partition_paths(
+            mock_r2_config, "events", "youtube/watch_events", start, end
+        )
 
         assert len(paths) == 4
 
@@ -140,7 +144,9 @@ class TestBuildPartitionPaths:
         start = datetime(2023, 12, 1)
         end = datetime(2024, 2, 1)
 
-        paths = build_partition_paths(mock_r2_config, "events", "youtube/watch_events", start, end)
+        paths = build_partition_paths(
+            mock_r2_config, "events", "youtube/watch_events", start, end
+        )
 
         assert len(paths) == 3
         assert "year=2023/month=12" in paths[0]

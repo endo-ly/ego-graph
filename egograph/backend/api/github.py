@@ -22,7 +22,11 @@ from backend.constants import (
     MAX_LIMIT,
     MIN_LIMIT,
 )
-from backend.dependencies import get_db_connection, get_github_repository, verify_api_key_docs
+from backend.dependencies import (
+    get_db_connection,
+    get_github_repository,
+    verify_api_key_docs,
+)
 from backend.infrastructure.repositories.github_repository import GitHubRepository
 from backend.validators import (
     validate_date_range,
@@ -81,7 +85,13 @@ def get_pull_requests_endpoint(
         limit,
     )
     return repository.get_pull_requests(
-        db_connection, start, end, owner=owner, repo=repo, state=state, limit=validated_limit
+        db_connection,
+        start,
+        end,
+        owner=owner,
+        repo=repo,
+        state=state,
+        limit=validated_limit,
     )
 
 
@@ -156,7 +166,9 @@ def get_repositories_endpoint(
     """
     validated_limit = validate_limit(limit, max_value=1000)
     logger.info("Getting repositories: owner=%s, limit=%s", owner, validated_limit)
-    return repository.get_repositories(db_connection, owner=owner, limit=validated_limit)
+    return repository.get_repositories(
+        db_connection, owner=owner, limit=validated_limit
+    )
 
 
 @router.get("/activity-stats", response_model=list[ActivityStatsResponse])
@@ -195,7 +207,9 @@ def get_activity_stats_endpoint(
         end_date,
         granularity,
     )
-    return repository.get_activity_stats(db_connection, start, end, granularity=validated_granularity)
+    return repository.get_activity_stats(
+        db_connection, start, end, granularity=validated_granularity
+    )
 
 
 @router.get("/repo-summary-stats", response_model=list[RepoSummaryStatsResponse])
@@ -234,4 +248,6 @@ def get_repo_summary_stats_endpoint(
         owner,
         repo,
     )
-    return repository.get_repo_summary_stats(db_connection, start, end, owner=owner, repo_name=repo)
+    return repository.get_repo_summary_stats(
+        db_connection, start, end, owner=owner, repo_name=repo
+    )

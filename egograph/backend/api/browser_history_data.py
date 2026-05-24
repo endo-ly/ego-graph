@@ -13,7 +13,11 @@ from backend.constants import (
     MAX_LIMIT,
     MIN_LIMIT,
 )
-from backend.dependencies import get_db_connection, get_browser_history_repository, verify_api_key_docs
+from backend.dependencies import (
+    get_browser_history_repository,
+    get_db_connection,
+    verify_api_key_docs,
+)
 from backend.infrastructure.repositories.browser_history_repository import (
     BrowserHistoryRepository,
 )
@@ -48,7 +52,12 @@ def get_page_views_endpoint(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return repository.get_page_views(
-        db_connection, start, end, browser=browser, profile=profile, limit=validated_limit
+        db_connection,
+        start,
+        end,
+        browser=browser,
+        profile=profile,
+        limit=validated_limit,
     )
 
 
@@ -76,5 +85,10 @@ def get_top_domains_endpoint(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return repository.get_top_domains(
-        db_connection, start, end, browser=browser, profile=profile, limit=validated_limit
+        db_connection,
+        start,
+        end,
+        browser=browser,
+        profile=profile,
+        limit=validated_limit,
     )

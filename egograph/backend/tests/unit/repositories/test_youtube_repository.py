@@ -1,7 +1,6 @@
 """YouTube Repository層のテスト。"""
 
 from datetime import date
-from unittest.mock import patch
 
 from pydantic import SecretStr
 

@@ -16,7 +16,11 @@ from backend.constants import (
     MAX_LIMIT,
     MIN_LIMIT,
 )
-from backend.dependencies import get_db_connection, get_spotify_repository, verify_api_key_docs
+from backend.dependencies import (
+    get_db_connection,
+    get_spotify_repository,
+    verify_api_key_docs,
+)
 from backend.infrastructure.repositories.spotify_repository import SpotifyRepository
 from backend.validators import (
     validate_date_range,
@@ -101,4 +105,6 @@ async def get_listening_stats_endpoint(
         end_date,
         granularity,
     )
-    return repository.get_listening_stats(db_connection, start, end, validated_granularity)
+    return repository.get_listening_stats(
+        db_connection, start, end, validated_granularity
+    )
