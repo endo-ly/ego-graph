@@ -29,10 +29,6 @@ from backend.infrastructure.database.queries import (
 )
 from backend.infrastructure.database.query_params import QueryParams, execute_query
 
-# TODO(Step4): Remove backward-compatible aliases after API files are updated
-BrowserHistoryQueryParams = QueryParams  # noqa: A004  # backward compat
-GitHubQueryParams = QueryParams  # noqa: A004  # backward compat
-
 __all__ = [
     # R2 Data Lake (DuckDB)
     "DuckDBConnection",

@@ -13,9 +13,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_WATCH_EVENTS_LIMIT = 100_000
 
-# TODO(Step4): Remove backward-compat alias after Repository/API files updated
-YouTubeQueryParams = QueryParams  # noqa: A004  # backward compat
-
 YOUTUBE_WATCH_EVENTS_PATH = (
     "s3://{bucket}/{events_path}youtube/watch_events/**/*.parquet"
 )
