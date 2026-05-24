@@ -1,84 +1,24 @@
 """Browser History データ用のSQLクエリテンプレートとヘルパー関数。"""
 
-from dataclasses import dataclass
-from datetime import date, datetime
 from typing import Any
 
-import duckdb
-
-from backend.config import R2Config
 from backend.constants import DEFAULT_PAGE_VIEWS_LIMIT, DEFAULT_TOP_DOMAINS_LIMIT
 from backend.infrastructure.database.parquet_paths import build_partition_paths
-from backend.infrastructure.database.queries import execute_query
-
-BROWSER_HISTORY_PAGE_VIEWS_PARTITION_PATH = (
-    "s3://{bucket}/{events_path}browser_history/page_views/"
-    "year={year}/month={month}/**/*.parquet"
-)
+from backend.infrastructure.database.query_params import QueryParams, execute_query
 
 
-@dataclass
-class BrowserHistoryQueryParams:
-    """Browser Historyクエリ用の共通パラメータ。"""
-
-    conn: duckdb.DuckDBPyConnection
-    bucket: str
-    events_path: str
-    start_date: date
-    end_date: date
-    utc_start: datetime
-    utc_end: datetime
-    tz_name: str = "UTC"
-    r2_config: R2Config | None = None
-
-
-def _generate_browser_history_partition_paths(
-    bucket: str,
-    events_path: str,
-    utc_start: datetime,
-    utc_end: datetime,
-) -> list[str]:
-    """指定期間のBrowser Historyパーティションパスを生成する。"""
-    paths: list[str] = []
-    current = date(utc_start.year, utc_start.month, 1)
-    end_month = date(utc_end.year, utc_end.month, 1)
-
-    while current <= end_month:
-        paths.append(
-            BROWSER_HISTORY_PAGE_VIEWS_PARTITION_PATH.format(
-                bucket=bucket,
-                events_path=events_path,
-                year=current.year,
-                month=f"{current.month:02d}",
-            )
-        )
-        if current.month == 12:
-            current = current.replace(year=current.year + 1, month=1)
-        else:
-            current = current.replace(month=current.month + 1)
-
-    return paths
-
-
-def _resolve_partition_paths(params: BrowserHistoryQueryParams) -> list[str]:
-    if params.r2_config is not None:
-        return build_partition_paths(
-            params.r2_config,
-            data_domain="events",
-            dataset_path="browser_history/page_views",
-            utc_start=params.utc_start,
-            utc_end=params.utc_end,
-        )
-    return _generate_browser_history_partition_paths(
-        params.bucket,
-        params.events_path,
-        params.utc_start,
-        params.utc_end,
+def _resolve_partition_paths(params: QueryParams) -> list[str]:
+    return build_partition_paths(
+        params.r2_config,
+        data_domain="events",
+        dataset_path="browser_history/page_views",
+        utc_start=params.utc_start,
+        utc_end=params.utc_end,
     )
 
 
 def get_page_views(
-    params: BrowserHistoryQueryParams,
+    params: QueryParams,
     *,
     browser: str | None = None,
     profile: str | None = None,
@@ -121,7 +61,7 @@ def get_page_views(
 
 
 def get_top_domains(
-    params: BrowserHistoryQueryParams,
+    params: QueryParams,
     *,
     browser: str | None = None,
     profile: str | None = None,

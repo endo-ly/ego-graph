@@ -1,42 +1,17 @@
 """GitHub データ用のSQLクエリテンプレートとヘルパー関数。"""
 
 import logging
-from dataclasses import dataclass
-from datetime import date, datetime
 from typing import Any
 
-import duckdb
-import numpy as np
-
-from backend.config import R2Config
 from backend.infrastructure.database.parquet_paths import build_partition_paths
+from backend.infrastructure.database.query_params import QueryParams, execute_query
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class GitHubQueryParams:
-    """GitHubデータクエリ用の共通パラメータ。"""
-
-    conn: duckdb.DuckDBPyConnection
-    bucket: str
-    events_path: str
-    master_path: str
-    start_date: date
-    end_date: date
-    utc_start: datetime
-    utc_end: datetime
-    tz_name: str = "UTC"
-    r2_config: R2Config | None = None
-
-
 # Parquetパスパターン
 GITHUB_PRS_PATH = "s3://{bucket}/{events_path}github/pull_requests/**/*.parquet"
-GITHUB_PRS_PARTITION_PATH = "s3://{bucket}/{events_path}github/pull_requests/year={year}/month={month}/**/*.parquet"
 GITHUB_COMMITS_PATH = "s3://{bucket}/{events_path}github/commits/**/*.parquet"
-GITHUB_COMMITS_PARTITION_PATH = (
-    "s3://{bucket}/{events_path}github/commits/year={year}/month={month}/**/*.parquet"
-)
 GITHUB_REPOS_PATH = "s3://{bucket}/{master_path}github/repositories/**/*.parquet"
 
 
@@ -79,141 +54,28 @@ def get_repos_parquet_path(bucket: str, master_path: str) -> str:
     return GITHUB_REPOS_PATH.format(bucket=bucket, master_path=master_path)
 
 
-def _generate_partition_paths(
-    path_template: str,
-    bucket: str,
-    events_path: str,
-    utc_start: datetime,
-    utc_end: datetime,
-    log_label: str,
-) -> list[str]:
-    """指定期間の月パーティションパスリストを生成します。"""
-    paths: list[str] = []
-    current = date(utc_start.year, utc_start.month, 1)
-    end_month = date(utc_end.year, utc_end.month, 1)
-
-    while current <= end_month:
-        path = path_template.format(
-            bucket=bucket,
-            events_path=events_path,
-            year=current.year,
-            month=f"{current.month:02d}",
-        )
-        paths.append(path)
-
-        if current.month == 12:
-            current = current.replace(year=current.year + 1, month=1)
-        else:
-            current = current.replace(month=current.month + 1)
-
-    logger.debug(
-        "Generated %d %s partition paths for period %s to %s",
-        len(paths),
-        log_label,
-        utc_start,
-        utc_end,
-    )
-    return paths
-
-
-def _generate_pr_partition_paths(
-    bucket: str, events_path: str, utc_start: datetime, utc_end: datetime
-) -> list[str]:
-    """指定期間の月パーティションに対応するPRイベントParquetパスリストを生成します。"""
-    return _generate_partition_paths(
-        GITHUB_PRS_PARTITION_PATH, bucket, events_path, utc_start, utc_end, "PR"
+def _resolve_pr_partition_paths(params: QueryParams) -> list[str]:
+    return build_partition_paths(
+        params.r2_config,
+        data_domain="events",
+        dataset_path="github/pull_requests",
+        utc_start=params.utc_start,
+        utc_end=params.utc_end,
     )
 
 
-def _generate_commit_partition_paths(
-    bucket: str, events_path: str, utc_start: datetime, utc_end: datetime
-) -> list[str]:
-    """指定期間の月パーティションに対応するCommitイベントParquetパスリストを生成します。"""
-    return _generate_partition_paths(
-        GITHUB_COMMITS_PARTITION_PATH,
-        bucket,
-        events_path,
-        utc_start,
-        utc_end,
-        "commit",
+def _resolve_commit_partition_paths(params: QueryParams) -> list[str]:
+    return build_partition_paths(
+        params.r2_config,
+        data_domain="events",
+        dataset_path="github/commits",
+        utc_start=params.utc_start,
+        utc_end=params.utc_end,
     )
-
-
-def _resolve_pr_partition_paths(params: GitHubQueryParams) -> list[str]:
-    if params.r2_config is not None:
-        return build_partition_paths(
-            params.r2_config,
-            data_domain="events",
-            dataset_path="github/pull_requests",
-            utc_start=params.utc_start,
-            utc_end=params.utc_end,
-        )
-    return _generate_pr_partition_paths(
-        params.bucket, params.events_path, params.utc_start, params.utc_end
-    )
-
-
-def _resolve_commit_partition_paths(params: GitHubQueryParams) -> list[str]:
-    if params.r2_config is not None:
-        return build_partition_paths(
-            params.r2_config,
-            data_domain="events",
-            dataset_path="github/commits",
-            utc_start=params.utc_start,
-            utc_end=params.utc_end,
-        )
-    return _generate_commit_partition_paths(
-        params.bucket, params.events_path, params.utc_start, params.utc_end
-    )
-
-
-def execute_query(
-    conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | None = None
-) -> list[dict[str, Any]]:
-    """SQLクエリを実行し、結果を辞書のリストとして返します。
-
-    Args:
-        conn: DuckDBコネクション
-        sql: 実行するSQLクエリ
-        params: SQLパラメータ（オプション）
-
-    Returns:
-        クエリ結果（辞書のリスト）
-
-    Raises:
-        duckdb.Error: SQLクエリ実行に失敗した場合
-    """
-    result = conn.execute(sql, params or [])
-    df = result.df()
-    records = df.to_dict(orient="records")
-    # numpy/pandas型をPython標準型に変換（JSONシリアライズ対応）
-    return [
-        {k: _convert_numpy_types(v) for k, v in record.items()} for record in records
-    ]
-
-
-def _convert_numpy_types(value: Any) -> Any:
-    """numpy/pandas型をPython標準型に変換します。
-
-    Args:
-        value: 変換対象の値
-
-    Returns:
-        Python標準型に変換された値
-    """
-    if isinstance(value, np.ndarray):
-        return value.tolist()
-    if isinstance(value, (np.integer, np.int64, np.int32)):
-        return int(value)
-    if isinstance(value, (np.floating, np.float64, np.float32)):
-        return float(value)
-    if isinstance(value, (np.bool_, bool)):
-        return bool(value)
-    return value
 
 
 def get_pull_requests(
-    params: GitHubQueryParams,
+    params: QueryParams,
     owner: str | None = None,
     repo: str | None = None,
     state: str | None = None,
@@ -318,7 +180,7 @@ def get_pull_requests(
 
 
 def get_commits(
-    params: GitHubQueryParams,
+    params: QueryParams,
     owner: str | None = None,
     repo: str | None = None,
     limit: int | None = None,
@@ -396,7 +258,7 @@ def get_commits(
 
 
 def get_repositories(
-    params: GitHubQueryParams,
+    params: QueryParams,
     owner: str | None = None,
     repo: str | None = None,
     limit: int | None = None,
@@ -436,7 +298,9 @@ def get_repositories(
             ...
         ]
     """
-    repos_path = get_repos_parquet_path(params.bucket, params.master_path)
+    repos_path = get_repos_parquet_path(
+        params.r2_config.bucket_name, params.r2_config.master_path
+    )
 
     query = """
         SELECT
@@ -492,7 +356,7 @@ def get_repositories(
 
 
 def get_activity_stats(
-    params: GitHubQueryParams,
+    params: QueryParams,
     granularity: str = "day",
 ) -> list[dict[str, Any]]:
     """期間別のアクティビティ統計を取得します。
@@ -617,7 +481,7 @@ def get_activity_stats(
 
 
 def get_repo_summary_stats(
-    params: GitHubQueryParams,
+    params: QueryParams,
     owner: str | None = None,
     repo_name: str | None = None,
 ) -> list[dict[str, Any]]:

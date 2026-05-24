@@ -1,13 +1,8 @@
 """Spotify データ用のSQLクエリテンプレートとヘルパー関数。"""
 
 import logging
-from dataclasses import dataclass
-from datetime import date, datetime
 from typing import Any
 
-import duckdb
-
-from backend.config import R2Config
 from backend.constants import (
     DEFAULT_SEARCH_TRACKS_LIMIT,
     DEFAULT_TOP_TRACKS_LIMIT,
@@ -17,30 +12,13 @@ from backend.infrastructure.database.parquet_paths import (
     build_dataset_glob,
     build_partition_paths,
 )
+from backend.infrastructure.database.query_params import QueryParams, execute_query
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class QueryParams:
-    """Spotifyデータクエリ用の共通パラメータ。"""
-
-    conn: duckdb.DuckDBPyConnection
-    bucket: str
-    events_path: str
-    start_date: date
-    end_date: date
-    utc_start: datetime
-    utc_end: datetime
-    tz_name: str = "UTC"
-    r2_config: R2Config | None = None
-
-
 # Parquetパスパターン
 SPOTIFY_PLAYS_PATH = "s3://{bucket}/{events_path}spotify/plays/**/*.parquet"
-SPOTIFY_PLAYS_PARTITION_PATH = (
-    "s3://{bucket}/{events_path}spotify/plays/year={year}/month={month}/**/*.parquet"
-)
 
 
 def get_parquet_path(bucket: str, events_path: str) -> str:
@@ -56,81 +34,14 @@ def get_parquet_path(bucket: str, events_path: str) -> str:
     return SPOTIFY_PLAYS_PATH.format(bucket=bucket, events_path=events_path)
 
 
-def _generate_partition_paths(
-    bucket: str, events_path: str, utc_start: datetime, utc_end: datetime
-) -> list[str]:
-    """指定期間の月パーティションに対応するParquetパスリストを生成します。
-
-    Args:
-        bucket: R2バケット名
-        events_path: イベントデータのパスプレフィックス
-        utc_start: 開始時刻 (naive UTC)
-        utc_end: 終了時刻 (naive UTC, 排他)
-
-    Returns:
-        月パーティションごとのS3パスリスト
-    """
-    paths: list[str] = []
-    current = date(utc_start.year, utc_start.month, 1)
-    # utc_end は排他だが、その月のデータを含む可能性があるため end の月も含める
-    end_month = date(utc_end.year, utc_end.month, 1)
-
-    while current <= end_month:
-        path = SPOTIFY_PLAYS_PARTITION_PATH.format(
-            bucket=bucket,
-            events_path=events_path,
-            year=current.year,
-            month=f"{current.month:02d}",
-        )
-        paths.append(path)
-
-        if current.month == 12:
-            current = current.replace(year=current.year + 1, month=1)
-        else:
-            current = current.replace(month=current.month + 1)
-
-    logger.debug(
-        "Generated %d partition paths for period %s to %s",
-        len(paths),
-        utc_start,
-        utc_end,
-    )
-    return paths
-
-
 def _resolve_partition_paths(params: QueryParams) -> list[str]:
-    if params.r2_config is not None:
-        return build_partition_paths(
-            params.r2_config,
-            data_domain="events",
-            dataset_path="spotify/plays",
-            utc_start=params.utc_start,
-            utc_end=params.utc_end,
-        )
-    return _generate_partition_paths(
-        params.bucket, params.events_path, params.utc_start, params.utc_end
+    return build_partition_paths(
+        params.r2_config,
+        data_domain="events",
+        dataset_path="spotify/plays",
+        utc_start=params.utc_start,
+        utc_end=params.utc_end,
     )
-
-
-def execute_query(
-    conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | None = None
-) -> list[dict[str, Any]]:
-    """SQLクエリを実行し、結果を辞書のリストとして返します。
-
-    Args:
-        conn: DuckDBコネクション
-        sql: 実行するSQLクエリ
-        params: SQLパラメータ（オプション）
-
-    Returns:
-        クエリ結果（辞書のリスト）
-
-    Raises:
-        duckdb.Error: SQLクエリ実行に失敗した場合
-    """
-    result = conn.execute(sql, params or [])
-    df = result.df()
-    return df.to_dict(orient="records")
 
 
 def get_top_tracks(
@@ -282,14 +193,10 @@ def search_tracks_by_name(
         ]
     """
     # 全期間を対象とするため、ワイルドカードパスを使用
-    parquet_path = (
-        build_dataset_glob(
-            params.r2_config,
-            data_domain="events",
-            dataset_path="spotify/plays",
-        )
-        if params.r2_config is not None
-        else get_parquet_path(params.bucket, params.events_path)
+    parquet_path = build_dataset_glob(
+        params.r2_config,
+        data_domain="events",
+        dataset_path="spotify/plays",
     )
 
     search_pattern = f"%{query}%"
