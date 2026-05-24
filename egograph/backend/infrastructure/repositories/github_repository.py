@@ -9,16 +9,17 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import duckdb
+
 from backend.config import R2Config
-from backend.infrastructure.database import (
-    DuckDBConnection,
-    GitHubQueryParams,
+from backend.infrastructure.database.github_queries import (
     get_activity_stats,
     get_commits,
     get_pull_requests,
     get_repo_summary_stats,
     get_repositories,
 )
+from backend.infrastructure.database.query_params import QueryParams
 from backend.validators import to_utc_range
 
 logger = logging.getLogger(__name__)
@@ -43,27 +44,25 @@ class GitHubRepository:
 
     def _build_params(
         self,
-        conn: DuckDBConnection,
+        conn: duckdb.DuckDBPyConnection,
         start_date: date,
         end_date: date,
-    ) -> GitHubQueryParams:
+    ) -> QueryParams:
         """共通のクエリパラメータを構築する。"""
         utc_start, utc_end = to_utc_range(start_date, end_date, self._tz)
-        return GitHubQueryParams(
+        return QueryParams(
             conn=conn,
-            bucket=self.r2_config.bucket_name,
-            events_path=self.r2_config.events_path,
-            master_path=self.r2_config.master_path,
+            r2_config=self.r2_config,
             start_date=start_date,
             end_date=end_date,
             utc_start=utc_start,
             utc_end=utc_end,
             tz_name=str(self._tz),
-            r2_config=self.r2_config,
         )
 
     def get_pull_requests(
         self,
+        conn: duckdb.DuckDBPyConnection,
         start_date: date,
         end_date: date,
         owner: str | None = None,
@@ -74,6 +73,7 @@ class GitHubRepository:
         """指定期間のPull Requestイベントを取得します。
 
         Args:
+            conn: DuckDB コネクション
             start_date: 開始日
             end_date: 終了日
             owner: フィルタ対象のオーナー（オプション）
@@ -87,30 +87,30 @@ class GitHubRepository:
         Raises:
             duckdb.Error: データベース操作に失敗した場合
         """
-        with DuckDBConnection(self.r2_config) as conn:
-            params = self._build_params(conn, start_date, end_date)
-            result = get_pull_requests(
-                params,
-                owner=owner,
-                repo=repo,
-                state=state,
-                limit=limit,
-            )
-            logger.info(
-                "Retrieved pull requests: start_date=%s, end_date=%s, "
-                "owner=%s, repo=%s, state=%s, limit=%s, count=%s",
-                start_date,
-                end_date,
-                owner,
-                repo,
-                state,
-                limit,
-                len(result),
-            )
-            return result
+        params = self._build_params(conn, start_date, end_date)
+        result = get_pull_requests(
+            params,
+            owner=owner,
+            repo=repo,
+            state=state,
+            limit=limit,
+        )
+        logger.info(
+            "Retrieved pull requests: start_date=%s, end_date=%s, "
+            "owner=%s, repo=%s, state=%s, limit=%s, count=%s",
+            start_date,
+            end_date,
+            owner,
+            repo,
+            state,
+            limit,
+            len(result),
+        )
+        return result
 
     def get_commits(
         self,
+        conn: duckdb.DuckDBPyConnection,
         start_date: date,
         end_date: date,
         owner: str | None = None,
@@ -120,6 +120,7 @@ class GitHubRepository:
         """指定期間のCommitイベントを取得します。
 
         Args:
+            conn: DuckDB コネクション
             start_date: 開始日
             end_date: 終了日
             owner: フィルタ対象のオーナー（オプション）
@@ -132,23 +133,23 @@ class GitHubRepository:
         Raises:
             duckdb.Error: データベース操作に失敗した場合
         """
-        with DuckDBConnection(self.r2_config) as conn:
-            params = self._build_params(conn, start_date, end_date)
-            result = get_commits(params, owner=owner, repo=repo, limit=limit)
-            logger.info(
-                "Retrieved commits: start_date=%s, end_date=%s, owner=%s, "
-                "repo=%s, limit=%s, count=%s",
-                start_date,
-                end_date,
-                owner,
-                repo,
-                limit,
-                len(result),
-            )
-            return result
+        params = self._build_params(conn, start_date, end_date)
+        result = get_commits(params, owner=owner, repo=repo, limit=limit)
+        logger.info(
+            "Retrieved commits: start_date=%s, end_date=%s, owner=%s, "
+            "repo=%s, limit=%s, count=%s",
+            start_date,
+            end_date,
+            owner,
+            repo,
+            limit,
+            len(result),
+        )
+        return result
 
     def get_repositories(
         self,
+        conn: duckdb.DuckDBPyConnection,
         owner: str | None = None,
         repo: str | None = None,
         limit: int | None = None,
@@ -156,6 +157,7 @@ class GitHubRepository:
         """Repositoryマスターを取得します。
 
         Args:
+            conn: DuckDB コネクション
             owner: フィルタ対象のオーナー（オプション）
             repo: フィルタ対象のリポジトリ（オプション）
             limit: 取得件数上限（オプション）
@@ -166,31 +168,28 @@ class GitHubRepository:
         Raises:
             duckdb.Error: データベース操作に失敗した場合
         """
-        with DuckDBConnection(self.r2_config) as conn:
-            params = GitHubQueryParams(
-                conn=conn,
-                bucket=self.r2_config.bucket_name,
-                events_path=self.r2_config.events_path,
-                master_path=self.r2_config.master_path,
-                start_date=date(1, 1, 1),
-                end_date=date(9999, 12, 31),
-                utc_start=datetime.min,
-                utc_end=datetime.max,
-                tz_name=str(self._tz),
-                r2_config=self.r2_config,
-            )
-            result = get_repositories(params, owner=owner, repo=repo, limit=limit)
-            logger.info(
-                "Retrieved repositories: owner=%s, repo=%s, limit=%s, count=%s",
-                owner,
-                repo,
-                limit,
-                len(result),
-            )
-            return result
+        params = QueryParams(
+            conn=conn,
+            r2_config=self.r2_config,
+            start_date=date(1, 1, 1),
+            end_date=date(9999, 12, 31),
+            utc_start=datetime.min,
+            utc_end=datetime.max,
+            tz_name=str(self._tz),
+        )
+        result = get_repositories(params, owner=owner, repo=repo, limit=limit)
+        logger.info(
+            "Retrieved repositories: owner=%s, repo=%s, limit=%s, count=%s",
+            owner,
+            repo,
+            limit,
+            len(result),
+        )
+        return result
 
     def get_activity_stats(
         self,
+        conn: duckdb.DuckDBPyConnection,
         start_date: date,
         end_date: date,
         granularity: str = "day",
@@ -198,6 +197,7 @@ class GitHubRepository:
         """期間別のアクティビティ統計を取得します。
 
         Args:
+            conn: DuckDB コネクション
             start_date: 開始日
             end_date: 終了日
             granularity: 集計単位（"day", "week", "month"）
@@ -209,21 +209,21 @@ class GitHubRepository:
             duckdb.Error: データベース操作に失敗した場合
             ValueError: granularityが無効な場合
         """
-        with DuckDBConnection(self.r2_config) as conn:
-            params = self._build_params(conn, start_date, end_date)
-            result = get_activity_stats(params, granularity=granularity)
-            logger.info(
-                "Retrieved activity stats: start_date=%s, end_date=%s, "
-                "granularity=%s, count=%s",
-                start_date,
-                end_date,
-                granularity,
-                len(result),
-            )
-            return result
+        params = self._build_params(conn, start_date, end_date)
+        result = get_activity_stats(params, granularity=granularity)
+        logger.info(
+            "Retrieved activity stats: start_date=%s, end_date=%s, "
+            "granularity=%s, count=%s",
+            start_date,
+            end_date,
+            granularity,
+            len(result),
+        )
+        return result
 
     def get_repo_summary_stats(
         self,
+        conn: duckdb.DuckDBPyConnection,
         start_date: date,
         end_date: date,
         owner: str | None = None,
@@ -232,6 +232,7 @@ class GitHubRepository:
         """リポジトリ別のサマリー統計を取得します。
 
         Args:
+            conn: DuckDB コネクション
             start_date: 開始日
             end_date: 終了日
             owner: フィルタ対象のオーナー（オプション）
@@ -243,20 +244,19 @@ class GitHubRepository:
         Raises:
             duckdb.Error: データベース操作に失敗した場合
         """
-        with DuckDBConnection(self.r2_config) as conn:
-            params = self._build_params(conn, start_date, end_date)
-            result = get_repo_summary_stats(
-                params,
-                owner=owner,
-                repo_name=repo_name,
-            )
-            logger.info(
-                "Retrieved repo summary stats: start_date=%s, end_date=%s, "
-                "owner=%s, repo=%s, count=%s",
-                start_date,
-                end_date,
-                owner,
-                repo_name,
-                len(result),
-            )
-            return result
+        params = self._build_params(conn, start_date, end_date)
+        result = get_repo_summary_stats(
+            params,
+            owner=owner,
+            repo_name=repo_name,
+        )
+        logger.info(
+            "Retrieved repo summary stats: start_date=%s, end_date=%s, "
+            "owner=%s, repo=%s, count=%s",
+            start_date,
+            end_date,
+            owner,
+            repo_name,
+            len(result),
+        )
+        return result

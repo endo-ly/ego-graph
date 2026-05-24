@@ -9,7 +9,7 @@ def patch_youtube_paths(youtube_with_sample_data):
     stack = ExitStack()
     stack.enter_context(
         patch(
-            "backend.infrastructure.database.youtube_queries._generate_partition_paths",
+            "backend.infrastructure.database.youtube_queries.build_partition_paths",
             return_value=[youtube_with_sample_data.test_watch_events_parquet_path],
         )
     )

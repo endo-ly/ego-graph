@@ -18,20 +18,14 @@ class TestGitHubRepository:
         prs_parquet_path = github_with_sample_data.test_prs_parquet_path
 
         with patch(
-            "backend.infrastructure.repositories.github_repository.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=github_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch(
-                "backend.infrastructure.database.github_queries.build_partition_paths",
-                return_value=[prs_parquet_path],
-            ):
-                # Act
-                repo = GitHubRepository(mock_r2_config())
-                result = repo.get_pull_requests(date(2024, 1, 1), date(2024, 1, 31))
+            "backend.infrastructure.database.github_queries.build_partition_paths",
+            return_value=[prs_parquet_path],
+        ):
+            # Act
+            repo = GitHubRepository(mock_r2_config())
+            result = repo.get_pull_requests(
+                github_with_sample_data, date(2024, 1, 1), date(2024, 1, 31)
+            )
 
         # Assert
         assert len(result) > 0
@@ -47,27 +41,20 @@ class TestGitHubRepository:
         prs_parquet_path = github_with_sample_data.test_prs_parquet_path
 
         with patch(
-            "backend.infrastructure.repositories.github_repository.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=github_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch(
-                "backend.infrastructure.database.github_queries.build_partition_paths",
-                return_value=[prs_parquet_path],
-            ):
-                # Act
-                repo = GitHubRepository(mock_r2_config())
-                result = repo.get_pull_requests(
-                    date(2024, 1, 1),
-                    date(2024, 1, 31),
-                    owner="test_owner",
-                    repo="test_repo",
-                    state="open",
-                    limit=10,
-                )
+            "backend.infrastructure.database.github_queries.build_partition_paths",
+            return_value=[prs_parquet_path],
+        ):
+            # Act
+            repo = GitHubRepository(mock_r2_config())
+            result = repo.get_pull_requests(
+                github_with_sample_data,
+                date(2024, 1, 1),
+                date(2024, 1, 31),
+                owner="test_owner",
+                repo="test_repo",
+                state="open",
+                limit=10,
+            )
 
         # Assert
         assert isinstance(result, list)
@@ -82,20 +69,14 @@ class TestGitHubRepository:
         commits_parquet_path = github_with_sample_data.test_commits_parquet_path
 
         with patch(
-            "backend.infrastructure.repositories.github_repository.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=github_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch(
-                "backend.infrastructure.database.github_queries.build_partition_paths",
-                return_value=[commits_parquet_path],
-            ):
-                # Act
-                repo = GitHubRepository(mock_r2_config())
-                result = repo.get_commits(date(2024, 1, 1), date(2024, 1, 31))
+            "backend.infrastructure.database.github_queries.build_partition_paths",
+            return_value=[commits_parquet_path],
+        ):
+            # Act
+            repo = GitHubRepository(mock_r2_config())
+            result = repo.get_commits(
+                github_with_sample_data, date(2024, 1, 1), date(2024, 1, 31)
+            )
 
         # Assert
         assert len(result) > 0
@@ -111,26 +92,19 @@ class TestGitHubRepository:
         commits_parquet_path = github_with_sample_data.test_commits_parquet_path
 
         with patch(
-            "backend.infrastructure.repositories.github_repository.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=github_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch(
-                "backend.infrastructure.database.github_queries.build_partition_paths",
-                return_value=[commits_parquet_path],
-            ):
-                # Act
-                repo = GitHubRepository(mock_r2_config())
-                result = repo.get_commits(
-                    date(2024, 1, 1),
-                    date(2024, 1, 31),
-                    owner="test_owner",
-                    repo="test_repo",
-                    limit=10,
-                )
+            "backend.infrastructure.database.github_queries.build_partition_paths",
+            return_value=[commits_parquet_path],
+        ):
+            # Act
+            repo = GitHubRepository(mock_r2_config())
+            result = repo.get_commits(
+                github_with_sample_data,
+                date(2024, 1, 1),
+                date(2024, 1, 31),
+                owner="test_owner",
+                repo="test_repo",
+                limit=10,
+            )
 
         # Assert
         assert isinstance(result, list)
@@ -145,20 +119,12 @@ class TestGitHubRepository:
         repos_parquet_path = github_with_sample_data.test_repos_parquet_path
 
         with patch(
-            "backend.infrastructure.repositories.github_repository.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=github_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch(
-                "backend.infrastructure.database.github_queries.get_repos_parquet_path",
-                return_value=repos_parquet_path,
-            ):
-                # Act
-                repo = GitHubRepository(mock_r2_config())
-                result = repo.get_repositories()
+            "backend.infrastructure.database.github_queries.get_repos_parquet_path",
+            return_value=repos_parquet_path,
+        ):
+            # Act
+            repo = GitHubRepository(mock_r2_config())
+            result = repo.get_repositories(github_with_sample_data)
 
         # Assert
         assert len(result) > 0
@@ -174,20 +140,14 @@ class TestGitHubRepository:
         repos_parquet_path = github_with_sample_data.test_repos_parquet_path
 
         with patch(
-            "backend.infrastructure.repositories.github_repository.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=github_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch(
-                "backend.infrastructure.database.github_queries.get_repos_parquet_path",
-                return_value=repos_parquet_path,
-            ):
-                # Act
-                repo = GitHubRepository(mock_r2_config())
-                result = repo.get_repositories(owner="test_owner")
+            "backend.infrastructure.database.github_queries.get_repos_parquet_path",
+            return_value=repos_parquet_path,
+        ):
+            # Act
+            repo = GitHubRepository(mock_r2_config())
+            result = repo.get_repositories(
+                github_with_sample_data, owner="test_owner"
+            )
 
         # Assert
         assert isinstance(result, list)
@@ -205,26 +165,21 @@ class TestGitHubRepository:
         commits_parquet_path = github_with_sample_data.test_commits_parquet_path
 
         with patch(
-            "backend.infrastructure.repositories.github_repository.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=github_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
+            "backend.infrastructure.database.github_queries.build_partition_paths",
+            return_value=[prs_parquet_path],
+        ):
             with patch(
-                "backend.infrastructure.database.github_queries.build_partition_paths",
-                return_value=[prs_parquet_path],
+                "backend.infrastructure.database.github_queries._resolve_commit_partition_paths",
+                return_value=[commits_parquet_path],
             ):
-                with patch(
-                    "backend.infrastructure.database.github_queries._resolve_commit_partition_paths",
-                    return_value=[commits_parquet_path],
-                ):
-                    # Act
-                    repo = GitHubRepository(mock_r2_config())
-                    result = repo.get_activity_stats(
-                        date(2024, 1, 1), date(2024, 1, 31), granularity="day"
-                    )
+                # Act
+                repo = GitHubRepository(mock_r2_config())
+                result = repo.get_activity_stats(
+                    github_with_sample_data,
+                    date(2024, 1, 1),
+                    date(2024, 1, 31),
+                    granularity="day",
+                )
 
         # Assert
         assert isinstance(result, list)
@@ -241,26 +196,20 @@ class TestGitHubRepository:
         commits_parquet_path = github_with_sample_data.test_commits_parquet_path
 
         with patch(
-            "backend.infrastructure.repositories.github_repository.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=github_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
+            "backend.infrastructure.database.github_queries.build_partition_paths",
+            return_value=[prs_parquet_path],
+        ):
             with patch(
-                "backend.infrastructure.database.github_queries.build_partition_paths",
-                return_value=[prs_parquet_path],
+                "backend.infrastructure.database.github_queries._resolve_commit_partition_paths",
+                return_value=[commits_parquet_path],
             ):
-                with patch(
-                    "backend.infrastructure.database.github_queries._resolve_commit_partition_paths",
-                    return_value=[commits_parquet_path],
-                ):
-                    # Act
-                    repo = GitHubRepository(mock_r2_config())
-                    result = repo.get_repo_summary_stats(
-                        date(2024, 1, 1), date(2024, 1, 31)
-                    )
+                # Act
+                repo = GitHubRepository(mock_r2_config())
+                result = repo.get_repo_summary_stats(
+                    github_with_sample_data,
+                    date(2024, 1, 1),
+                    date(2024, 1, 31),
+                )
 
         # Assert
         assert isinstance(result, list)

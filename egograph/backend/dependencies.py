@@ -12,6 +12,12 @@ from fastapi.security import APIKeyHeader
 
 from backend.config import BackendConfig
 from backend.infrastructure.database import DuckDBConnection
+from backend.infrastructure.repositories.browser_history_repository import (
+    BrowserHistoryRepository,
+)
+from backend.infrastructure.repositories.github_repository import GitHubRepository
+from backend.infrastructure.repositories.spotify_repository import SpotifyRepository
+from backend.infrastructure.repositories.youtube_repository import YouTubeRepository
 
 logger = logging.getLogger(__name__)
 
@@ -72,3 +78,27 @@ def get_db_connection(
 
     with DuckDBConnection(config.r2) as conn:
         yield conn
+
+
+def get_spotify_repository(
+    config: BackendConfig = Depends(get_config),
+) -> SpotifyRepository:
+    return SpotifyRepository(config.r2, tz=config.timezone)
+
+
+def get_github_repository(
+    config: BackendConfig = Depends(get_config),
+) -> GitHubRepository:
+    return GitHubRepository(config.r2, tz=config.timezone)
+
+
+def get_browser_history_repository(
+    config: BackendConfig = Depends(get_config),
+) -> BrowserHistoryRepository:
+    return BrowserHistoryRepository(config.r2, tz=config.timezone)
+
+
+def get_youtube_repository(
+    config: BackendConfig = Depends(get_config),
+) -> YouTubeRepository:
+    return YouTubeRepository(config.r2, tz=config.timezone)
