@@ -155,7 +155,7 @@ class TestExecuteQuery:
         result = execute_query(mock_conn, "SELECT * FROM users")
 
         # Assert
-        mock_conn.execute.assert_called_once_with("SELECT * FROM users", [])
+        mock_conn.execute.assert_called_once_with("SELECT * FROM users", ())
         assert result == [
             {"id": 1, "name": "Alice"},
             {"id": 2, "name": "Bob"},
@@ -214,6 +214,6 @@ class TestExecuteQuery:
 
         # Assert
         mock_conn.execute.assert_called_once_with(
-            "SELECT * FROM empty_table", []
+            "SELECT * FROM empty_table", ()
         )
         assert result == []

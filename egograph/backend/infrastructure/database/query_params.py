@@ -6,7 +6,7 @@ numpy/pandas型の自動変換によるJSONシリアライズ対応を含みま�
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Sequence
 
 import duckdb
 import numpy as np
@@ -60,7 +60,9 @@ def _normalize_value(value: Any) -> Any:
 
 
 def execute_query(
-    conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | None = None
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: Sequence[Any] | None = None,
 ) -> list[dict[str, Any]]:
     """SQLクエリを実行し、結果を辞書のリストとして返します。
 
@@ -77,7 +79,7 @@ def execute_query(
     Raises:
         duckdb.Error: SQLクエリ実行に失敗した場合
     """
-    result = conn.execute(sql, params or [])
+    result = conn.execute(sql, tuple(params) if params else ())
     df = result.df()
     records = df.to_dict(orient="records")
     return [
