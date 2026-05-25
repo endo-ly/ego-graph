@@ -9,12 +9,10 @@ from pydantic import SecretStr
 
 from backend.config import R2Config
 from backend.infrastructure.database.browser_history_queries import (
-    BrowserHistoryQueryParams,
     get_page_views,
     get_top_domains,
 )
 from backend.infrastructure.database.github_queries import (
-    GitHubQueryParams,
     get_activity_stats,
     get_commits,
     get_pull_requests,
@@ -81,14 +79,12 @@ def test_spotify_queries_read_local_compacted_parquet(duckdb_conn, tmp_path):
     utc_start, utc_end = _utc_range(date(2024, 1, 1), date(2024, 1, 31))
     params = QueryParams(
         conn=duckdb_conn,
-        bucket="test-bucket",
-        events_path="events/",
+        r2_config=_build_config(local_root),
         start_date=date(2024, 1, 1),
         end_date=date(2024, 1, 31),
         utc_start=utc_start,
         utc_end=utc_end,
         tz_name="UTC",
-        r2_config=_build_config(local_root),
     )
 
     top_tracks = get_top_tracks(params, limit=5)
@@ -182,17 +178,14 @@ def test_github_queries_read_local_compacted_parquet(duckdb_conn, tmp_path):
     ).to_parquet(commit_dir / "data.parquet")
 
     utc_start, utc_end = _utc_range(date(2024, 1, 1), date(2024, 1, 31))
-    params = GitHubQueryParams(
+    params = QueryParams(
         conn=duckdb_conn,
-        bucket="test-bucket",
-        events_path="events/",
-        master_path="master/",
+        r2_config=_build_config(local_root),
         start_date=date(2024, 1, 1),
         end_date=date(2024, 1, 31),
         utc_start=utc_start,
         utc_end=utc_end,
         tz_name="UTC",
-        r2_config=_build_config(local_root),
     )
 
     prs = get_pull_requests(params)
@@ -258,16 +251,14 @@ def test_browser_history_queries_read_local_compacted_parquet(duckdb_conn, tmp_p
     ).to_parquet(browser_dir / "data.parquet")
 
     utc_start, utc_end = _utc_range(date(2026, 3, 20), date(2026, 3, 21))
-    params = BrowserHistoryQueryParams(
+    params = QueryParams(
         conn=duckdb_conn,
-        bucket="test-bucket",
-        events_path="events/",
+        r2_config=_build_config(local_root),
         start_date=date(2026, 3, 20),
         end_date=date(2026, 3, 21),
         utc_start=utc_start,
         utc_end=utc_end,
         tz_name="UTC",
-        r2_config=_build_config(local_root),
     )
 
     page_views = get_page_views(params, browser="edge", profile="Default", limit=10)
@@ -340,14 +331,12 @@ def test_spotify_queries_with_jst_timezone(duckdb_conn, tmp_path):
 
     params = QueryParams(
         conn=duckdb_conn,
-        bucket="test-bucket",
-        events_path="events/",
+        r2_config=_build_config(local_root),
         start_date=date(2024, 1, 1),
         end_date=date(2024, 1, 1),
         utc_start=utc_start,
         utc_end=utc_end,
         tz_name="Asia/Tokyo",
-        r2_config=_build_config(local_root),
     )
 
     top_tracks = get_top_tracks(params, limit=5)

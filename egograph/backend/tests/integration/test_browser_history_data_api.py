@@ -1,6 +1,8 @@
 """Browser History Data API 統合テスト。"""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock
+
+from backend.dependencies import get_browser_history_repository
 
 
 class TestPageViewsEndpoint:
@@ -21,14 +23,15 @@ class TestPageViewsEndpoint:
             }
         ]
 
-        with patch(
-            "backend.api.browser_history_data.get_page_views",
-            return_value=mock_result,
-        ):
-            response = test_client.get(
-                "/v1/data/browser-history/page-views?start_date=2026-03-20&end_date=2026-03-22&limit=5&browser=edge&profile=Default",
-                headers={"X-API-Key": "test-backend-key"},
-            )
+        mock_repo = MagicMock()
+        mock_repo.get_page_views.return_value = mock_result
+        test_client.app.dependency_overrides[
+            get_browser_history_repository
+        ] = lambda: mock_repo
+        response = test_client.get(
+            "/v1/data/browser-history/page-views?start_date=2026-03-20&end_date=2026-03-22&limit=5&browser=edge&profile=Default",
+            headers={"X-API-Key": "test-backend-key"},
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -63,14 +66,15 @@ class TestTopDomainsEndpoint:
             }
         ]
 
-        with patch(
-            "backend.api.browser_history_data.get_top_domains",
-            return_value=mock_result,
-        ):
-            response = test_client.get(
-                "/v1/data/browser-history/top-domains?start_date=2026-03-20&end_date=2026-03-22&limit=5&browser=edge&profile=Default",
-                headers={"X-API-Key": "test-backend-key"},
-            )
+        mock_repo = MagicMock()
+        mock_repo.get_top_domains.return_value = mock_result
+        test_client.app.dependency_overrides[
+            get_browser_history_repository
+        ] = lambda: mock_repo
+        response = test_client.get(
+            "/v1/data/browser-history/top-domains?start_date=2026-03-20&end_date=2026-03-22&limit=5&browser=edge&profile=Default",
+            headers={"X-API-Key": "test-backend-key"},
+        )
 
         assert response.status_code == 200
         data = response.json()

@@ -1,6 +1,8 @@
 """API/GitHub統合テスト（REDフェーズ）。"""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock
+
+from backend.dependencies import get_github_repository
 
 
 class TestPullRequestsEndpoint:
@@ -38,20 +40,25 @@ class TestPullRequestsEndpoint:
             }
         ]
 
-        with patch("backend.api.github.get_pull_requests", return_value=mock_result):
-            response = test_client.get(
-                "/v1/data/github/pull-requests?start_date=2024-01-01&end_date=2024-01-31&limit=10",
-                headers={"X-API-Key": "test-backend-key"},
-            )
+        mock_repo = MagicMock()
+        mock_repo.get_pull_requests.return_value = mock_result
+        test_client.app.dependency_overrides[get_github_repository] = (
+            lambda: mock_repo
+        )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data, list)
-            assert len(data) > 0
-            assert "pr_event_id" in data[0]
-            assert "owner" in data[0]
-            assert "pr_number" in data[0]
-            assert "title" in data[0]
+        response = test_client.get(
+            "/v1/data/github/pull-requests?start_date=2024-01-01&end_date=2024-01-31&limit=10",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "pr_event_id" in data[0]
+        assert "owner" in data[0]
+        assert "pr_number" in data[0]
+        assert "title" in data[0]
 
     def test_get_pull_requests_requires_api_key(self, test_client):
         """API Keyが必要。"""
@@ -100,20 +107,25 @@ class TestCommitsEndpoint:
             }
         ]
 
-        with patch("backend.api.github.get_commits", return_value=mock_result):
-            response = test_client.get(
-                "/v1/data/github/commits?start_date=2024-01-01&end_date=2024-01-31&limit=10",
-                headers={"X-API-Key": "test-backend-key"},
-            )
+        mock_repo = MagicMock()
+        mock_repo.get_commits.return_value = mock_result
+        test_client.app.dependency_overrides[get_github_repository] = (
+            lambda: mock_repo
+        )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data, list)
-            assert len(data) > 0
-            assert "commit_event_id" in data[0]
-            assert "owner" in data[0]
-            assert "sha" in data[0]
-            assert "message" in data[0]
+        response = test_client.get(
+            "/v1/data/github/commits?start_date=2024-01-01&end_date=2024-01-31&limit=10",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "commit_event_id" in data[0]
+        assert "owner" in data[0]
+        assert "sha" in data[0]
+        assert "message" in data[0]
 
     def test_get_commits_requires_api_key(self, test_client):
         """API Keyが必要。"""
@@ -153,20 +165,25 @@ class TestRepositoriesEndpoint:
             }
         ]
 
-        with patch("backend.api.github.get_repositories", return_value=mock_result):
-            response = test_client.get(
-                "/v1/data/github/repositories",
-                headers={"X-API-Key": "test-backend-key"},
-            )
+        mock_repo = MagicMock()
+        mock_repo.get_repositories.return_value = mock_result
+        test_client.app.dependency_overrides[get_github_repository] = (
+            lambda: mock_repo
+        )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data, list)
-            assert len(data) > 0
-            assert "repo_id" in data[0]
-            assert "owner" in data[0]
-            assert "repo" in data[0]
-            assert "primary_language" in data[0]
+        response = test_client.get(
+            "/v1/data/github/repositories",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "repo_id" in data[0]
+        assert "owner" in data[0]
+        assert "repo" in data[0]
+        assert "primary_language" in data[0]
 
     def test_get_repositories_requires_api_key(self, test_client):
         """API Keyが必要。"""
@@ -191,20 +208,25 @@ class TestActivityStatsEndpoint:
             }
         ]
 
-        with patch("backend.api.github.get_activity_stats", return_value=mock_result):
-            response = test_client.get(
-                "/v1/data/github/activity-stats?start_date=2024-01-01&end_date=2024-01-31&granularity=day",
-                headers={"X-API-Key": "test-backend-key"},
-            )
+        mock_repo = MagicMock()
+        mock_repo.get_activity_stats.return_value = mock_result
+        test_client.app.dependency_overrides[get_github_repository] = (
+            lambda: mock_repo
+        )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data, list)
-            assert len(data) > 0
-            assert "period" in data[0]
-            assert "prs_created" in data[0]
-            assert "prs_merged" in data[0]
-            assert "commits_count" in data[0]
+        response = test_client.get(
+            "/v1/data/github/activity-stats?start_date=2024-01-01&end_date=2024-01-31&granularity=day",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "period" in data[0]
+        assert "prs_created" in data[0]
+        assert "prs_merged" in data[0]
+        assert "commits_count" in data[0]
 
     def test_get_activity_stats_requires_api_key(self, test_client):
         """API Keyが必要。"""
@@ -244,22 +266,25 @@ class TestRepoSummaryStatsEndpoint:
             }
         ]
 
-        with patch(
-            "backend.api.github.get_repo_summary_stats", return_value=mock_result
-        ):
-            response = test_client.get(
-                "/v1/data/github/repo-summary-stats?start_date=2024-01-01&end_date=2024-01-31",
-                headers={"X-API-Key": "test-backend-key"},
-            )
+        mock_repo = MagicMock()
+        mock_repo.get_repo_summary_stats.return_value = mock_result
+        test_client.app.dependency_overrides[get_github_repository] = (
+            lambda: mock_repo
+        )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data, list)
-            assert len(data) > 0
-            assert "owner" in data[0]
-            assert "repo" in data[0]
-            assert "prs_total" in data[0]
-            assert "commits_total" in data[0]
+        response = test_client.get(
+            "/v1/data/github/repo-summary-stats?start_date=2024-01-01&end_date=2024-01-31",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "owner" in data[0]
+        assert "repo" in data[0]
+        assert "prs_total" in data[0]
+        assert "commits_total" in data[0]
 
     def test_get_repo_summary_stats_requires_api_key(self, test_client):
         """API Keyが必要。"""
