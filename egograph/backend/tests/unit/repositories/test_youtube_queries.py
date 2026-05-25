@@ -20,7 +20,6 @@ from backend.infrastructure.database.youtube_queries import (
     get_top_videos,
     get_videos_parquet_path,
     get_watch_events,
-    get_watch_events_parquet_path,
     get_watching_stats,
 )
 from backend.tests.fixtures.youtube import patch_youtube_paths
@@ -87,14 +86,6 @@ class TestQueryParams:
 
 class TestGetParquetPaths:
     """Parquetパス生成関数のテスト。"""
-
-    def test_get_watch_events_parquet_path(self):
-        """視聴イベントのS3パスパターンを生成。"""
-        # Arrange & Act
-        path = get_watch_events_parquet_path("my-bucket", "events/")
-
-        # Assert
-        assert path == "s3://my-bucket/events/youtube/watch_events/**/*.parquet"
 
     def test_get_videos_parquet_path(self):
         """動画マスターのS3パスパターンを生成。"""

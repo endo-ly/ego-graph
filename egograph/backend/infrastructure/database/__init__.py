@@ -11,7 +11,6 @@ from backend.infrastructure.database.connection import DuckDBConnection
 from backend.infrastructure.database.github_queries import (
     get_activity_stats,
     get_commits,
-    get_prs_parquet_path,
     get_pull_requests,
     get_repo_summary_stats,
     get_repos_parquet_path,
@@ -25,7 +24,6 @@ from backend.infrastructure.database.queries import (
     get_listening_stats,
     get_parquet_path,
     get_top_tracks,
-    search_tracks_by_name,
 )
 from backend.infrastructure.database.query_params import QueryParams, execute_query
 
@@ -41,11 +39,9 @@ __all__ = [
     "get_parquet_path",
     "get_top_tracks",
     "get_listening_stats",
-    "search_tracks_by_name",
     "build_partition_paths",
     "build_dataset_glob",
     # GitHub
-    "get_prs_parquet_path",
     "get_pull_requests",
     "get_commits",
     "get_repositories",

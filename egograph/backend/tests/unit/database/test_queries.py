@@ -13,7 +13,6 @@ from backend.infrastructure.database import (
     get_listening_stats,
     get_parquet_path,
     get_top_tracks,
-    search_tracks_by_name,
 )
 from backend.validators import to_utc_range
 
@@ -293,71 +292,3 @@ class TestGetListeningStats:
 
         query = mock_execute.call_args.args[1]
         assert "%G-W%V" in query
-
-
-class TestSearchTracksByName:
-    """search_tracks_by_name のテスト。"""
-
-    def test_searches_by_track_name(self, duckdb_with_sample_data, mocker):
-        """トラック名で検索。"""
-        # Arrange: build_dataset_globをモックしてローカルパスを返す
-        parquet_path = duckdb_with_sample_data.test_parquet_path
-        mocker.patch(
-            "backend.infrastructure.database.queries.build_dataset_glob",
-            return_value=parquet_path,
-        )
-
-        # Act: トラック名で検索
-        params = _qp(
-            conn=duckdb_with_sample_data,
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 12, 31),
-        )
-        result = search_tracks_by_name(params, query="Song A", limit=20)
-
-        # Assert: "Song A"が見つかることを検証
-        assert len(result) > 0
-        assert result[0]["track_name"] == "Song A"
-
-    def test_searches_by_artist_name(self, duckdb_with_sample_data, mocker):
-        """アーティスト名で検索。"""
-        # Arrange: build_dataset_globをモックしてローカルパスを返す
-        parquet_path = duckdb_with_sample_data.test_parquet_path
-        mocker.patch(
-            "backend.infrastructure.database.queries.build_dataset_glob",
-            return_value=parquet_path,
-        )
-
-        # Act: アーティスト名で検索
-        params = _qp(
-            conn=duckdb_with_sample_data,
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 12, 31),
-        )
-        result = search_tracks_by_name(params, query="Artist X", limit=20)
-
-        # Assert: Artist XはSong Aなので見つかることを検証
-        assert len(result) > 0
-        assert result[0]["artist"] == "Artist X"
-
-    def test_case_insensitive_search(self, duckdb_with_sample_data, mocker):
-        """大文字小文字を区別しない検索。"""
-        # Arrange: build_dataset_globをモックしてローカルパスを返す
-        parquet_path = duckdb_with_sample_data.test_parquet_path
-        mocker.patch(
-            "backend.infrastructure.database.queries.build_dataset_glob",
-            return_value=parquet_path,
-        )
-
-        # Act: 小文字と大文字の両方で検索
-        params = _qp(
-            conn=duckdb_with_sample_data,
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 12, 31),
-        )
-        result_lower = search_tracks_by_name(params, query="song a", limit=20)
-        result_upper = search_tracks_by_name(params, query="SONG A", limit=20)
-
-        # Assert: 大文字小文字に関わらず同じ結果が返されることを検証
-        assert len(result_lower) == len(result_upper)
-        assert result_lower[0]["track_name"] == result_upper[0]["track_name"]

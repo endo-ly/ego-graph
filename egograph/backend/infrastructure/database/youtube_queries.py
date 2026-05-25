@@ -13,16 +13,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_WATCH_EVENTS_LIMIT = 100_000
 
-YOUTUBE_WATCH_EVENTS_PATH = (
-    "s3://{bucket}/{events_path}youtube/watch_events/**/*.parquet"
-)
 YOUTUBE_VIDEOS_PATH = "s3://{bucket}/{master_path}youtube/videos/data.parquet"
 YOUTUBE_CHANNELS_PATH = "s3://{bucket}/{master_path}youtube/channels/data.parquet"
-
-
-def get_watch_events_parquet_path(bucket: str, events_path: str) -> str:
-    """YouTube視聴イベントのS3パスパターンを生成します。"""
-    return YOUTUBE_WATCH_EVENTS_PATH.format(bucket=bucket, events_path=events_path)
 
 
 def get_videos_parquet_path(bucket: str, master_path: str) -> str:

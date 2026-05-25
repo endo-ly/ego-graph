@@ -10,35 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 # Parquetパスパターン
-GITHUB_PRS_PATH = "s3://{bucket}/{events_path}github/pull_requests/**/*.parquet"
-GITHUB_COMMITS_PATH = "s3://{bucket}/{events_path}github/commits/**/*.parquet"
 GITHUB_REPOS_PATH = "s3://{bucket}/{master_path}github/repositories/**/*.parquet"
-
-
-def get_prs_parquet_path(bucket: str, events_path: str) -> str:
-    """GitHub PRイベントのS3パスパターンを生成します。
-
-    Args:
-        bucket: R2バケット名
-        events_path: イベントデータのパスプレフィックス
-
-    Returns:
-        S3パスパターン（例: s3://egograph/events/github/pull_requests/**/*.parquet）
-    """
-    return GITHUB_PRS_PATH.format(bucket=bucket, events_path=events_path)
-
-
-def get_commits_parquet_path(bucket: str, events_path: str) -> str:
-    """GitHub CommitイベントのS3パスパターンを生成します。
-
-    Args:
-        bucket: R2バケット名
-        events_path: イベントデータのパスプレフィックス
-
-    Returns:
-        S3パスパターン（例: s3://egograph/events/github/commits/**/*.parquet）
-    """
-    return GITHUB_COMMITS_PATH.format(bucket=bucket, events_path=events_path)
 
 
 def get_repos_parquet_path(bucket: str, master_path: str) -> str:
