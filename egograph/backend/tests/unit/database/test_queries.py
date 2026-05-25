@@ -1,30 +1,46 @@
 """Database/Queries層のテスト。"""
 
-from datetime import date, datetime, timezone
+from datetime import date, timezone
 from unittest.mock import patch
 
 import pytest
+from pydantic import SecretStr
 
+from backend.config import R2Config
 from backend.infrastructure.database import (
     QueryParams,
     execute_query,
     get_listening_stats,
     get_parquet_path,
     get_top_tracks,
-    search_tracks_by_name,
 )
-from backend.infrastructure.database.queries import _generate_partition_paths
 from backend.validators import to_utc_range
+
+
+def _make_r2_config(bucket_name: str = "test-bucket") -> R2Config:
+    return R2Config.model_construct(
+        endpoint_url="https://test.r2.cloudflarestorage.com",
+        access_key_id="test_key",
+        secret_access_key=SecretStr("test_secret"),
+        bucket_name=bucket_name,
+        raw_path="raw/",
+        events_path="events/",
+        master_path="master/",
+        local_parquet_root=None,
+    )
 
 
 def _qp(**overrides):
     """テスト用 QueryParams ファクトリ（UTC で日付を解釈）。"""
-    defaults = dict(
-        bucket="test-bucket",
-        events_path="events/",
+    defaults: dict = dict(
+        r2_config=_make_r2_config(),
         tz_name="UTC",
     )
     defaults.update(overrides)
+    # Drop legacy fields no longer present on unified QueryParams
+    defaults.pop("bucket", None)
+    defaults.pop("events_path", None)
+    defaults.pop("master_path", None)
     sd = defaults.pop("start_date")
     ed = defaults.pop("end_date")
     utc_start, utc_end = to_utc_range(sd, ed, timezone.utc)
@@ -35,62 +51,6 @@ def _qp(**overrides):
         utc_end=utc_end,
         **defaults,
     )
-
-
-class TestGeneratePartitionPaths:
-    """_generate_partition_paths のテスト。"""
-
-    def test_generates_single_month_path(self):
-        """1ヶ月分のパスを生成。"""
-        bucket = "my-bucket"
-        events_path = "events/"
-        start = datetime(2024, 1, 1)
-        end = datetime(2024, 2, 1)  # 排他、2/1 00:00 まで → Jan+Feb
-
-        paths = _generate_partition_paths(bucket, events_path, start, end)
-
-        # utc_end が 2/1 なので 2月も含まれる（安全側に倒す）
-        assert len(paths) == 2
-        assert (
-            paths[0]
-            == "s3://my-bucket/events/spotify/plays/year=2024/month=01/**/*.parquet"
-        )
-
-    def test_generates_multiple_month_paths(self):
-        """複数月のパスを生成。"""
-        bucket = "test-bucket"
-        events_path = "data/"
-        start = datetime(2024, 11, 15)
-        end = datetime(2025, 2, 1)
-
-        paths = _generate_partition_paths(bucket, events_path, start, end)
-
-        assert len(paths) == 4
-        assert (
-            paths[0]
-            == "s3://test-bucket/data/spotify/plays/year=2024/month=11/**/*.parquet"
-        )
-        assert (
-            paths[1]
-            == "s3://test-bucket/data/spotify/plays/year=2024/month=12/**/*.parquet"
-        )
-        assert (
-            paths[2]
-            == "s3://test-bucket/data/spotify/plays/year=2025/month=01/**/*.parquet"
-        )
-
-    def test_handles_year_boundary(self):
-        """年をまたぐ期間を正しく処理。"""
-        bucket = "bucket"
-        events_path = "events/"
-        start = datetime(2023, 12, 1)
-        end = datetime(2024, 2, 1)
-
-        paths = _generate_partition_paths(bucket, events_path, start, end)
-
-        assert len(paths) == 3
-        assert "year=2023/month=12" in paths[0]
-        assert "year=2024/month=01" in paths[1]
 
 
 class TestGetParquetPath:
@@ -177,20 +137,16 @@ class TestGetTopTracks:
     def test_returns_top_tracks(self, duckdb_with_sample_data):
         """トップトラックを取得。"""
         # Arrange: get_top_tracksを使用してトップトラックを取得
-        bucket = "test-bucket"
-        events_path = "events/"
         parquet_path = duckdb_with_sample_data.test_parquet_path
 
-        # _generate_partition_pathsをモックしてテスト用のparquetパスを返す
+        # _resolve_partition_pathsをモックしてテスト用のparquetパスを返す
         with patch(
-            "backend.infrastructure.database.queries._generate_partition_paths",
+            "backend.infrastructure.database.queries._resolve_partition_paths",
             return_value=[parquet_path],
         ):
             # Act: get_top_tracks関数を直接呼び出す
             params = _qp(
                 conn=duckdb_with_sample_data,
-                bucket=bucket,
-                events_path=events_path,
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 3),
             )
@@ -206,20 +162,16 @@ class TestGetTopTracks:
     def test_respects_limit_parameter(self, duckdb_with_sample_data):
         """limitパラメータを尊重。"""
         # Arrange: get_top_tracksを使用
-        bucket = "test-bucket"
-        events_path = "events/"
         parquet_path = duckdb_with_sample_data.test_parquet_path
 
-        # _generate_partition_pathsをモックしてテスト用のparquetパスを返す
+        # _resolve_partition_pathsをモックしてテスト用のparquetパスを返す
         with patch(
-            "backend.infrastructure.database.queries._generate_partition_paths",
+            "backend.infrastructure.database.queries._resolve_partition_paths",
             return_value=[parquet_path],
         ):
             # Act: limit=2でトップトラックを取得
             params = _qp(
                 conn=duckdb_with_sample_data,
-                bucket=bucket,
-                events_path=events_path,
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 3),
             )
@@ -231,20 +183,16 @@ class TestGetTopTracks:
     def test_filters_by_date_range(self, duckdb_with_sample_data):
         """日付範囲でフィルタリング。"""
         # Arrange: get_top_tracksを使用
-        bucket = "test-bucket"
-        events_path = "events/"
         parquet_path = duckdb_with_sample_data.test_parquet_path
 
-        # _generate_partition_pathsをモックしてテスト用のparquetパスを返す
+        # _resolve_partition_pathsをモックしてテスト用のparquetパスを返す
         with patch(
-            "backend.infrastructure.database.queries._generate_partition_paths",
+            "backend.infrastructure.database.queries._resolve_partition_paths",
             return_value=[parquet_path],
         ):
             # Act: 2024-01-01のデータのみ取得
             params = _qp(
                 conn=duckdb_with_sample_data,
-                bucket=bucket,
-                events_path=events_path,
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 1),
             )
@@ -260,20 +208,16 @@ class TestGetListeningStats:
     def test_aggregates_by_day(self, duckdb_with_sample_data):
         """日単位で集計。"""
         # Arrange: get_listening_statsを使用
-        bucket = "test-bucket"
-        events_path = "events/"
         parquet_path = duckdb_with_sample_data.test_parquet_path
 
-        # _generate_partition_pathsをモックしてテスト用のparquetパスを返す
+        # _resolve_partition_pathsをモックしてテスト用のparquetパスを返す
         with patch(
-            "backend.infrastructure.database.queries._generate_partition_paths",
+            "backend.infrastructure.database.queries._resolve_partition_paths",
             return_value=[parquet_path],
         ):
             # Act: 日単位で統計情報を取得
             params = _qp(
                 conn=duckdb_with_sample_data,
-                bucket=bucket,
-                events_path=events_path,
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 3),
             )
@@ -287,20 +231,16 @@ class TestGetListeningStats:
     def test_aggregates_by_month(self, duckdb_with_sample_data):
         """月単位で集計。"""
         # Arrange: get_listening_statsを使用
-        bucket = "test-bucket"
-        events_path = "events/"
         parquet_path = duckdb_with_sample_data.test_parquet_path
 
-        # _generate_partition_pathsをモックしてテスト用のparquetパスを返す
+        # _resolve_partition_pathsをモックしてテスト用のparquetパスを返す
         with patch(
-            "backend.infrastructure.database.queries._generate_partition_paths",
+            "backend.infrastructure.database.queries._resolve_partition_paths",
             return_value=[parquet_path],
         ):
             # Act: 月単位で統計情報を取得
             params = _qp(
                 conn=duckdb_with_sample_data,
-                bucket=bucket,
-                events_path=events_path,
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 3),
             )
@@ -314,20 +254,16 @@ class TestGetListeningStats:
     def test_invalid_granularity_raises_error(self, duckdb_with_sample_data):
         """無効な粒度でエラー発生。"""
         # Arrange: get_listening_statsを使用
-        bucket = "test-bucket"
-        events_path = "events/"
         parquet_path = duckdb_with_sample_data.test_parquet_path
 
-        # _generate_partition_pathsをモックしてテスト用のparquetパスを返す
+        # _resolve_partition_pathsをモックしてテスト用のparquetパスを返す
         with patch(
-            "backend.infrastructure.database.queries._generate_partition_paths",
+            "backend.infrastructure.database.queries._resolve_partition_paths",
             return_value=[parquet_path],
         ):
             # Act & Assert: 無効なgranularityでValueErrorが発生することを検証
             params = _qp(
                 conn=duckdb_with_sample_data,
-                bucket=bucket,
-                events_path=events_path,
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 3),
             )
@@ -339,7 +275,7 @@ class TestGetListeningStats:
         parquet_path = duckdb_with_sample_data.test_parquet_path
         with (
             patch(
-                "backend.infrastructure.database.queries._generate_partition_paths",
+                "backend.infrastructure.database.queries._resolve_partition_paths",
                 return_value=[parquet_path],
             ),
             patch(
@@ -349,8 +285,6 @@ class TestGetListeningStats:
         ):
             params = _qp(
                 conn=duckdb_with_sample_data,
-                bucket="test-bucket",
-                events_path="events/",
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 3),
             )
@@ -358,77 +292,3 @@ class TestGetListeningStats:
 
         query = mock_execute.call_args.args[1]
         assert "%G-W%V" in query
-
-
-class TestSearchTracksByName:
-    """search_tracks_by_name のテスト。"""
-
-    def test_searches_by_track_name(self, duckdb_with_sample_data, mocker):
-        """トラック名で検索。"""
-        # Arrange: get_parquet_pathをモックしてローカルパスを返す
-        parquet_path = duckdb_with_sample_data.test_parquet_path
-        mocker.patch(
-            "backend.infrastructure.database.queries.get_parquet_path",
-            return_value=parquet_path,
-        )
-
-        # Act: トラック名で検索
-        params = _qp(
-            conn=duckdb_with_sample_data,
-            bucket="test_bucket",
-            events_path="events/",
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 12, 31),
-        )
-        result = search_tracks_by_name(params, query="Song A", limit=20)
-
-        # Assert: "Song A"が見つかることを検証
-        assert len(result) > 0
-        assert result[0]["track_name"] == "Song A"
-
-    def test_searches_by_artist_name(self, duckdb_with_sample_data, mocker):
-        """アーティスト名で検索。"""
-        # Arrange: get_parquet_pathをモックしてローカルパスを返す
-        parquet_path = duckdb_with_sample_data.test_parquet_path
-        mocker.patch(
-            "backend.infrastructure.database.queries.get_parquet_path",
-            return_value=parquet_path,
-        )
-
-        # Act: アーティスト名で検索
-        params = _qp(
-            conn=duckdb_with_sample_data,
-            bucket="test_bucket",
-            events_path="events/",
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 12, 31),
-        )
-        result = search_tracks_by_name(params, query="Artist X", limit=20)
-
-        # Assert: Artist XはSong Aなので見つかることを検証
-        assert len(result) > 0
-        assert result[0]["artist"] == "Artist X"
-
-    def test_case_insensitive_search(self, duckdb_with_sample_data, mocker):
-        """大文字小文字を区別しない検索。"""
-        # Arrange: get_parquet_pathをモックしてローカルパスを返す
-        parquet_path = duckdb_with_sample_data.test_parquet_path
-        mocker.patch(
-            "backend.infrastructure.database.queries.get_parquet_path",
-            return_value=parquet_path,
-        )
-
-        # Act: 小文字と大文字の両方で検索
-        params = _qp(
-            conn=duckdb_with_sample_data,
-            bucket="test_bucket",
-            events_path="events/",
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 12, 31),
-        )
-        result_lower = search_tracks_by_name(params, query="song a", limit=20)
-        result_upper = search_tracks_by_name(params, query="SONG A", limit=20)
-
-        # Assert: 大文字小文字に関わらず同じ結果が返されることを検証
-        assert len(result_lower) == len(result_upper)
-        assert result_lower[0]["track_name"] == result_upper[0]["track_name"]

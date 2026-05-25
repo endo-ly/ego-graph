@@ -10,8 +10,14 @@ import duckdb
 from fastapi import Depends, Security
 from fastapi.security import APIKeyHeader
 
-from backend.config import BackendConfig
+from backend.config import BackendConfig, R2Config
 from backend.infrastructure.database import DuckDBConnection
+from backend.infrastructure.repositories.browser_history_repository import (
+    BrowserHistoryRepository,
+)
+from backend.infrastructure.repositories.github_repository import GitHubRepository
+from backend.infrastructure.repositories.spotify_repository import SpotifyRepository
+from backend.infrastructure.repositories.youtube_repository import YouTubeRepository
 
 logger = logging.getLogger(__name__)
 
@@ -72,3 +78,44 @@ def get_db_connection(
 
     with DuckDBConnection(config.r2) as conn:
         yield conn
+
+
+def _require_r2(config: BackendConfig) -> R2Config:
+    """R2設定が存在することを検証して返す。
+
+    Args:
+        config: Backend設定
+
+    Returns:
+        R2Config
+
+    Raises:
+        ValueError: R2設定が不足している場合
+    """
+    if not config.r2:
+        raise ValueError("R2 configuration is required")
+    return config.r2
+
+
+def get_spotify_repository(
+    config: BackendConfig = Depends(get_config),
+) -> SpotifyRepository:
+    return SpotifyRepository(_require_r2(config), tz=config.timezone)
+
+
+def get_github_repository(
+    config: BackendConfig = Depends(get_config),
+) -> GitHubRepository:
+    return GitHubRepository(_require_r2(config), tz=config.timezone)
+
+
+def get_browser_history_repository(
+    config: BackendConfig = Depends(get_config),
+) -> BrowserHistoryRepository:
+    return BrowserHistoryRepository(_require_r2(config), tz=config.timezone)
+
+
+def get_youtube_repository(
+    config: BackendConfig = Depends(get_config),
+) -> YouTubeRepository:
+    return YouTubeRepository(_require_r2(config), tz=config.timezone)

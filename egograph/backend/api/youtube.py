@@ -6,6 +6,7 @@ YouTube視聴イベントデータを直接取得するためのREST APIエン�
 import logging
 from datetime import date
 
+import duckdb
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.api.schemas import (
@@ -14,13 +15,12 @@ from backend.api.schemas import (
     WatchEventResponse,
     WatchingStatsResponse,
 )
-from backend.config import BackendConfig
 from backend.constants import (
     DEFAULT_TOP_TRACKS_LIMIT,
     MAX_LIMIT,
     MIN_LIMIT,
 )
-from backend.dependencies import get_config
+from backend.dependencies import get_db_connection, get_youtube_repository
 from backend.infrastructure.repositories.youtube_repository import YouTubeRepository
 from backend.validators import (
     validate_date_range,
@@ -43,7 +43,8 @@ async def get_watch_events_endpoint(
         le=MAX_LIMIT,
         description="取得するイベント数",
     ),
-    config: BackendConfig = Depends(get_config),
+    db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
+    repository: YouTubeRepository = Depends(get_youtube_repository),
 ):
     """指定期間の視聴イベントを取得します。
 
@@ -74,8 +75,7 @@ async def get_watch_events_endpoint(
         limit,
     )
 
-    repository = YouTubeRepository(config.r2, tz=config.timezone)
-    return repository.get_watch_events(start, end, validated_limit)
+    return repository.get_watch_events(db_connection, start, end, validated_limit)
 
 
 @router.get("/stats/watching", response_model=list[WatchingStatsResponse])
@@ -85,7 +85,8 @@ async def get_watching_stats_endpoint(
     granularity: str = Query(
         "day", pattern="^(day|week|month)$", description="集計単位"
     ),
-    config: BackendConfig = Depends(get_config),
+    db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
+    repository: YouTubeRepository = Depends(get_youtube_repository),
 ):
     """期間別の視聴統計を取得します。
 
@@ -114,8 +115,9 @@ async def get_watching_stats_endpoint(
         granularity,
     )
 
-    repository = YouTubeRepository(config.r2, tz=config.timezone)
-    return repository.get_watching_stats(start, end, validated_granularity)
+    return repository.get_watching_stats(
+        db_connection, start, end, validated_granularity
+    )
 
 
 @router.get("/stats/top-videos", response_model=list[TopVideoResponse])
@@ -128,7 +130,8 @@ async def get_top_videos_endpoint(
         le=MAX_LIMIT,
         description="取得する動画数",
     ),
-    config: BackendConfig = Depends(get_config),
+    db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
+    repository: YouTubeRepository = Depends(get_youtube_repository),
 ):
     """指定期間で最も視聴された動画を取得します。
 
@@ -157,8 +160,7 @@ async def get_top_videos_endpoint(
         limit,
     )
 
-    repository = YouTubeRepository(config.r2, tz=config.timezone)
-    return repository.get_top_videos(start, end, validated_limit)
+    return repository.get_top_videos(db_connection, start, end, validated_limit)
 
 
 @router.get("/stats/top-channels", response_model=list[TopChannelResponse])
@@ -171,7 +173,8 @@ async def get_top_channels_endpoint(
         le=MAX_LIMIT,
         description="取得するチャンネル数",
     ),
-    config: BackendConfig = Depends(get_config),
+    db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
+    repository: YouTubeRepository = Depends(get_youtube_repository),
 ):
     """指定期間で最も視聴されたチャンネルを取得します。
 
@@ -200,5 +203,4 @@ async def get_top_channels_endpoint(
         limit,
     )
 
-    repository = YouTubeRepository(config.r2, tz=config.timezone)
-    return repository.get_top_channels(start, end, validated_limit)
+    return repository.get_top_channels(db_connection, start, end, validated_limit)

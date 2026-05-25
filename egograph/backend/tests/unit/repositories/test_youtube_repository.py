@@ -1,7 +1,6 @@
 """YouTube Repository層のテスト。"""
 
 from datetime import date
-from unittest.mock import MagicMock, patch
 
 from pydantic import SecretStr
 
@@ -28,18 +27,12 @@ class TestYouTubeRepository:
 
     def test_get_watch_events(self, youtube_with_sample_data):
         """視聴イベントを取得。"""
-        with patch(
-            "backend.infrastructure.database.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=youtube_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch_youtube_paths(youtube_with_sample_data):
-                # Act
-                repo = YouTubeRepository(_mock_r2_config())
-                result = repo.get_watch_events(date(2024, 1, 1), date(2024, 1, 3))
+        with patch_youtube_paths(youtube_with_sample_data):
+            # Act
+            repo = YouTubeRepository(_mock_r2_config())
+            result = repo.get_watch_events(
+                youtube_with_sample_data, date(2024, 1, 1), date(2024, 1, 3)
+            )
 
         # Assert
         assert len(result) > 0
@@ -48,20 +41,15 @@ class TestYouTubeRepository:
 
     def test_get_watching_stats(self, youtube_with_sample_data):
         """視聴統計を取得。"""
-        with patch(
-            "backend.infrastructure.database.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=youtube_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch_youtube_paths(youtube_with_sample_data):
-                # Act
-                repo = YouTubeRepository(_mock_r2_config())
-                result = repo.get_watching_stats(
-                    date(2024, 1, 1), date(2024, 1, 3), granularity="day"
-                )
+        with patch_youtube_paths(youtube_with_sample_data):
+            # Act
+            repo = YouTubeRepository(_mock_r2_config())
+            result = repo.get_watching_stats(
+                youtube_with_sample_data,
+                date(2024, 1, 1),
+                date(2024, 1, 3),
+                granularity="day",
+            )
 
         # Assert
         assert len(result) > 0
@@ -71,18 +59,12 @@ class TestYouTubeRepository:
 
     def test_get_top_videos(self, youtube_with_sample_data):
         """トップ動画を取得。"""
-        with patch(
-            "backend.infrastructure.database.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=youtube_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch_youtube_paths(youtube_with_sample_data):
-                # Act
-                repo = YouTubeRepository(_mock_r2_config())
-                result = repo.get_top_videos(date(2024, 1, 1), date(2024, 1, 3))
+        with patch_youtube_paths(youtube_with_sample_data):
+            # Act
+            repo = YouTubeRepository(_mock_r2_config())
+            result = repo.get_top_videos(
+                youtube_with_sample_data, date(2024, 1, 1), date(2024, 1, 3)
+            )
 
         # Assert
         assert len(result) > 0
@@ -91,18 +73,12 @@ class TestYouTubeRepository:
 
     def test_get_top_channels(self, youtube_with_sample_data):
         """トップチャンネルを取得。"""
-        with patch(
-            "backend.infrastructure.database.DuckDBConnection"
-        ) as mock_conn_class:
-            mock_conn = MagicMock()
-            mock_conn.__enter__ = MagicMock(return_value=youtube_with_sample_data)
-            mock_conn.__exit__ = MagicMock(return_value=False)
-            mock_conn_class.return_value = mock_conn
-
-            with patch_youtube_paths(youtube_with_sample_data):
-                # Act
-                repo = YouTubeRepository(_mock_r2_config())
-                result = repo.get_top_channels(date(2024, 1, 1), date(2024, 1, 3))
+        with patch_youtube_paths(youtube_with_sample_data):
+            # Act
+            repo = YouTubeRepository(_mock_r2_config())
+            result = repo.get_top_channels(
+                youtube_with_sample_data, date(2024, 1, 1), date(2024, 1, 3)
+            )
 
         # Assert
         assert len(result) > 0

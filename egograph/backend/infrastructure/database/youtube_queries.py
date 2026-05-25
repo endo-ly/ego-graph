@@ -1,45 +1,20 @@
 """YouTube データ用のSQLクエリテンプレートとヘルパー関数。"""
 
 import logging
-from dataclasses import dataclass
-from datetime import date, datetime
 from typing import Any
 
 import duckdb
 
 from backend.constants import DEFAULT_TOP_TRACKS_LIMIT
+from backend.infrastructure.database.parquet_paths import build_partition_paths
+from backend.infrastructure.database.query_params import QueryParams, execute_query
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_WATCH_EVENTS_LIMIT = 100_000
 
-
-@dataclass
-class YouTubeQueryParams:
-    """YouTubeデータクエリ用の共通パラメータ。"""
-
-    conn: duckdb.DuckDBPyConnection
-    bucket: str
-    events_path: str
-    master_path: str
-    start_date: date
-    end_date: date
-    utc_start: datetime
-    utc_end: datetime
-    tz_name: str = "UTC"
-
-
-YOUTUBE_WATCH_EVENTS_PATH = (
-    "s3://{bucket}/{events_path}youtube/watch_events/**/*.parquet"
-)
-YOUTUBE_WATCH_EVENTS_PARTITION_PATH = "s3://{bucket}/{events_path}youtube/watch_events/year={year}/month={month}/**/*.parquet"
 YOUTUBE_VIDEOS_PATH = "s3://{bucket}/{master_path}youtube/videos/data.parquet"
 YOUTUBE_CHANNELS_PATH = "s3://{bucket}/{master_path}youtube/channels/data.parquet"
-
-
-def get_watch_events_parquet_path(bucket: str, events_path: str) -> str:
-    """YouTube視聴イベントのS3パスパターンを生成します。"""
-    return YOUTUBE_WATCH_EVENTS_PATH.format(bucket=bucket, events_path=events_path)
 
 
 def get_videos_parquet_path(bucket: str, master_path: str) -> str:
@@ -52,80 +27,14 @@ def get_channels_parquet_path(bucket: str, master_path: str) -> str:
     return YOUTUBE_CHANNELS_PATH.format(bucket=bucket, master_path=master_path)
 
 
-def _generate_partition_paths(
-    bucket: str, events_path: str, utc_start: datetime, utc_end: datetime
-) -> list[str]:
-    """指定期間の月パーティションに対応するParquetパスリストを生成します。"""
-    paths: list[str] = []
-    current = date(utc_start.year, utc_start.month, 1)
-    end_month = date(utc_end.year, utc_end.month, 1)
-
-    while current <= end_month:
-        paths.append(
-            YOUTUBE_WATCH_EVENTS_PARTITION_PATH.format(
-                bucket=bucket,
-                events_path=events_path,
-                year=current.year,
-                month=f"{current.month:02d}",
-            )
-        )
-        if current.month == 12:
-            current = current.replace(year=current.year + 1, month=1)
-        else:
-            current = current.replace(month=current.month + 1)
-
-    logger.debug(
-        "Generated %d partition paths for period %s to %s",
-        len(paths),
-        utc_start,
-        utc_end,
+def _resolve_watch_event_paths(params: QueryParams) -> list[str]:
+    return build_partition_paths(
+        params.r2_config,
+        data_domain="events",
+        dataset_path="youtube/watch_events",
+        utc_start=params.utc_start,
+        utc_end=params.utc_end,
     )
-    return paths
-
-
-def _resolve_watch_event_paths(params: YouTubeQueryParams) -> list[str]:
-    """実在する月パーティションのみを返し、未作成時は全体globへフォールバックする。"""
-    partition_paths = _generate_partition_paths(
-        params.bucket, params.events_path, params.utc_start, params.utc_end
-    )
-    existing_paths: list[str] = []
-
-    for path in partition_paths:
-        try:
-            matched_count = params.conn.execute(
-                "SELECT COUNT(*) FROM glob(?)",
-                [path],
-            ).fetchone()[0]
-        except duckdb.Error:
-            logger.warning(
-                "Failed to validate partition path with glob(); "
-                "fallback to dataset glob: %s",
-                path,
-                exc_info=True,
-            )
-            return [get_watch_events_parquet_path(params.bucket, params.events_path)]
-        if matched_count > 0:
-            existing_paths.append(path)
-
-    if existing_paths:
-        return existing_paths
-
-    fallback = get_watch_events_parquet_path(params.bucket, params.events_path)
-    logger.debug(
-        "No month partitions found for %s to %s; fallback to dataset glob: %s",
-        params.start_date,
-        params.end_date,
-        fallback,
-    )
-    return [fallback]
-
-
-def execute_query(
-    conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | None = None
-) -> list[dict[str, Any]]:
-    """SQLクエリを実行し、結果を辞書のリストとして返します。"""
-    result = conn.execute(sql, params or [])
-    return result.df().to_dict(orient="records")
 
 
 def _parquet_file_exists(conn: duckdb.DuckDBPyConnection, path: str) -> bool:
@@ -144,15 +53,19 @@ def _parquet_file_exists(conn: duckdb.DuckDBPyConnection, path: str) -> bool:
 
 
 def _build_enriched_cte(
-    params: YouTubeQueryParams,
+    params: QueryParams,
 ) -> tuple[str, list[Any]]:
     """マスターデータの有無に応じた CTE とパラメータを構築する。
 
     マスター Parquet が存在しない場合は、空結果の CTE を生成し
     LEFT JOIN + COALESCE で watch events 側の値がそのまま使われるようにする。
     """
-    videos_path = get_videos_parquet_path(params.bucket, params.master_path)
-    channels_path = get_channels_parquet_path(params.bucket, params.master_path)
+    videos_path = get_videos_parquet_path(
+        params.r2_config.bucket_name, params.r2_config.master_path
+    )
+    channels_path = get_channels_parquet_path(
+        params.r2_config.bucket_name, params.r2_config.master_path
+    )
 
     has_videos = _parquet_file_exists(params.conn, videos_path)
     has_channels = _parquet_file_exists(params.conn, channels_path)
@@ -220,7 +133,7 @@ def _build_enriched_cte(
 
 
 def get_watch_events(
-    params: YouTubeQueryParams, limit: int | None = None
+    params: QueryParams, limit: int | None = None
 ) -> list[dict[str, Any]]:
     """指定期間の視聴イベントを取得します。"""
     ctes, cte_params = _build_enriched_cte(params)
@@ -246,7 +159,7 @@ def get_watch_events(
 
 
 def get_watching_stats(
-    params: YouTubeQueryParams, granularity: str = "day"
+    params: QueryParams, granularity: str = "day"
 ) -> list[dict[str, Any]]:
     """期間別の視聴統計を取得します。"""
     date_format_map = {
@@ -283,7 +196,7 @@ def get_watching_stats(
 
 
 def get_top_videos(
-    params: YouTubeQueryParams, limit: int = DEFAULT_TOP_TRACKS_LIMIT
+    params: QueryParams, limit: int = DEFAULT_TOP_TRACKS_LIMIT
 ) -> list[dict[str, Any]]:
     """指定期間で最も視聴された動画を取得します。"""
     ctes, cte_params = _build_enriched_cte(params)
@@ -305,7 +218,7 @@ def get_top_videos(
 
 
 def get_top_channels(
-    params: YouTubeQueryParams, limit: int = DEFAULT_TOP_TRACKS_LIMIT
+    params: QueryParams, limit: int = DEFAULT_TOP_TRACKS_LIMIT
 ) -> list[dict[str, Any]]:
     """指定期間で最も視聴されたチャンネルを取得します。"""
     ctes, cte_params = _build_enriched_cte(params)

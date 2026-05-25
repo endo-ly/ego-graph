@@ -5,7 +5,7 @@ LLMを介さず、直接GitHub Worklogデータを取得するためのREST API�
 """
 
 import logging
-from datetime import date, datetime
+from datetime import date
 
 import duckdb
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,23 +17,18 @@ from backend.api.schemas import (
     RepositoryResponse,
     RepoSummaryStatsResponse,
 )
-from backend.config import BackendConfig
 from backend.constants import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
     MIN_LIMIT,
 )
-from backend.dependencies import get_config, get_db_connection, verify_api_key_docs
-from backend.infrastructure.database import (
-    GitHubQueryParams,
-    get_activity_stats,
-    get_commits,
-    get_pull_requests,
-    get_repo_summary_stats,
-    get_repositories,
+from backend.dependencies import (
+    get_db_connection,
+    get_github_repository,
+    verify_api_key_docs,
 )
+from backend.infrastructure.repositories.github_repository import GitHubRepository
 from backend.validators import (
-    to_utc_range,
     validate_date_range,
     validate_granularity,
     validate_limit,
@@ -55,7 +50,7 @@ def get_pull_requests_endpoint(
         DEFAULT_LIMIT, ge=MIN_LIMIT, le=MAX_LIMIT, description="取得するPR数"
     ),
     db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
-    config: BackendConfig = Depends(get_config),
+    repository: GitHubRepository = Depends(get_github_repository),
     _api_key: None = Depends(verify_api_key_docs),
 ):
     """指定期間のPull Requestイベントを取得します。
@@ -89,20 +84,14 @@ def get_pull_requests_endpoint(
         state,
         limit,
     )
-    utc_start, utc_end = to_utc_range(start, end, config.timezone)
-    params = GitHubQueryParams(
-        conn=db_connection,
-        bucket=config.r2.bucket_name,
-        events_path=config.r2.events_path,
-        master_path=config.r2.master_path,
-        start_date=start,
-        end_date=end,
-        utc_start=utc_start,
-        utc_end=utc_end,
-        tz_name=str(config.timezone),
-    )
-    return get_pull_requests(
-        params, owner=owner, repo=repo, state=state, limit=validated_limit
+    return repository.get_pull_requests(
+        db_connection,
+        start,
+        end,
+        owner=owner,
+        repo=repo,
+        state=state,
+        limit=validated_limit,
     )
 
 
@@ -116,7 +105,7 @@ def get_commits_endpoint(
         DEFAULT_LIMIT, ge=MIN_LIMIT, le=MAX_LIMIT, description="取得するCommit数"
     ),
     db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
-    config: BackendConfig = Depends(get_config),
+    repository: GitHubRepository = Depends(get_github_repository),
     _api_key: None = Depends(verify_api_key_docs),
 ):
     """指定期間のCommitイベントを取得します。
@@ -148,19 +137,9 @@ def get_commits_endpoint(
         repo,
         limit,
     )
-    utc_start, utc_end = to_utc_range(start, end, config.timezone)
-    params = GitHubQueryParams(
-        conn=db_connection,
-        bucket=config.r2.bucket_name,
-        events_path=config.r2.events_path,
-        master_path=config.r2.master_path,
-        start_date=start,
-        end_date=end,
-        utc_start=utc_start,
-        utc_end=utc_end,
-        tz_name=str(config.timezone),
+    return repository.get_commits(
+        db_connection, start, end, owner=owner, repo=repo, limit=validated_limit
     )
-    return get_commits(params, owner=owner, repo=repo, limit=validated_limit)
 
 
 @router.get("/repositories", response_model=list[RepositoryResponse])
@@ -170,7 +149,7 @@ def get_repositories_endpoint(
         DEFAULT_LIMIT, ge=MIN_LIMIT, le=MAX_LIMIT, description="取得するRepository数"
     ),
     db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
-    config: BackendConfig = Depends(get_config),
+    repository: GitHubRepository = Depends(get_github_repository),
     _api_key: None = Depends(verify_api_key_docs),
 ):
     """Repositoryマスターを取得します。
@@ -187,18 +166,9 @@ def get_repositories_endpoint(
     """
     validated_limit = validate_limit(limit, max_value=1000)
     logger.info("Getting repositories: owner=%s, limit=%s", owner, validated_limit)
-    params = GitHubQueryParams(
-        conn=db_connection,
-        bucket=config.r2.bucket_name,
-        events_path=config.r2.events_path,
-        master_path=config.r2.master_path,
-        start_date=date(1, 1, 1),
-        end_date=date(9999, 12, 31),
-        utc_start=datetime.min,
-        utc_end=datetime.max,
-        tz_name=str(config.timezone),
+    return repository.get_repositories(
+        db_connection, owner=owner, limit=validated_limit
     )
-    return get_repositories(params, owner=owner, limit=validated_limit)
 
 
 @router.get("/activity-stats", response_model=list[ActivityStatsResponse])
@@ -209,7 +179,7 @@ def get_activity_stats_endpoint(
         "day", pattern="^(day|week|month)$", description="集計単位"
     ),
     db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
-    config: BackendConfig = Depends(get_config),
+    repository: GitHubRepository = Depends(get_github_repository),
     _api_key: None = Depends(verify_api_key_docs),
 ):
     """期間別のアクティビティ統計を取得します。
@@ -237,19 +207,9 @@ def get_activity_stats_endpoint(
         end_date,
         granularity,
     )
-    utc_start, utc_end = to_utc_range(start, end, config.timezone)
-    params = GitHubQueryParams(
-        conn=db_connection,
-        bucket=config.r2.bucket_name,
-        events_path=config.r2.events_path,
-        master_path=config.r2.master_path,
-        start_date=start,
-        end_date=end,
-        utc_start=utc_start,
-        utc_end=utc_end,
-        tz_name=str(config.timezone),
+    return repository.get_activity_stats(
+        db_connection, start, end, granularity=validated_granularity
     )
-    return get_activity_stats(params, granularity=validated_granularity)
 
 
 @router.get("/repo-summary-stats", response_model=list[RepoSummaryStatsResponse])
@@ -259,7 +219,7 @@ def get_repo_summary_stats_endpoint(
     owner: str | None = Query(None, description="フィルタ対象のオーナー"),
     repo: str | None = Query(None, description="フィルタ対象のリポジトリ"),
     db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
-    config: BackendConfig = Depends(get_config),
+    repository: GitHubRepository = Depends(get_github_repository),
     _api_key: None = Depends(verify_api_key_docs),
 ):
     """リポジトリ別のサマリー統計を取得します。
@@ -288,16 +248,6 @@ def get_repo_summary_stats_endpoint(
         owner,
         repo,
     )
-    utc_start, utc_end = to_utc_range(start, end, config.timezone)
-    params = GitHubQueryParams(
-        conn=db_connection,
-        bucket=config.r2.bucket_name,
-        events_path=config.r2.events_path,
-        master_path=config.r2.master_path,
-        start_date=start,
-        end_date=end,
-        utc_start=utc_start,
-        utc_end=utc_end,
-        tz_name=str(config.timezone),
+    return repository.get_repo_summary_stats(
+        db_connection, start, end, owner=owner, repo_name=repo
     )
-    return get_repo_summary_stats(params, owner=owner, repo_name=repo)

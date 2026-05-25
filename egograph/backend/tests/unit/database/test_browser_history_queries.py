@@ -1,69 +1,52 @@
 """Browser History Queries層のテスト。"""
 
-from datetime import date, datetime, timezone
+from datetime import date, timezone
 from unittest.mock import patch
 
+from pydantic import SecretStr
+
+from backend.config import R2Config
 from backend.infrastructure.database import (
-    BrowserHistoryQueryParams,
+    QueryParams,
     get_page_views,
     get_top_domains,
-)
-from backend.infrastructure.database.browser_history_queries import (
-    _generate_browser_history_partition_paths,
 )
 from backend.validators import to_utc_range
 
 
-def _bqp(**overrides):
-    """テスト用 BrowserHistoryQueryParams ファクトリ。"""
-    defaults = dict(
-        bucket="test-bucket",
+def _make_r2_config(bucket_name: str = "test-bucket") -> R2Config:
+    return R2Config.model_construct(
+        endpoint_url="https://test.r2.cloudflarestorage.com",
+        access_key_id="test_key",
+        secret_access_key=SecretStr("test_secret"),
+        bucket_name=bucket_name,
+        raw_path="raw/",
         events_path="events/",
+        master_path="master/",
+        local_parquet_root=None,
+    )
+
+
+def _bqp(**overrides):
+    """テスト用 QueryParams ファクトリ。"""
+    defaults: dict = dict(
+        r2_config=_make_r2_config(),
         tz_name="UTC",
     )
     defaults.update(overrides)
+    defaults.pop("bucket", None)
+    defaults.pop("events_path", None)
+    defaults.pop("master_path", None)
     sd = defaults.pop("start_date")
     ed = defaults.pop("end_date")
     utc_start, utc_end = to_utc_range(sd, ed, timezone.utc)
-    return BrowserHistoryQueryParams(
+    return QueryParams(
         start_date=sd,
         end_date=ed,
         utc_start=utc_start,
         utc_end=utc_end,
         **defaults,
     )
-
-
-class TestGenerateBrowserHistoryPartitionPaths:
-    """Browser Historyパーティションパス生成のテスト。"""
-
-    def test_generates_single_month_path(self):
-        """同月期間のパスを生成する。"""
-        paths = _generate_browser_history_partition_paths(
-            bucket="test-bucket",
-            events_path="events/",
-            utc_start=datetime(2026, 3, 1),
-            utc_end=datetime(2026, 4, 1),
-        )
-
-        assert len(paths) == 2  # Mar + Apr (utc_end が次月のため)
-        assert paths[0] == (
-            "s3://test-bucket/events/browser_history/page_views/year=2026/month=03/**/*.parquet"
-        )
-
-    def test_generates_multiple_month_paths(self):
-        """複数月期間のパスを生成する。"""
-        paths = _generate_browser_history_partition_paths(
-            bucket="test-bucket",
-            events_path="events/",
-            utc_start=datetime(2026, 3, 20),
-            utc_end=datetime(2026, 5, 1),
-        )
-
-        assert len(paths) == 3
-        assert "year=2026/month=03" in paths[0]
-        assert "year=2026/month=04" in paths[1]
-        assert "year=2026/month=05" in paths[2]
 
 
 class TestGetPageViews:
@@ -77,13 +60,11 @@ class TestGetPageViews:
         parquet_path = browser_history_with_sample_data.test_page_views_parquet_path
 
         with patch(
-            "backend.infrastructure.database.browser_history_queries._generate_browser_history_partition_paths",
+            "backend.infrastructure.database.browser_history_queries._resolve_partition_paths",
             return_value=[parquet_path],
         ):
             params = _bqp(
                 conn=browser_history_with_sample_data,
-                bucket="test-bucket",
-                events_path="events/",
                 start_date=date(2026, 3, 20),
                 end_date=date(2026, 3, 22),
             )
@@ -97,13 +78,11 @@ class TestGetPageViews:
         parquet_path = browser_history_with_sample_data.test_page_views_parquet_path
 
         with patch(
-            "backend.infrastructure.database.browser_history_queries._generate_browser_history_partition_paths",
+            "backend.infrastructure.database.browser_history_queries._resolve_partition_paths",
             return_value=[parquet_path],
         ):
             params = _bqp(
                 conn=browser_history_with_sample_data,
-                bucket="test-bucket",
-                events_path="events/",
                 start_date=date(2026, 3, 20),
                 end_date=date(2026, 3, 22),
             )
@@ -128,13 +107,11 @@ class TestGetTopDomains:
         parquet_path = browser_history_with_sample_data.test_page_views_parquet_path
 
         with patch(
-            "backend.infrastructure.database.browser_history_queries._generate_browser_history_partition_paths",
+            "backend.infrastructure.database.browser_history_queries._resolve_partition_paths",
             return_value=[parquet_path],
         ):
             params = _bqp(
                 conn=browser_history_with_sample_data,
-                bucket="test-bucket",
-                events_path="events/",
                 start_date=date(2026, 3, 20),
                 end_date=date(2026, 3, 22),
             )
@@ -154,13 +131,11 @@ class TestGetTopDomains:
         parquet_path = browser_history_with_sample_data.test_page_views_parquet_path
 
         with patch(
-            "backend.infrastructure.database.browser_history_queries._generate_browser_history_partition_paths",
+            "backend.infrastructure.database.browser_history_queries._resolve_partition_paths",
             return_value=[parquet_path],
         ):
             params = _bqp(
                 conn=browser_history_with_sample_data,
-                bucket="test-bucket",
-                events_path="events/",
                 start_date=date(2026, 3, 20),
                 end_date=date(2026, 3, 22),
             )

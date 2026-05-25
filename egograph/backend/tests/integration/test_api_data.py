@@ -1,6 +1,8 @@
 """API/Data統合テスト。"""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock
+
+from backend.dependencies import get_spotify_repository
 
 
 class TestTopTracksEndpoint:
@@ -17,21 +19,26 @@ class TestTopTracksEndpoint:
             }
         ]
 
-        with patch("backend.api.data.get_top_tracks", return_value=mock_result):
-            response = test_client.get(
-                "/v1/data/spotify/stats/top-tracks?start_date=2024-01-01&end_date=2024-01-03&limit=5",
-                headers={"X-API-Key": "test-backend-key"},
-            )
+        mock_repo = MagicMock()
+        mock_repo.get_top_tracks.return_value = mock_result
+        test_client.app.dependency_overrides[get_spotify_repository] = (
+            lambda: mock_repo
+        )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data, list)
-            assert len(data) > 0
-            # 最初のトラックの構造を確認
-            assert "track_name" in data[0]
-            assert "artist" in data[0]
-            assert "play_count" in data[0]
-            assert "total_minutes" in data[0]
+        response = test_client.get(
+            "/v1/data/spotify/stats/top-tracks?start_date=2024-01-01&end_date=2024-01-03&limit=5",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        # 最初のトラックの構造を確認
+        assert "track_name" in data[0]
+        assert "artist" in data[0]
+        assert "play_count" in data[0]
+        assert "total_minutes" in data[0]
 
     def test_get_top_tracks_requires_api_key(self, test_client):
         """API Keyが必要。"""
@@ -81,21 +88,26 @@ class TestListeningStatsEndpoint:
             }
         ]
 
-        with patch("backend.api.data.get_listening_stats", return_value=mock_result):
-            response = test_client.get(
-                "/v1/data/spotify/stats/listening?start_date=2024-01-01&end_date=2024-01-03&granularity=day",
-                headers={"X-API-Key": "test-backend-key"},
-            )
+        mock_repo = MagicMock()
+        mock_repo.get_listening_stats.return_value = mock_result
+        test_client.app.dependency_overrides[get_spotify_repository] = (
+            lambda: mock_repo
+        )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data, list)
-            assert len(data) > 0
-            # 最初の統計の構造を確認
-            assert "period" in data[0]
-            assert "total_ms" in data[0]
-            assert "track_count" in data[0]
-            assert "unique_tracks" in data[0]
+        response = test_client.get(
+            "/v1/data/spotify/stats/listening?start_date=2024-01-01&end_date=2024-01-03&granularity=day",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        # 最初の統計の構造を確認
+        assert "period" in data[0]
+        assert "total_ms" in data[0]
+        assert "track_count" in data[0]
+        assert "unique_tracks" in data[0]
 
     def test_get_listening_stats_requires_api_key(self, test_client):
         """API Keyが必要。"""
@@ -127,11 +139,16 @@ class TestListeningStatsEndpoint:
             }
         ]
 
-        with patch("backend.api.data.get_listening_stats", return_value=mock_result):
-            # granularity省略
-            response = test_client.get(
-                "/v1/data/spotify/stats/listening?start_date=2024-01-01&end_date=2024-01-03",
-                headers={"X-API-Key": "test-backend-key"},
-            )
+        mock_repo = MagicMock()
+        mock_repo.get_listening_stats.return_value = mock_result
+        test_client.app.dependency_overrides[get_spotify_repository] = (
+            lambda: mock_repo
+        )
 
-            assert response.status_code == 200
+        # granularity省略
+        response = test_client.get(
+            "/v1/data/spotify/stats/listening?start_date=2024-01-01&end_date=2024-01-03",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200

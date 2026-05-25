@@ -7,53 +7,25 @@ import duckdb
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.api.schemas import PageViewResponse, TopDomainResponse
-from backend.config import BackendConfig
 from backend.constants import (
     DEFAULT_PAGE_VIEWS_LIMIT,
     DEFAULT_TOP_DOMAINS_LIMIT,
     MAX_LIMIT,
     MIN_LIMIT,
 )
-from backend.dependencies import get_config, get_db_connection, verify_api_key_docs
-from backend.infrastructure.database import (
-    BrowserHistoryQueryParams,
-    get_page_views,
-    get_top_domains,
+from backend.dependencies import (
+    get_browser_history_repository,
+    get_db_connection,
+    verify_api_key_docs,
 )
-from backend.validators import to_utc_range, validate_date_range, validate_limit
+from backend.infrastructure.repositories.browser_history_repository import (
+    BrowserHistoryRepository,
+)
+from backend.validators import validate_date_range, validate_limit
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/data/browser-history", tags=["data", "browser_history"])
-
-
-def _build_query_params(
-    db_connection: duckdb.DuckDBPyConnection,
-    config: BackendConfig,
-    start_date: date,
-    end_date: date,
-    limit: int,
-) -> tuple[BrowserHistoryQueryParams, int]:
-    """共通のクエリパラメータと limit を検証して構築する。"""
-    try:
-        start, end = validate_date_range(start_date, end_date)
-        validated_limit = validate_limit(limit, max_value=MAX_LIMIT)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    utc_start, utc_end = to_utc_range(start, end, config.timezone)
-    params = BrowserHistoryQueryParams(
-        conn=db_connection,
-        bucket=config.r2.bucket_name,
-        events_path=config.r2.events_path,
-        start_date=start,
-        end_date=end,
-        utc_start=utc_start,
-        utc_end=utc_end,
-        tz_name=str(config.timezone),
-        r2_config=config.r2,
-    )
-    return params, validated_limit
 
 
 @router.get("/page-views", response_model=list[PageViewResponse])
@@ -69,19 +41,20 @@ def get_page_views_endpoint(
     browser: str | None = Query(None, description="フィルタ対象のブラウザ"),
     profile: str | None = Query(None, description="フィルタ対象のプロファイル"),
     db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
-    config: BackendConfig = Depends(get_config),
+    repository: BrowserHistoryRepository = Depends(get_browser_history_repository),
     _api_key: None = Depends(verify_api_key_docs),
 ):
     """指定期間の page view 一覧を取得する。"""
-    params, validated_limit = _build_query_params(
+    try:
+        start, end = validate_date_range(start_date, end_date)
+        validated_limit = validate_limit(limit, max_value=MAX_LIMIT)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return repository.get_page_views(
         db_connection,
-        config,
-        start_date,
-        end_date,
-        limit,
-    )
-    return get_page_views(
-        params,
+        start,
+        end,
         browser=browser,
         profile=profile,
         limit=validated_limit,
@@ -101,19 +74,20 @@ def get_top_domains_endpoint(
     browser: str | None = Query(None, description="フィルタ対象のブラウザ"),
     profile: str | None = Query(None, description="フィルタ対象のプロファイル"),
     db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
-    config: BackendConfig = Depends(get_config),
+    repository: BrowserHistoryRepository = Depends(get_browser_history_repository),
     _api_key: None = Depends(verify_api_key_docs),
 ):
     """指定期間の domain ランキングを取得する。"""
-    params, validated_limit = _build_query_params(
+    try:
+        start, end = validate_date_range(start_date, end_date)
+        validated_limit = validate_limit(limit, max_value=MAX_LIMIT)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return repository.get_top_domains(
         db_connection,
-        config,
-        start_date,
-        end_date,
-        limit,
-    )
-    return get_top_domains(
-        params,
+        start,
+        end,
         browser=browser,
         profile=profile,
         limit=validated_limit,

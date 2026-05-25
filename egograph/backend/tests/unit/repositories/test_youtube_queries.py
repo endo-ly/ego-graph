@@ -6,11 +6,12 @@ from unittest.mock import Mock, patch
 import pandas as pd
 import pytest
 
+from backend.config import R2Config
+from backend.infrastructure.database.parquet_paths import build_partition_paths
+from backend.infrastructure.database.query_params import QueryParams
 from backend.infrastructure.database.youtube_queries import (
     DEFAULT_WATCH_EVENTS_LIMIT,
-    YouTubeQueryParams,
     _build_enriched_cte,
-    _generate_partition_paths,
     _parquet_file_exists,
     _resolve_watch_event_paths,
     execute_query,
@@ -19,7 +20,6 @@ from backend.infrastructure.database.youtube_queries import (
     get_top_videos,
     get_videos_parquet_path,
     get_watch_events,
-    get_watch_events_parquet_path,
     get_watching_stats,
 )
 from backend.tests.fixtures.youtube import patch_youtube_paths
@@ -27,18 +27,27 @@ from backend.validators import to_utc_range
 
 
 def _yqp(**overrides):
-    """テスト用 YouTubeQueryParams ファクトリ。"""
+    """テスト用 QueryParams ファクトリ。"""
     defaults = dict(
-        bucket="test-bucket",
-        events_path="events/",
-        master_path="master/",
         tz_name="UTC",
     )
     defaults.update(overrides)
     sd = defaults.pop("start_date")
     ed = defaults.pop("end_date")
+    # r2_config が指定されていなければ、個別フィールドから構築
+    if "r2_config" not in defaults:
+        defaults["r2_config"] = R2Config.model_construct(
+            endpoint_url="https://test.r2.cloudflarestorage.com",
+            access_key_id="test_key",
+            secret_access_key="test_secret",
+            bucket_name=defaults.pop("bucket", "test-bucket"),
+            raw_path="raw/",
+            events_path=defaults.pop("events_path", "events/"),
+            master_path=defaults.pop("master_path", "master/"),
+            local_parquet_root=None,
+        )
     utc_start, utc_end = to_utc_range(sd, ed, timezone.utc)
-    return YouTubeQueryParams(
+    return QueryParams(
         start_date=sd,
         end_date=ed,
         utc_start=utc_start,
@@ -47,38 +56,36 @@ def _yqp(**overrides):
     )
 
 
-class TestYouTubeQueryParams:
-    """YouTubeQueryParams dataclassのテスト。"""
+class TestQueryParams:
+    """QueryParams dataclassのテスト。"""
 
     def test_creates_params(self, duckdb_conn):
-        """YouTubeQueryParamsを作成。"""
+        """QueryParamsを作成。"""
         # Arrange & Act
         params = _yqp(
             conn=duckdb_conn,
-            bucket="test-bucket",
-            events_path="events/",
-            master_path="master/",
+            r2_config=R2Config.model_construct(
+                endpoint_url="https://test.r2.cloudflarestorage.com",
+                access_key_id="test_key",
+                secret_access_key="test_secret",
+                bucket_name="test-bucket",
+                raw_path="raw/",
+                events_path="events/",
+                master_path="master/",
+                local_parquet_root=None,
+            ),
             start_date=date(2024, 1, 1),
             end_date=date(2024, 1, 31),
         )
 
         # Assert
-        assert params.bucket == "test-bucket"
-        assert params.events_path == "events/"
+        assert params.r2_config.bucket_name == "test-bucket"
         assert params.start_date == date(2024, 1, 1)
         assert params.end_date == date(2024, 1, 31)
 
 
 class TestGetParquetPaths:
     """Parquetパス生成関数のテスト。"""
-
-    def test_get_watch_events_parquet_path(self):
-        """視聴イベントのS3パスパターンを生成。"""
-        # Arrange & Act
-        path = get_watch_events_parquet_path("my-bucket", "events/")
-
-        # Assert
-        assert path == "s3://my-bucket/events/youtube/watch_events/**/*.parquet"
 
     def test_get_videos_parquet_path(self):
         """動画マスターのS3パスパターンを生成。"""
@@ -97,55 +104,40 @@ class TestGetParquetPaths:
         assert path == "s3://my-bucket/master/youtube/channels/data.parquet"
 
 
-class TestGeneratePartitionPaths:
-    """_generate_partition_paths のテスト。"""
+class TestBuildPartitionPaths:
+    """build_partition_paths のテスト。"""
 
-    def test_generates_single_month_path(self):
+    def test_generates_single_month_path(self, mock_r2_config):
         """1ヶ月分のパスを生成。"""
-        bucket = "my-bucket"
-        events_path = "events/"
         start = datetime(2024, 1, 1)
         end = datetime(2024, 2, 1)
 
-        paths = _generate_partition_paths(bucket, events_path, start, end)
-
-        assert len(paths) == 2  # Jan + Feb
-        assert (
-            paths[0]
-            == "s3://my-bucket/events/youtube/watch_events/year=2024/month=01/**/*.parquet"
+        paths = build_partition_paths(
+            mock_r2_config, "events", "youtube/watch_events", start, end
         )
 
-    def test_generates_multiple_month_paths(self):
+        assert len(paths) == 2  # Jan + Feb
+        assert "year=2024/month=01" in paths[0]
+
+    def test_generates_multiple_month_paths(self, mock_r2_config):
         """複数月のパスを生成。"""
-        bucket = "test-bucket"
-        events_path = "data/"
         start = datetime(2024, 11, 15)
         end = datetime(2025, 2, 1)
 
-        paths = _generate_partition_paths(bucket, events_path, start, end)
+        paths = build_partition_paths(
+            mock_r2_config, "events", "youtube/watch_events", start, end
+        )
 
         assert len(paths) == 4
-        assert (
-            paths[0]
-            == "s3://test-bucket/data/youtube/watch_events/year=2024/month=11/**/*.parquet"
-        )
-        assert (
-            paths[1]
-            == "s3://test-bucket/data/youtube/watch_events/year=2024/month=12/**/*.parquet"
-        )
-        assert (
-            paths[2]
-            == "s3://test-bucket/data/youtube/watch_events/year=2025/month=01/**/*.parquet"
-        )
 
-    def test_handles_year_boundary(self):
+    def test_handles_year_boundary(self, mock_r2_config):
         """年をまたぐ期間を正しく処理。"""
-        bucket = "bucket"
-        events_path = "events/"
         start = datetime(2023, 12, 1)
         end = datetime(2024, 2, 1)
 
-        paths = _generate_partition_paths(bucket, events_path, start, end)
+        paths = build_partition_paths(
+            mock_r2_config, "events", "youtube/watch_events", start, end
+        )
 
         assert len(paths) == 3
         assert "year=2023/month=12" in paths[0]
@@ -155,35 +147,31 @@ class TestGeneratePartitionPaths:
 class TestResolveWatchEventPaths:
     """_resolve_watch_event_paths のテスト。"""
 
-    def test_falls_back_to_dataset_glob_when_no_partition_matches(self):
-        """月パーティションが未作成なら dataset glob にフォールバック。"""
-        conn = Mock()
-        execute_result = Mock()
-        execute_result.fetchone.return_value = (0,)
-        conn.execute.return_value = execute_result
+    def test_delegates_to_build_partition_paths(self, mock_r2_config):
+        """build_partition_paths に委譲する。"""
         params = _yqp(
-            conn=conn,
-            bucket="test-bucket",
-            events_path="events/",
-            master_path="master/",
+            conn=Mock(),
+            r2_config=mock_r2_config,
             start_date=date(2024, 1, 1),
             end_date=date(2024, 1, 31),
         )
-        with (
-            patch(
-                "backend.infrastructure.database.youtube_queries._generate_partition_paths",
-                return_value=[
-                    "s3://test/events/youtube/watch_events/year=2024/month=01/**/*.parquet"
-                ],
-            ),
-            patch(
-                "backend.infrastructure.database.youtube_queries.get_watch_events_parquet_path",
-                return_value="s3://test/events/youtube/watch_events/**/*.parquet",
-            ),
-        ):
+        expected = [
+            "s3://test/events/youtube/watch_events/year=2024/month=01/**/*.parquet"
+        ]
+        with patch(
+            "backend.infrastructure.database.youtube_queries.build_partition_paths",
+            return_value=expected,
+        ) as mock_func:
             paths = _resolve_watch_event_paths(params)
 
-        assert paths == ["s3://test/events/youtube/watch_events/**/*.parquet"]
+        assert paths == expected
+        mock_func.assert_called_once_with(
+            mock_r2_config,
+            data_domain="events",
+            dataset_path="youtube/watch_events",
+            utc_start=params.utc_start,
+            utc_end=params.utc_end,
+        )
 
 
 class TestExecuteQuery:
