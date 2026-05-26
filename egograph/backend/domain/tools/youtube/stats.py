@@ -8,6 +8,7 @@ from typing import Any
 
 from backend.constants import MAX_LIMIT
 from backend.domain.models.tool import ToolBase
+from backend.infrastructure.database.connection import DuckDBConnection
 from backend.infrastructure.repositories import YouTubeRepository
 from backend.validators import (
     validate_date_range,
@@ -89,7 +90,8 @@ class GetYouTubeWatchEventsTool(ToolBase):
             validated_limit,
         )
 
-        return self.repository.get_watch_events(start, end, validated_limit)
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_watch_events(conn, start, end, validated_limit)
 
 
 class GetYouTubeWatchingStatsTool(ToolBase):
@@ -163,7 +165,10 @@ class GetYouTubeWatchingStatsTool(ToolBase):
             granularity,
         )
 
-        return self.repository.get_watching_stats(start, end, validated_granularity)
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_watching_stats(
+                conn, start, end, validated_granularity
+            )
 
 
 class GetYouTubeTopVideosTool(ToolBase):
@@ -236,7 +241,8 @@ class GetYouTubeTopVideosTool(ToolBase):
             validated_limit,
         )
 
-        return self.repository.get_top_videos(start, end, validated_limit)
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_top_videos(conn, start, end, validated_limit)
 
 
 class GetYouTubeTopChannelsTool(ToolBase):
@@ -309,4 +315,5 @@ class GetYouTubeTopChannelsTool(ToolBase):
             validated_limit,
         )
 
-        return self.repository.get_top_channels(start, end, validated_limit)
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_top_channels(conn, start, end, validated_limit)

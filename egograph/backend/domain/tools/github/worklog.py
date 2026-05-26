@@ -8,6 +8,7 @@ from typing import Any
 
 from backend.constants import MAX_LIMIT
 from backend.domain.models.tool import ToolBase
+from backend.infrastructure.database.connection import DuckDBConnection
 from backend.infrastructure.repositories import GitHubRepository
 from backend.validators import (
     validate_date_range,
@@ -103,7 +104,8 @@ class GetPullRequestsTool(ToolBase):
         validated_limit = validate_limit(limit, max_value=MAX_LIMIT)
 
         logger.info(
-            "Executing get_pull_requests: %s to %s, owner=%s, repo=%s, state=%s, limit=%s",
+            "Executing get_pull_requests: %s to %s, owner=%s, "
+            "repo=%s, state=%s, limit=%s",
             start,
             end,
             owner,
@@ -112,10 +114,16 @@ class GetPullRequestsTool(ToolBase):
             validated_limit,
         )
 
-        # データ取得は repository に委譲
-        return self.repository.get_pull_requests(
-            start, end, owner=owner, repo=repo, state=state, limit=validated_limit
-        )
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_pull_requests(
+                conn,
+                start,
+                end,
+                owner=owner,
+                repo=repo,
+                state=state,
+                limit=validated_limit,
+            )
 
 
 class GetCommitsTool(ToolBase):
@@ -205,10 +213,10 @@ class GetCommitsTool(ToolBase):
             validated_limit,
         )
 
-        # データ取得は repository に委譲
-        return self.repository.get_commits(
-            start, end, owner=owner, repo=repo, limit=validated_limit
-        )
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_commits(
+                conn, start, end, owner=owner, repo=repo, limit=validated_limit
+            )
 
 
 class GetRepositoriesTool(ToolBase):
@@ -277,10 +285,10 @@ class GetRepositoriesTool(ToolBase):
         )
 
         validated_limit = validate_limit(limit, max_value=MAX_LIMIT)
-        result = self.repository.get_repositories(
-            owner=owner, repo=repo, limit=validated_limit
-        )
-        return result
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_repositories(
+                conn, owner=owner, repo=repo, limit=validated_limit
+            )
 
 
 class GetActivityStatsTool(ToolBase):
@@ -358,8 +366,10 @@ class GetActivityStatsTool(ToolBase):
             granularity,
         )
 
-        # データ取得は repository に委譲
-        return self.repository.get_activity_stats(start, end, validated_granularity)
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_activity_stats(
+                conn, start, end, validated_granularity
+            )
 
 
 class GetRepoSummaryStatsTool(ToolBase):
@@ -441,7 +451,7 @@ class GetRepoSummaryStatsTool(ToolBase):
             repo,
         )
 
-        # データ取得は repository に委譲
-        return self.repository.get_repo_summary_stats(
-            start, end, owner=owner, repo_name=repo
-        )
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_repo_summary_stats(
+                conn, start, end, owner=owner, repo_name=repo
+            )

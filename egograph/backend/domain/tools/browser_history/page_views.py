@@ -9,6 +9,7 @@ from backend.constants import (
     MAX_LIMIT,
 )
 from backend.domain.models.tool import ToolBase
+from backend.infrastructure.database.connection import DuckDBConnection
 from backend.infrastructure.repositories.browser_history_repository import (
     BrowserHistoryRepository,
 )
@@ -103,13 +104,15 @@ class GetPageViewsTool(BrowserHistoryToolBase):
             profile,
             validated_limit,
         )
-        return self.repository.get_page_views(
-            start_date=start,
-            end_date=end,
-            browser=browser,
-            profile=profile,
-            limit=validated_limit,
-        )
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_page_views(
+                conn,
+                start_date=start,
+                end_date=end,
+                browser=browser,
+                profile=profile,
+                limit=validated_limit,
+            )
 
 
 class GetTopDomainsTool(BrowserHistoryToolBase):
@@ -152,10 +155,12 @@ class GetTopDomainsTool(BrowserHistoryToolBase):
             profile,
             validated_limit,
         )
-        return self.repository.get_top_domains(
-            start_date=start,
-            end_date=end,
-            browser=browser,
-            profile=profile,
-            limit=validated_limit,
-        )
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_top_domains(
+                conn,
+                start_date=start,
+                end_date=end,
+                browser=browser,
+                profile=profile,
+                limit=validated_limit,
+            )

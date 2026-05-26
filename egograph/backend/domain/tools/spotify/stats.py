@@ -8,6 +8,7 @@ from typing import Any
 
 from backend.constants import DEFAULT_TOP_TRACKS_LIMIT, MAX_LIMIT
 from backend.domain.models.tool import ToolBase
+from backend.infrastructure.database.connection import DuckDBConnection
 from backend.infrastructure.repositories import SpotifyRepository
 from backend.validators import (
     validate_date_range,
@@ -86,8 +87,8 @@ class GetTopTracksTool(ToolBase):
             "Executing get_top_tracks: %s to %s, limit=%s", start, end, validated_limit
         )
 
-        # データ取得は repository に委譲
-        return self.repository.get_top_tracks(start, end, validated_limit)
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_top_tracks(conn, start, end, validated_limit)
 
 
 class GetListeningStatsTool(ToolBase):
@@ -163,5 +164,7 @@ class GetListeningStatsTool(ToolBase):
             granularity,
         )
 
-        # データ取得は repository に委譲
-        return self.repository.get_listening_stats(start, end, validated_granularity)
+        with DuckDBConnection(self.repository.r2_config) as conn:
+            return self.repository.get_listening_stats(
+                conn, start, end, validated_granularity
+            )

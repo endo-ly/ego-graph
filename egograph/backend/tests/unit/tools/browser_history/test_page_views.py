@@ -1,13 +1,22 @@
 """Tools/Browser History層のテスト。"""
 
 from datetime import date
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from backend.domain.tools.browser_history.page_views import (
     GetPageViewsTool,
     GetTopDomainsTool,
 )
+
+
+def _mock_conn_ctx():
+    """DuckDBConnection のコンテキストマネージャーモックを返す。"""
+    mock_conn = MagicMock()
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__ = MagicMock(return_value=mock_conn)
+    mock_ctx.__exit__ = MagicMock(return_value=False)
+    return mock_ctx
 
 
 class TestGetPageViewsTool:
@@ -29,7 +38,10 @@ class TestGetPageViewsTool:
         assert "profile" in schema["properties"]
         assert "limit" in schema["properties"]
 
-    def test_execute_validates_and_delegates(self):
+    @patch("backend.domain.tools.browser_history.page_views.DuckDBConnection")
+    def test_execute_validates_and_delegates(self, MockConn):
+        MockConn.return_value = _mock_conn_ctx()
+
         repository = MagicMock()
         repository.get_page_views.return_value = [{"page_view_id": "pv_1"}]
         tool = GetPageViewsTool(repository)
@@ -77,7 +89,10 @@ class TestGetTopDomainsTool:
         assert "profile" in schema["properties"]
         assert "limit" in schema["properties"]
 
-    def test_execute_validates_and_delegates(self):
+    @patch("backend.domain.tools.browser_history.page_views.DuckDBConnection")
+    def test_execute_validates_and_delegates(self, MockConn):
+        MockConn.return_value = _mock_conn_ctx()
+
         repository = MagicMock()
         repository.get_top_domains.return_value = [{"domain": "github.com"}]
         tool = GetTopDomainsTool(repository)

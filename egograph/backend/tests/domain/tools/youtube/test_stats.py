@@ -1,6 +1,7 @@
 """Tools/YouTube/Stats層のテスト。"""
 
-from unittest.mock import MagicMock
+from datetime import date
+from unittest.mock import MagicMock, patch
 
 import pytest
 from backend.domain.tools.youtube.stats import (
@@ -11,38 +12,38 @@ from backend.domain.tools.youtube.stats import (
 )
 
 
+def _mock_conn_ctx():
+    """DuckDBConnection のコンテキストマネージャーモックを返す。"""
+    mock_conn = MagicMock()
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__ = MagicMock(return_value=mock_conn)
+    mock_ctx.__exit__ = MagicMock(return_value=False)
+    return mock_ctx
+
+
 class TestGetYouTubeWatchEventsTool:
     """GetYouTubeWatchEventsToolのテスト。"""
 
     def test_name_property(self):
         """nameプロパティが正しい。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchEventsTool(mock_repository)
-
-        # Assert
         assert tool.name == "get_youtube_watch_events"
 
     def test_description_property(self):
         """descriptionプロパティが正しい。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchEventsTool(mock_repository)
-
-        # Assert
         assert isinstance(tool.description, str)
         assert len(tool.description) > 0
 
     def test_input_schema_structure(self):
         """input_schemaが正しい構造を持つ。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchEventsTool(mock_repository)
 
-        # Act
         schema = tool.input_schema
 
-        # Assert
         assert schema["type"] == "object"
         assert "start_date" in schema["properties"]
         assert "end_date" in schema["properties"]
@@ -52,21 +53,20 @@ class TestGetYouTubeWatchEventsTool:
 
     def test_to_schema_generates_tool(self):
         """to_schema()がToolスキーマを生成。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchEventsTool(mock_repository)
 
-        # Act
         schema = tool.to_schema()
 
-        # Assert
         assert schema.name == "get_youtube_watch_events"
         assert isinstance(schema.description, str)
         assert isinstance(schema.inputSchema, dict)
 
-    def test_execute_with_valid_dates(self):
+    @patch("backend.domain.tools.youtube.stats.DuckDBConnection")
+    def test_execute_with_valid_dates(self, MockConn):
         """正しい日付でexecute()を実行。"""
-        # Arrange
+        MockConn.return_value = _mock_conn_ctx()
+
         mock_repository = MagicMock()
         mock_repository.get_watch_events.return_value = [
             {
@@ -80,39 +80,38 @@ class TestGetYouTubeWatchEventsTool:
         ]
         tool = GetYouTubeWatchEventsTool(mock_repository)
 
-        # Act
         result = tool.execute(start_date="2024-01-01", end_date="2024-01-31", limit=10)
 
-        # Assert
         assert len(result) == 1
         assert result[0]["watch_event_id"] == "we_1"
         mock_repository.get_watch_events.assert_called_once()
         call_args = mock_repository.get_watch_events.call_args
-        assert call_args[0][2] == 10  # limit
+        assert call_args[0][0] is MockConn.return_value.__enter__.return_value  # conn
+        assert call_args[0][1] == date(2024, 1, 1)  # start_date
+        assert call_args[0][2] == date(2024, 1, 31)  # end_date
+        assert call_args[0][3] == 10  # limit
 
     def test_execute_with_invalid_date_format_raises_error(self):
         """不正な日付形式でエラー。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchEventsTool(mock_repository)
 
-        # Act & Assert
         with pytest.raises(ValueError, match="invalid_start_date"):
             tool.execute(start_date="invalid-date", end_date="2024-01-31")
 
-    def test_execute_without_limit(self):
+    @patch("backend.domain.tools.youtube.stats.DuckDBConnection")
+    def test_execute_without_limit(self, MockConn):
         """limitなしで実行（全件取得）。"""
-        # Arrange
+        MockConn.return_value = _mock_conn_ctx()
+
         mock_repository = MagicMock()
         mock_repository.get_watch_events.return_value = []
         tool = GetYouTubeWatchEventsTool(mock_repository)
 
-        # Act
         tool.execute(start_date="2024-01-01", end_date="2024-01-31")
 
-        # Assert
         call_args = mock_repository.get_watch_events.call_args
-        assert call_args[0][2] is None
+        assert call_args[0][3] is None  # limit
 
 
 class TestGetYouTubeWatchingStatsTool:
@@ -120,33 +119,24 @@ class TestGetYouTubeWatchingStatsTool:
 
     def test_name_property(self):
         """nameプロパティが正しい。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchingStatsTool(mock_repository)
-
-        # Assert
         assert tool.name == "get_youtube_watching_stats"
 
     def test_description_property(self):
         """descriptionプロパティが正しい。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchingStatsTool(mock_repository)
-
-        # Assert
         assert isinstance(tool.description, str)
         assert len(tool.description) > 0
 
     def test_input_schema_structure(self):
         """input_schemaが正しい構造を持つ。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchingStatsTool(mock_repository)
 
-        # Act
         schema = tool.input_schema
 
-        # Assert
         assert schema["type"] == "object"
         assert "start_date" in schema["properties"]
         assert "end_date" in schema["properties"]
@@ -155,21 +145,20 @@ class TestGetYouTubeWatchingStatsTool:
 
     def test_to_schema_generates_tool(self):
         """to_schema()がToolスキーマを生成。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchingStatsTool(mock_repository)
 
-        # Act
         schema = tool.to_schema()
 
-        # Assert
         assert schema.name == "get_youtube_watching_stats"
         assert isinstance(schema.description, str)
         assert isinstance(schema.inputSchema, dict)
 
-    def test_execute_with_valid_parameters(self):
+    @patch("backend.domain.tools.youtube.stats.DuckDBConnection")
+    def test_execute_with_valid_parameters(self, MockConn):
         """正しいパラメータでexecute()を実行。"""
-        # Arrange
+        MockConn.return_value = _mock_conn_ctx()
+
         mock_repository = MagicMock()
         mock_repository.get_watching_stats.return_value = [
             {
@@ -181,25 +170,21 @@ class TestGetYouTubeWatchingStatsTool:
         ]
         tool = GetYouTubeWatchingStatsTool(mock_repository)
 
-        # Act
         result = tool.execute(
             start_date="2024-01-01", end_date="2024-01-31", granularity="day"
         )
 
-        # Assert
         assert len(result) == 1
         assert result[0]["period"] == "2024-01-01"
         mock_repository.get_watching_stats.assert_called_once()
         call_args = mock_repository.get_watching_stats.call_args
-        assert call_args[0][2] == "day"
+        assert call_args[0][3] == "day"  # granularity
 
     def test_execute_with_invalid_date_format_raises_error(self):
         """不正な日付形式でエラー。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchingStatsTool(mock_repository)
 
-        # Act & Assert
         with pytest.raises(ValueError, match="invalid_start_date"):
             tool.execute(
                 start_date="invalid-date", end_date="2024-01-31", granularity="day"
@@ -207,29 +192,27 @@ class TestGetYouTubeWatchingStatsTool:
 
     def test_execute_with_invalid_granularity_raises_error(self):
         """不正なgranularityでエラー。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeWatchingStatsTool(mock_repository)
 
-        # Act & Assert
         with pytest.raises(ValueError, match="invalid_granularity"):
             tool.execute(
                 start_date="2024-01-01", end_date="2024-01-31", granularity="invalid"
             )
 
-    def test_execute_with_default_granularity(self):
+    @patch("backend.domain.tools.youtube.stats.DuckDBConnection")
+    def test_execute_with_default_granularity(self, MockConn):
         """granularityのデフォルト値で実行。"""
-        # Arrange
+        MockConn.return_value = _mock_conn_ctx()
+
         mock_repository = MagicMock()
         mock_repository.get_watching_stats.return_value = []
         tool = GetYouTubeWatchingStatsTool(mock_repository)
 
-        # Act
         tool.execute(start_date="2024-01-01", end_date="2024-01-31")
 
-        # Assert
         call_args = mock_repository.get_watching_stats.call_args
-        assert call_args[0][2] == "day"
+        assert call_args[0][3] == "day"  # granularity
 
 
 class TestGetYouTubeTopVideosTool:
@@ -237,33 +220,24 @@ class TestGetYouTubeTopVideosTool:
 
     def test_name_property(self):
         """nameプロパティが正しい。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeTopVideosTool(mock_repository)
-
-        # Assert
         assert tool.name == "get_youtube_top_videos"
 
     def test_description_property(self):
         """descriptionプロパティが正しい。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeTopVideosTool(mock_repository)
-
-        # Assert
         assert isinstance(tool.description, str)
         assert len(tool.description) > 0
 
     def test_input_schema_structure(self):
         """input_schemaが正しい構造を持つ。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeTopVideosTool(mock_repository)
 
-        # Act
         schema = tool.input_schema
 
-        # Assert
         assert schema["type"] == "object"
         assert "start_date" in schema["properties"]
         assert "end_date" in schema["properties"]
@@ -273,21 +247,20 @@ class TestGetYouTubeTopVideosTool:
 
     def test_to_schema_generates_tool(self):
         """to_schema()がToolスキーマを生成。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeTopVideosTool(mock_repository)
 
-        # Act
         schema = tool.to_schema()
 
-        # Assert
         assert schema.name == "get_youtube_top_videos"
         assert isinstance(schema.description, str)
         assert isinstance(schema.inputSchema, dict)
 
-    def test_execute_with_valid_dates(self):
+    @patch("backend.domain.tools.youtube.stats.DuckDBConnection")
+    def test_execute_with_valid_dates(self, MockConn):
         """正しい日付でexecute()を実行。"""
-        # Arrange
+        MockConn.return_value = _mock_conn_ctx()
+
         mock_repository = MagicMock()
         mock_repository.get_top_videos.return_value = [
             {
@@ -299,39 +272,35 @@ class TestGetYouTubeTopVideosTool:
         ]
         tool = GetYouTubeTopVideosTool(mock_repository)
 
-        # Act
         result = tool.execute(start_date="2024-01-01", end_date="2024-01-31", limit=10)
 
-        # Assert
         assert len(result) == 1
         assert result[0]["video_id"] == "video_1"
         mock_repository.get_top_videos.assert_called_once()
         call_args = mock_repository.get_top_videos.call_args
-        assert call_args[0][2] == 10
+        assert call_args[0][3] == 10  # limit
 
     def test_execute_with_invalid_date_format_raises_error(self):
         """不正な日付形式でエラー。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeTopVideosTool(mock_repository)
 
-        # Act & Assert
         with pytest.raises(ValueError, match="invalid_start_date"):
             tool.execute(start_date="invalid-date", end_date="2024-01-31")
 
-    def test_execute_with_default_limit(self):
+    @patch("backend.domain.tools.youtube.stats.DuckDBConnection")
+    def test_execute_with_default_limit(self, MockConn):
         """limitのデフォルト値で実行。"""
-        # Arrange
+        MockConn.return_value = _mock_conn_ctx()
+
         mock_repository = MagicMock()
         mock_repository.get_top_videos.return_value = []
         tool = GetYouTubeTopVideosTool(mock_repository)
 
-        # Act
         tool.execute(start_date="2024-01-01", end_date="2024-01-31")
 
-        # Assert
         call_args = mock_repository.get_top_videos.call_args
-        assert call_args[0][2] == 10
+        assert call_args[0][3] == 10
 
 
 class TestGetYouTubeTopChannelsTool:
@@ -339,33 +308,24 @@ class TestGetYouTubeTopChannelsTool:
 
     def test_name_property(self):
         """nameプロパティが正しい。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeTopChannelsTool(mock_repository)
-
-        # Assert
         assert tool.name == "get_youtube_top_channels"
 
     def test_description_property(self):
         """descriptionプロパティが正しい。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeTopChannelsTool(mock_repository)
-
-        # Assert
         assert isinstance(tool.description, str)
         assert len(tool.description) > 0
 
     def test_input_schema_structure(self):
         """input_schemaが正しい構造を持つ。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeTopChannelsTool(mock_repository)
 
-        # Act
         schema = tool.input_schema
 
-        # Assert
         assert schema["type"] == "object"
         assert "start_date" in schema["properties"]
         assert "end_date" in schema["properties"]
@@ -375,21 +335,20 @@ class TestGetYouTubeTopChannelsTool:
 
     def test_to_schema_generates_tool(self):
         """to_schema()がToolスキーマを生成。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeTopChannelsTool(mock_repository)
 
-        # Act
         schema = tool.to_schema()
 
-        # Assert
         assert schema.name == "get_youtube_top_channels"
         assert isinstance(schema.description, str)
         assert isinstance(schema.inputSchema, dict)
 
-    def test_execute_with_valid_dates(self):
+    @patch("backend.domain.tools.youtube.stats.DuckDBConnection")
+    def test_execute_with_valid_dates(self, MockConn):
         """正しい日付でexecute()を実行。"""
-        # Arrange
+        MockConn.return_value = _mock_conn_ctx()
+
         mock_repository = MagicMock()
         mock_repository.get_top_channels.return_value = [
             {
@@ -401,36 +360,32 @@ class TestGetYouTubeTopChannelsTool:
         ]
         tool = GetYouTubeTopChannelsTool(mock_repository)
 
-        # Act
         result = tool.execute(start_date="2024-01-01", end_date="2024-01-31", limit=10)
 
-        # Assert
         assert len(result) == 1
         assert result[0]["channel_name"] == "Channel A"
         mock_repository.get_top_channels.assert_called_once()
         call_args = mock_repository.get_top_channels.call_args
-        assert call_args[0][2] == 10
+        assert call_args[0][3] == 10  # limit
 
     def test_execute_with_invalid_date_format_raises_error(self):
         """不正な日付形式でエラー。"""
-        # Arrange
         mock_repository = MagicMock()
         tool = GetYouTubeTopChannelsTool(mock_repository)
 
-        # Act & Assert
         with pytest.raises(ValueError, match="invalid_start_date"):
             tool.execute(start_date="invalid-date", end_date="2024-01-31")
 
-    def test_execute_with_default_limit(self):
+    @patch("backend.domain.tools.youtube.stats.DuckDBConnection")
+    def test_execute_with_default_limit(self, MockConn):
         """limitのデフォルト値で実行。"""
-        # Arrange
+        MockConn.return_value = _mock_conn_ctx()
+
         mock_repository = MagicMock()
         mock_repository.get_top_channels.return_value = []
         tool = GetYouTubeTopChannelsTool(mock_repository)
 
-        # Act
         tool.execute(start_date="2024-01-01", end_date="2024-01-31")
 
-        # Assert
         call_args = mock_repository.get_top_channels.call_args
-        assert call_args[0][2] == 10
+        assert call_args[0][3] == 10
