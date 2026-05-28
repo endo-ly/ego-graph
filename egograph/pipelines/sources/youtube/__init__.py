@@ -1,5 +1,5 @@
 """YouTube source pipelines and shared domain helpers."""
 
-from pipelines.sources.youtube.pipeline import run_youtube_ingest
+from pipelines.sources.youtube.pipeline import run_youtube_compact, run_youtube_ingest
 
-__all__ = ["run_youtube_ingest"]
+__all__ = ["run_youtube_ingest", "run_youtube_compact"]
