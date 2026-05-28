@@ -12,6 +12,7 @@ from pipelines.sources.common.compaction import discover_available_months
 from pipelines.sources.common.settings import PipelinesSettings
 from pipelines.sources.github.storage import GitHubWorklogStorage
 from pipelines.sources.spotify.storage import SpotifyStorage
+from pipelines.sources.youtube.storage import YouTubeStorage
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--provider",
-        choices=("all", "spotify", "github", "browser_history"),
+        choices=("all", "spotify", "github", "browser_history", "youtube"),
         default="all",
         help="Compact only the selected provider (default: all).",
     )
@@ -212,6 +213,56 @@ def _compact_browser_history(
     return failures
 
 
+def _compact_youtube(
+    s3_client: Any,
+    bucket_name: str,
+    events_path: str,
+    storage: YouTubeStorage,
+) -> list[str]:
+    failures: list[str] = []
+    dataset = DatasetSpec(
+        "events",
+        "youtube/watch_events",
+        "watch_event_id",
+        "watched_at_utc",
+    )
+
+    months = _discover_dataset_months(
+        s3_client,
+        bucket_name,
+        events_path,
+        dataset,
+    )
+    logger.info(
+        "Bootstrap compact target months discovered: "
+        "provider=youtube dataset=%s months=%s",
+        dataset.dataset_path,
+        months,
+    )
+    for year, month in months:
+        try:
+            key = storage.compact_month(year=year, month=month)
+            if key is None:
+                logger.info(
+                    "Bootstrap YouTube compaction skipped (no data): "
+                    "year=%d month=%02d",
+                    year,
+                    month,
+                )
+        except Exception as exc:
+            logger.exception(
+                "Bootstrap YouTube compaction failed: "
+                "dataset=%s year=%d month=%02d error=%s",
+                dataset.dataset_path,
+                year,
+                month,
+                exc,
+            )
+            failures.append(f"youtube:{dataset.dataset_path}:{year}-{month:02d}")
+
+    return failures
+
+
 def main() -> None:
     """Bootstrap compacted parquet generation for all configured providers."""
     args = _parse_args()
@@ -283,6 +334,24 @@ def main() -> None:
                 bucket_name=r2_conf.bucket_name,
                 events_path=r2_conf.events_path,
                 storage=browser_history_storage,
+            )
+        )
+
+    if args.provider in ("all", "youtube"):
+        youtube_storage = YouTubeStorage(
+            endpoint_url=r2_conf.endpoint_url,
+            access_key_id=r2_conf.access_key_id,
+            secret_access_key=r2_conf.secret_access_key.get_secret_value(),
+            bucket_name=r2_conf.bucket_name,
+            events_path=r2_conf.events_path,
+            master_path=r2_conf.master_path,
+        )
+        failures.extend(
+            _compact_youtube(
+                s3_client=s3_client,
+                bucket_name=r2_conf.bucket_name,
+                events_path=r2_conf.events_path,
+                storage=youtube_storage,
             )
         )
 

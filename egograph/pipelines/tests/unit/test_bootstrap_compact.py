@@ -8,6 +8,7 @@ from pipelines.sources.common.bootstrap_compact import (
     _compact_browser_history,
     _compact_github,
     _compact_spotify,
+    _compact_youtube,
     main,
 )
 from pipelines.sources.common.config import Config, DuckDBConfig, R2Config
@@ -138,6 +139,51 @@ class TestCompactBrowserHistory:
         assert storage.compact_month.call_count == 2
 
 
+class TestCompactYouTube:
+    """_compact_youtube tests."""
+
+    def test_compacts_all_discovered_months(self, monkeypatch):
+        s3_client = object()
+        storage = Mock()
+
+        monkeypatch.setattr(
+            "pipelines.sources.common.bootstrap_compact._discover_dataset_months",
+            lambda s3, bucket_name, root_prefix, dataset: [(2025, 1), (2025, 2)],
+        )
+
+        failures = _compact_youtube(
+            s3_client=s3_client,
+            bucket_name="egograph",
+            events_path="events/",
+            storage=storage,
+        )
+
+        assert failures == []
+        assert storage.compact_month.call_count == 2
+        storage.compact_month.assert_any_call(year=2025, month=1)
+        storage.compact_month.assert_any_call(year=2025, month=2)
+
+    def test_collects_failures_and_continues(self, monkeypatch):
+        s3_client = object()
+        storage = Mock()
+        storage.compact_month.side_effect = [None, RuntimeError("boom")]
+
+        monkeypatch.setattr(
+            "pipelines.sources.common.bootstrap_compact._discover_dataset_months",
+            lambda s3, bucket_name, root_prefix, dataset: [(2025, 1), (2025, 2)],
+        )
+
+        failures = _compact_youtube(
+            s3_client=s3_client,
+            bucket_name="egograph",
+            events_path="events/",
+            storage=storage,
+        )
+
+        assert failures == ["youtube:youtube/watch_events:2025-02"]
+        assert storage.compact_month.call_count == 2
+
+
 class TestMain:
     """main tests."""
 
@@ -157,6 +203,7 @@ class TestMain:
         spotify_compact = Mock(return_value=[])
         github_compact = Mock(return_value=[])
         browser_history_compact = Mock(return_value=[])
+        youtube_compact = Mock(return_value=[])
         monkeypatch.setattr(
             "pipelines.sources.common.bootstrap_compact._compact_spotify",
             spotify_compact,
@@ -170,6 +217,10 @@ class TestMain:
             browser_history_compact,
         )
         monkeypatch.setattr(
+            "pipelines.sources.common.bootstrap_compact._compact_youtube",
+            youtube_compact,
+        )
+        monkeypatch.setattr(
             "pipelines.sources.common.bootstrap_compact.SpotifyStorage",
             Mock(),
         )
@@ -181,12 +232,17 @@ class TestMain:
             "pipelines.sources.common.bootstrap_compact.BrowserHistoryStorage",
             Mock(),
         )
+        monkeypatch.setattr(
+            "pipelines.sources.common.bootstrap_compact.YouTubeStorage",
+            Mock(),
+        )
 
         main()
 
         spotify_compact.assert_called_once()
         github_compact.assert_not_called()
         browser_history_compact.assert_not_called()
+        youtube_compact.assert_not_called()
 
     def test_raises_when_any_provider_fails(self, monkeypatch):
         monkeypatch.setattr(
@@ -214,6 +270,10 @@ class TestMain:
             Mock(return_value=[]),
         )
         monkeypatch.setattr(
+            "pipelines.sources.common.bootstrap_compact._compact_youtube",
+            Mock(return_value=[]),
+        )
+        monkeypatch.setattr(
             "pipelines.sources.common.bootstrap_compact.SpotifyStorage",
             Mock(),
         )
@@ -223,6 +283,10 @@ class TestMain:
         )
         monkeypatch.setattr(
             "pipelines.sources.common.bootstrap_compact.BrowserHistoryStorage",
+            Mock(),
+        )
+        monkeypatch.setattr(
+            "pipelines.sources.common.bootstrap_compact.YouTubeStorage",
             Mock(),
         )
 
