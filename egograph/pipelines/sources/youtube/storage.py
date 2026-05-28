@@ -89,7 +89,7 @@ class YouTubeStorage:
             )
         except ClientError:
             logger.exception("Failed to save compacted parquet to %s", key)
-            return None
+            raise
         logger.info("Saved compacted parquet to %s", key)
         return key
 

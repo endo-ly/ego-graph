@@ -6,6 +6,7 @@ S3 バケット名や R2 エンドポイントURLなど、
 
 import logging
 import re
+import traceback
 
 # s3://<bucket-name>/<path> → ***/<path>
 _S3_PATTERN = re.compile(r"s3://[^/]+")
@@ -47,6 +48,7 @@ class InfraSanitizingFilter(logging.Filter):
 
     - record.msg をサニタイズする
     - record.args をクリアし、未サニタイズ値での再フォーマットを防止する
+    - record.exc_info がある場合、トレースバックをフォーマットしてサニタイズする
     - record.exc_text（トレースバック）が存在すればサニタイズする
     - すべてのレコードを通過させる（ドロップしない）
     """
@@ -64,6 +66,11 @@ class InfraSanitizingFilter(logging.Filter):
             record.msg = sanitize_infra_message(record.msg)
 
         record.args = None
+
+        if record.exc_info and not record.exc_text:
+            record.exc_text = "".join(
+                traceback.format_exception(*record.exc_info)
+            )
 
         if record.exc_text:
             record.exc_text = sanitize_infra_message(record.exc_text)

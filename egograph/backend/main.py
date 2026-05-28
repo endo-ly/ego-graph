@@ -78,11 +78,12 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     if config is None:
         config = BackendConfig.from_env()
 
-    # インフラ情報マスキングフィルターを全ロガーに適用
-    infra_filter = InfraSanitizingFilter()
-    for handler in logging.root.handlers:
-        handler.addFilter(infra_filter)
-    logging.root.addFilter(infra_filter)
+    # インフラ情報マスキングフィルターを全ロガーに適用（冪等）
+    if not any(isinstance(f, InfraSanitizingFilter) for f in logging.root.filters):
+        infra_filter = InfraSanitizingFilter()
+        for handler in logging.root.handlers:
+            handler.addFilter(infra_filter)
+        logging.root.addFilter(infra_filter)
 
     # MCP Server を /mcp パスにマウント
     # streamable_http_path="/" でマウントポイント直下をリッスンする
