@@ -61,6 +61,46 @@ class ErrorTool(ToolBase):
         raise RuntimeError("boom")
 
 
+class R2ErrorTool(ToolBase):
+    """R2 URL を含むエラーメッセージを出すツール。"""
+
+    @property
+    def name(self) -> str:
+        return "r2_error_tool"
+
+    @property
+    def description(self) -> str:
+        return "Raises with R2 URL"
+
+    @property
+    def input_schema(self) -> dict[str, object]:
+        return {"type": "object", "properties": {}}
+
+    def execute(self, **params) -> dict[str, object]:
+        raise RuntimeError(
+            "Connection refused: https://abc123.r2.cloudflarestorage.com/data"
+        )
+
+
+class S3ErrorTool(ToolBase):
+    """s3:// パスを含むエラーメッセージを出すツール。"""
+
+    @property
+    def name(self) -> str:
+        return "s3_error_tool"
+
+    @property
+    def description(self) -> str:
+        return "Raises with s3 path"
+
+    @property
+    def input_schema(self) -> dict[str, object]:
+        return {"type": "object", "properties": {}}
+
+    def execute(self, **params) -> dict[str, object]:
+        raise RuntimeError("Failed to read s3://secret-bucket/events/spotify.parquet")
+
+
 def _build_registry(*tools: Any) -> Any:
     """テスト用レジストリを構築する。"""
     registry = ToolRegistry()
@@ -222,3 +262,37 @@ def test_create_mcp_server_with_none_r2(mock_backend_config):
     mock_build.assert_called_once_with(None, tz=mock_backend_config.timezone)
     assert isinstance(server, FastMCP)
     assert result.tools == []
+
+
+def test_call_tool_error_excludes_r2_url(mock_backend_config):
+    """ツール実行エラー時に R2 URL がレスポンスに含まれない。"""
+    # Arrange: R2 URL を含むエラーを発生させるツールを準備
+    registry = _build_registry(R2ErrorTool())
+
+    with patch("backend.mcp_server.build_tool_registry", return_value=registry):
+        server = create_mcp_server(mock_backend_config)
+
+    # Act: ツールを実行
+    result = _run_call_tool(server, "r2_error_tool", {})
+
+    # Assert: エラー結果に R2 URL が含まれないことを検証
+    assert result.isError is True
+    assert "r2.cloudflarestorage.com" not in result.content[0].text
+    assert "abc123" not in result.content[0].text
+
+
+def test_call_tool_error_excludes_s3_path(mock_backend_config):
+    """ツール実行エラー時に s3:// パスがレスポンスに含まれない。"""
+    # Arrange: s3:// パスを含むエラーを発生させるツールを準備
+    registry = _build_registry(S3ErrorTool())
+
+    with patch("backend.mcp_server.build_tool_registry", return_value=registry):
+        server = create_mcp_server(mock_backend_config)
+
+    # Act: ツールを実行
+    result = _run_call_tool(server, "s3_error_tool", {})
+
+    # Assert: エラー結果に s3:// が含まれないことを検証
+    assert result.isError is True
+    assert "s3://" not in result.content[0].text
+    assert "secret-bucket" not in result.content[0].text

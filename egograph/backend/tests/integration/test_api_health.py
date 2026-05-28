@@ -148,3 +148,31 @@ class TestHealthEndpoint:
         finally:
             app.dependency_overrides.clear()
             app.dependency_overrides[deps.get_config] = lambda: mock_backend_config
+
+    def test_health_error_response_excludes_infra_info(
+        self, test_client, mock_backend_config
+    ):
+        """エラーレスポンスに R2 URL 等のインフラ情報が含まれない。"""
+
+        # Arrange: R2 URL を含む例外を発生させるモックを準備
+        mock_db_connection = MagicMock()
+        mock_db_connection.__enter__.side_effect = RuntimeError(
+            "Failed to connect to https://abc123.r2.cloudflarestorage.com/data"
+        )
+
+        app = test_client.app
+        app.dependency_overrides[deps.get_db_connection] = lambda: mock_db_connection
+
+        try:
+            # Act: ヘルスチェックを実行
+            response = test_client.get("/health")
+
+            # Assert: レスポンスに R2 ホスト名が含まれないことを検証
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "error"
+            assert "r2.cloudflarestorage.com" not in data["error"]
+            assert "abc123" not in data["error"]
+        finally:
+            app.dependency_overrides.clear()
+            app.dependency_overrides[deps.get_config] = lambda: mock_backend_config

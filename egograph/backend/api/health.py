@@ -9,6 +9,7 @@ from backend.config import BackendConfig
 from backend.constants import HEALTH_CHECK_LIMIT
 from backend.dependencies import get_config, get_db_connection
 from backend.infrastructure.database import DuckDBConnection, build_dataset_glob
+from backend.infrastructure.logging.sanitizers import sanitize_infra_message
 
 logger = logging.getLogger(__name__)
 
@@ -78,4 +79,4 @@ async def health_check(
             return _build_health_response(data_available=False)
 
         logger.exception("Health check failed")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "error": sanitize_infra_message(str(e))}

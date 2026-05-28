@@ -9,6 +9,7 @@ from mcp.types import CallToolResult, TextContent
 from mcp.types import Tool as MCPTool
 
 from backend.config import BackendConfig
+from backend.infrastructure.logging.sanitizers import sanitize_exception
 from backend.usecases.tools.factory import build_tool_registry
 
 logger = logging.getLogger(__name__)
@@ -62,7 +63,9 @@ def create_mcp_server(config: BackendConfig) -> FastMCP:
             result = tool.execute(**arguments)
         except Exception as exc:
             logger.exception("MCP tool execution failed: %s", name)
-            raise RuntimeError(f"Tool execution failed: {exc}") from exc
+            raise RuntimeError(
+                f"Tool execution failed: {sanitize_exception(exc)}"
+            ) from exc
 
         return CallToolResult(
             content=[

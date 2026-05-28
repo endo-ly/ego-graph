@@ -16,6 +16,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from backend.api import browser_history_data, data, github, health, youtube
 from backend.config import BackendConfig
+from backend.infrastructure.logging.sanitizers import InfraSanitizingFilter
 from backend.mcp_server import create_mcp_server
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,12 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     """
     if config is None:
         config = BackendConfig.from_env()
+
+    # インフラ情報マスキングフィルターを全ロガーに適用
+    infra_filter = InfraSanitizingFilter()
+    for handler in logging.root.handlers:
+        handler.addFilter(infra_filter)
+    logging.root.addFilter(infra_filter)
 
     # MCP Server を /mcp パスにマウント
     # streamable_http_path="/" でマウントポイント直下をリッスンする
