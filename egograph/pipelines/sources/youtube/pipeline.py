@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from pipelines.domain.workflow import WorkflowRun
+from pipelines.sources.common.compaction import resolve_target_months
 from pipelines.sources.common.config import Config
 from pipelines.sources.common.settings import PipelinesSettings
 from pipelines.sources.youtube.api_client import YouTubeAPIClient
@@ -160,4 +161,57 @@ def run_youtube_ingest(run: WorkflowRun) -> dict[str, object]:
         "target_months": [
             f"{year}-{month:02d}" for year, month in request.target_months
         ],
+    }
+
+
+def run_youtube_compact(
+    config: Config | None = None,
+    *,
+    year: int | None = None,
+    month: int | None = None,
+) -> dict[str, object]:
+    """YouTube monthly compaction を in-process で実行する。"""
+    resolved_config = config or PipelinesSettings.load()
+    if not resolved_config.duckdb or not resolved_config.duckdb.r2:
+        raise ValueError("R2 configuration is required for compaction")
+
+    r2_conf = resolved_config.duckdb.r2
+    storage = YouTubeStorage(
+        endpoint_url=r2_conf.endpoint_url,
+        access_key_id=r2_conf.access_key_id,
+        secret_access_key=r2_conf.secret_access_key.get_secret_value(),
+        bucket_name=r2_conf.bucket_name,
+        events_path=r2_conf.events_path,
+        master_path=r2_conf.master_path,
+    )
+
+    target_months = resolve_target_months(year, month)
+    compacted_keys: list[str] = []
+    skipped_targets: list[str] = []
+    failures: list[str] = []
+    for target_year, target_month in target_months:
+        try:
+            key = storage.compact_month(year=target_year, month=target_month)
+        except Exception:
+            logger.exception(
+                "YouTube compaction failed: year=%d month=%02d",
+                target_year,
+                target_month,
+            )
+            failures.append(f"youtube:{target_year}-{target_month:02d}")
+            continue
+        if key is None:
+            skipped_targets.append(f"youtube:{target_year}-{target_month:02d}")
+        else:
+            compacted_keys.append(key)
+
+    if failures:
+        raise RuntimeError(f"YouTube compaction failed for: {', '.join(failures)}")
+
+    return {
+        "provider": "youtube",
+        "operation": "compact",
+        "target_months": [f"{y}-{m:02d}" for y, m in target_months],
+        "compacted_keys": compacted_keys,
+        "skipped_targets": skipped_targets,
     }

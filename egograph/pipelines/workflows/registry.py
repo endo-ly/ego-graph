@@ -129,6 +129,12 @@ def get_workflows() -> dict[str, WorkflowDefinition]:
                     "pipelines.sources.youtube.pipeline:run_youtube_ingest",
                     timeout_seconds=3600,
                 ),
+                _inprocess_step(
+                    "run_youtube_compact",
+                    "Run YouTube compact",
+                    "pipelines.sources.youtube.pipeline:run_youtube_compact",
+                    timeout_seconds=1800,
+                ),
             ),
             triggers=(),
             concurrency_key="youtube_ingest_workflow",

@@ -13,6 +13,14 @@ import pandas as pd
 import pyarrow.parquet as pq
 from botocore.exceptions import ClientError
 
+from pipelines.sources.common.compaction import (
+    COMPACTED_ROOT,
+    build_compacted_key,
+    compact_records,
+    dataframe_to_parquet_bytes,
+    read_parquet_records_from_prefix,
+)
+
 logger = logging.getLogger(__name__)
 
 MAX_MASTER_SAVE_RETRIES = 3
@@ -41,6 +49,7 @@ class YouTubeStorage:
         self.events_path = _normalize_path(events_path)
         self.master_path = _normalize_path(master_path)
         self.state_path = _normalize_path(state_path)
+        self.compacted_path = COMPACTED_ROOT
         self.s3 = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
@@ -48,6 +57,41 @@ class YouTubeStorage:
             aws_secret_access_key=secret_access_key,
             region_name="auto",
         )
+
+    def compact_month(self, year: int, month: int) -> str | None:
+        """指定月のYouTube watch events Parquetをcompact版として保存する。"""
+        source_prefix = (
+            f"{self.events_path}youtube/watch_events/year={year}/month={month:02d}/"
+        )
+        records = read_parquet_records_from_prefix(
+            self.s3, self.bucket_name, source_prefix
+        )
+        if not records:
+            logger.info("No parquet records found for compaction: %s", source_prefix)
+            return None
+
+        compacted_df = compact_records(
+            records, dedupe_key="watch_event_id", sort_by="watched_at_utc"
+        )
+        key = build_compacted_key(
+            self.compacted_path,
+            data_domain="events",
+            dataset_path="youtube/watch_events",
+            year=year,
+            month=month,
+        )
+        try:
+            self.s3.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=dataframe_to_parquet_bytes(compacted_df),
+                ContentType="application/octet-stream",
+            )
+        except ClientError:
+            logger.exception("Failed to save compacted parquet to %s", key)
+            raise
+        logger.info("Saved compacted parquet to %s", key)
+        return key
 
     def build_sync_state_key(self, sync_id: str) -> str:
         """browser history sync 単位の処理済み state key を返す。"""

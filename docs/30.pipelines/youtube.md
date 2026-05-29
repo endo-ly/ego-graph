@@ -197,6 +197,11 @@ s3://egograph/
   │       └── year=YYYY/
   │           └── month=MM/
   │               └── sync_id={sync_id}.parquet
+  ├── compacted/events/youtube/
+  │   └── watch_events/
+  │       └── year=YYYY/
+  │           └── month=MM/
+  │               └── data.parquet
   ├── master/youtube/
   │   ├── videos/
   │   │   └── data.parquet
@@ -211,6 +216,7 @@ s3://egograph/
 ### 5.2 保存パス例
 
 - **Watch Events**: `s3://egograph/events/youtube/watch_events/year=2026/month=04/sync_id=abc123.parquet`
+- **Compacted Watch Events**: `s3://egograph/compacted/events/youtube/watch_events/year=2026/month=04/data.parquet`
 - **Videos Master**: `s3://egograph/master/youtube/videos/data.parquet`
 - **Channels Master**: `s3://egograph/master/youtube/channels/data.parquet`
 - **Raw**: `s3://egograph/raw/browser_history/2026-04-21T120000.json` を原本として参照
@@ -340,6 +346,8 @@ YouTube は単なるドメインフィルタではなく、動画・チャンネ
 - [x] Parquet保存実装
 - [x] Backend Tool 実装
 - [x] テスト完了
+- [x] Compact step 実装（ingest → compact の 2 ステップ構成）
+- [x] Bootstrap compact への YouTube provider 追加
 
 ### 未実装機能
 
