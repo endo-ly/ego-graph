@@ -158,6 +158,9 @@ class TestGetTopTracks:
         assert result[0]["track_name"] == "Song A"
         assert result[0]["play_count"] == 3
         assert "total_minutes" in result[0]
+        assert "played_at_utc" in result[0]
+        assert isinstance(result[0]["played_at_utc"], list)
+        assert len(result[0]["played_at_utc"]) == 3
 
     def test_respects_limit_parameter(self, duckdb_with_sample_data):
         """limitパラメータを尊重。"""
