@@ -113,10 +113,11 @@ def _build_enriched_cte(
     )
 
     ctes.append(
-        "enriched_watch_events AS ("
+        f"enriched_watch_events AS ("
         "SELECT "
         "w.watch_event_id, "
-        "w.watched_at_utc, "
+        "w.watched_at_utc::TIMESTAMP AT TIME ZONE 'UTC' "
+        f"AT TIME ZONE '{params.tz_name}' AS watched_at, "
         "w.video_id, "
         "w.video_url, "
         "COALESCE(v.title, w.video_title) AS video_title, "
@@ -142,7 +143,7 @@ def get_watch_events(
         {ctes}
         SELECT
             watch_event_id,
-            watched_at_utc,
+            watched_at,
             video_id,
             video_url,
             video_title,
@@ -150,7 +151,7 @@ def get_watch_events(
             channel_name,
             content_type
         FROM enriched_watch_events
-        ORDER BY watched_at_utc::TIMESTAMP DESC
+        ORDER BY watched_at::TIMESTAMP DESC
         LIMIT COALESCE(?, {DEFAULT_WATCH_EVENTS_LIMIT})
     """
     cte_params.append(limit)
@@ -179,8 +180,7 @@ def get_watching_stats(
         {ctes}
         SELECT
             strftime(
-                watched_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
-                AT TIME ZONE '{params.tz_name}',
+                watched_at,
                 '{date_format_map[granularity]}'
             ) AS period,
             COUNT(*) AS watch_event_count,

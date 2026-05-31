@@ -31,7 +31,7 @@ class TestWatchEventsEndpoint:
         mock_result = [
             {
                 "watch_event_id": "we_1",
-                "watched_at_utc": "2024-01-01T12:00:00Z",
+                "watched_at": "2024-01-01T12:00:00Z",
                 "video_id": "video_1",
                 "video_url": "https://youtube.com/watch?v=video_1",
                 "video_title": "Video A",
@@ -58,7 +58,7 @@ class TestWatchEventsEndpoint:
         assert len(data) == 1
         item = data[0]
         assert "watch_event_id" in item
-        assert "watched_at_utc" in item
+        assert "watched_at" in item
         assert "video_id" in item
         assert "video_url" in item
         assert "video_title" in item
@@ -252,7 +252,7 @@ class TestMCPCallYouTubeTool:
         mock_result = [
             {
                 "watch_event_id": "we_1",
-                "watched_at_utc": "2024-01-01T12:00:00Z",
+                "watched_at": "2024-01-01T12:00:00Z",
                 "video_id": "video_1",
                 "video_title": "Video A",
                 "content_type": "video",

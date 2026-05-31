@@ -71,7 +71,7 @@ class TestGetYouTubeWatchEventsTool:
         mock_repository.get_watch_events.return_value = [
             {
                 "watch_event_id": "we_1",
-                "watched_at_utc": "2024-01-01T12:00:00Z",
+                "watched_at": "2024-01-01T12:00:00Z",
                 "video_id": "video_1",
                 "video_title": "Video A",
                 "channel_name": "Channel X",
