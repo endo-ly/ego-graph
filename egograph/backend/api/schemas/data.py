@@ -106,8 +106,8 @@ class PageViewResponse(BaseModel):
     """Browser History page view レスポンス。"""
 
     page_view_id: str
-    started_at_utc: datetime
-    ended_at_utc: datetime
+    started_at: datetime
+    ended_at: datetime
     url: str
     title: str | None = None
     browser: str

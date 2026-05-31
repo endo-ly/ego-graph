@@ -56,7 +56,7 @@ class TestGetPageViews:
         self,
         browser_history_with_sample_data,
     ):
-        """page view一覧を started_at_utc 降順で返す。"""
+        """page view一覧を started_at 降順で返す。"""
         parquet_path = browser_history_with_sample_data.test_page_views_parquet_path
 
         with patch(
