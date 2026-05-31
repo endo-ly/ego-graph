@@ -72,7 +72,8 @@ def get_top_tracks(
                 WHEN len(artist_names) >= 1 THEN artist_names[1] ELSE NULL
             END as artist,
             COUNT(*) as play_count,
-            SUM(ms_played) / ? as total_minutes
+            SUM(ms_played) / ? as total_minutes,
+            list(played_at_utc ORDER BY played_at_utc) as played_at_utc
         FROM read_parquet(?)
         WHERE played_at_utc::TIMESTAMP >= ? AND played_at_utc::TIMESTAMP < ?
         GROUP BY track_name, artist

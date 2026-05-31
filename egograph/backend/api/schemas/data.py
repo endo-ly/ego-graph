@@ -22,6 +22,7 @@ class TopTrackResponse(BaseModel):
     artist: str
     play_count: int
     total_minutes: float
+    played_at_utc: list[datetime]
 
 
 class ListeningStatsResponse(BaseModel):
