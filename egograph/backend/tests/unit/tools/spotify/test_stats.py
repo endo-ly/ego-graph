@@ -69,7 +69,7 @@ class TestGetTopTracksTool:
                 "artist": "Artist X",
                 "play_count": 10,
                 "total_minutes": 30.0,
-                "played_at_utc": [
+                "played_at": [
                     "2024-01-01T10:00:00",
                     "2024-01-02T14:00:00",
                 ],

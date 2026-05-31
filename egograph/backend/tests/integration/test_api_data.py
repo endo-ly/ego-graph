@@ -16,7 +16,7 @@ class TestTopTracksEndpoint:
                 "artist": "Artist X",
                 "play_count": 10,
                 "total_minutes": 30.5,
-                "played_at_utc": ["2024-01-01T10:00:00", "2024-01-02T14:00:00"],
+                "played_at": ["2024-01-01T10:00:00", "2024-01-02T14:00:00"],
             }
         ]
 
