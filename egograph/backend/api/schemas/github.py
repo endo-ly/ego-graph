@@ -3,6 +3,8 @@
 GitHub Worklog データ API のレスポンスモデルを定義します。
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -51,10 +53,10 @@ class PullRequestResponse(BaseModel):
     labels: list[str] | None = None
     base_ref: str | None = None
     head_ref: str | None = None
-    created_at_utc: str | None = None
-    updated_at_utc: str
-    closed_at_utc: str | None = None
-    merged_at_utc: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime
+    closed_at: datetime | None = None
+    merged_at: datetime | None = None
     comments_count: int | None = None
     review_comments_count: int | None = None
     reviews_count: int | None = None
@@ -86,7 +88,7 @@ class CommitResponse(BaseModel):
     repo_full_name: str
     sha: str
     message: str | None = None
-    committed_at_utc: str
+    committed_at: datetime
     changed_files_count: int | None = None
     additions: int | None = None
     deletions: int | None = None
@@ -131,9 +133,9 @@ class RepositoryResponse(BaseModel):
     forks_count: int | None = None
     open_issues_count: int | None = None
     size_kb: int | None = None
-    created_at_utc: str
-    updated_at_utc: str
-    pushed_at_utc: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    pushed_at: datetime | None = None
     repo_summary_text: str | None = None
     summary_source: str | None = None
 
@@ -182,5 +184,5 @@ class RepoSummaryStatsResponse(BaseModel):
     commits_total: int
     total_additions: int
     total_deletions: int
-    last_pr_updated_at: str | None = None
-    last_commit_at: str | None = None
+    last_pr_updated_at: datetime | None = None
+    last_commit_at: datetime | None = None

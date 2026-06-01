@@ -26,11 +26,13 @@ def get_page_views(
 ) -> list[dict[str, Any]]:
     """指定期間のpage view一覧を取得する。"""
     partition_paths = _resolve_partition_paths(params)
-    sql = """
+    sql = f"""
         SELECT
             page_view_id,
-            started_at_utc,
-            ended_at_utc,
+            started_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS started_at,
+            ended_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS ended_at,
             url,
             title,
             browser,
@@ -41,7 +43,7 @@ def get_page_views(
         WHERE started_at_utc::TIMESTAMP >= ? AND started_at_utc::TIMESTAMP < ?
           AND (? IS NULL OR browser = ?)
           AND (? IS NULL OR profile = ?)
-        ORDER BY started_at_utc::TIMESTAMP DESC
+        ORDER BY started_at DESC
         LIMIT ?
     """
     return execute_query(

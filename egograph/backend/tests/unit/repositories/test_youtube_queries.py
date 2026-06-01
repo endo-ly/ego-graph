@@ -243,7 +243,7 @@ class TestGetWatchEvents:
         # Assert
         assert len(result) > 0
         assert "watch_event_id" in result[0]
-        assert "watched_at_utc" in result[0]
+        assert "watched_at" in result[0]
         assert "video_title" in result[0]
 
     def test_filters_by_date_range(self, youtube_with_sample_data):

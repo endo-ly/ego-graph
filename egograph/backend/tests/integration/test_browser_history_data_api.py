@@ -12,8 +12,8 @@ class TestPageViewsEndpoint:
         mock_result = [
             {
                 "page_view_id": "pv_1",
-                "started_at_utc": "2026-03-22T12:00:00Z",
-                "ended_at_utc": "2026-03-22T12:00:02Z",
+                "started_at": "2026-03-22T12:00:00Z",
+                "ended_at": "2026-03-22T12:00:02Z",
                 "url": "https://github.com/owner/repo/pull/79",
                 "title": "PR 79",
                 "browser": "edge",

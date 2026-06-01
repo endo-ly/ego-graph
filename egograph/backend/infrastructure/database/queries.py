@@ -65,7 +65,7 @@ def get_top_tracks(
     """
     partition_paths = _resolve_partition_paths(params)
 
-    query = """
+    query = f"""
         SELECT
             track_name,
             CASE
@@ -73,7 +73,11 @@ def get_top_tracks(
             END as artist,
             COUNT(*) as play_count,
             SUM(ms_played) / ? as total_minutes,
-            list(played_at_utc ORDER BY played_at_utc) as played_at_utc
+            list(
+                played_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}'
+                ORDER BY played_at_utc
+            ) as played_at
         FROM read_parquet(?)
         WHERE played_at_utc::TIMESTAMP >= ? AND played_at_utc::TIMESTAMP < ?
         GROUP BY track_name, artist

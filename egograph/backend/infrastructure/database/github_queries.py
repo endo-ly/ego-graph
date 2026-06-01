@@ -92,7 +92,7 @@ def get_pull_requests(
     """
     partition_paths = _resolve_pr_partition_paths(params)
 
-    query = """
+    query = f"""
         SELECT
             pr_event_id,
             pr_key,
@@ -105,10 +105,14 @@ def get_pull_requests(
             is_merged,
             title,
             labels,
-            created_at_utc,
-            updated_at_utc,
-            closed_at_utc,
-            merged_at_utc,
+            created_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS created_at,
+            updated_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS updated_at,
+            closed_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS closed_at,
+            merged_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS merged_at,
             additions,
             deletions,
             changed_files_count,
@@ -132,7 +136,7 @@ def get_pull_requests(
         query += " AND state = ?"
         query_params.append(state)
 
-    query += " ORDER BY updated_at_utc::TIMESTAMP DESC"
+    query += " ORDER BY updated_at DESC"
 
     if limit is not None:
         query += "\n        LIMIT ?"
@@ -185,7 +189,7 @@ def get_commits(
     """
     partition_paths = _resolve_commit_partition_paths(params)
 
-    query = """
+    query = f"""
         SELECT
             commit_event_id,
             owner,
@@ -193,7 +197,8 @@ def get_commits(
             repo_full_name,
             sha,
             message,
-            committed_at_utc,
+            committed_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS committed_at,
             changed_files_count,
             additions,
             deletions
@@ -211,7 +216,7 @@ def get_commits(
         query += " AND repo = ?"
         query_params.append(repo)
 
-    query += " ORDER BY committed_at_utc::TIMESTAMP DESC"
+    query += " ORDER BY committed_at DESC"
 
     if limit is not None:
         query += "\n        LIMIT ?"
@@ -274,7 +279,7 @@ def get_repositories(
         params.r2_config.bucket_name, params.r2_config.master_path
     )
 
-    query = """
+    query = f"""
         SELECT
             repo_id,
             owner,
@@ -290,9 +295,12 @@ def get_repositories(
             forks_count,
             open_issues_count,
             size_kb,
-            created_at_utc,
-            updated_at_utc,
-            pushed_at_utc,
+            created_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS created_at,
+            updated_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS updated_at,
+            pushed_at_utc::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS pushed_at,
             repo_summary_text,
             summary_source
         FROM read_parquet(?, union_by_name=True)
@@ -311,7 +319,7 @@ def get_repositories(
     if where_conditions:
         query += " WHERE " + " AND ".join(where_conditions)
 
-    query += " ORDER BY updated_at_utc::TIMESTAMP DESC"
+    query += " ORDER BY updated_at DESC"
 
     if limit:
         query += " LIMIT ?"
@@ -485,7 +493,7 @@ def get_repo_summary_stats(
     pr_partition_paths = _resolve_pr_partition_paths(params)
     commit_partition_paths = _resolve_commit_partition_paths(params)
 
-    query = """
+    query = f"""
         WITH pr_per_key AS (
             SELECT
                 pr.owner,
@@ -544,7 +552,8 @@ def get_repo_summary_stats(
             COALESCE(pr.pr_deletions, 0) + COALESCE(c.commit_deletions, 0)
                 as total_deletions,
             pr.last_pr_updated_at,
-            c.last_commit_at
+            c.last_commit_at::TIMESTAMP AT TIME ZONE 'UTC'
+                AT TIME ZONE '{params.tz_name}' AS last_commit_at
         FROM pr_summary pr
         FULL OUTER JOIN commit_summary c
             ON pr.owner = c.owner AND pr.repo = c.repo

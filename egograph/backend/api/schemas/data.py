@@ -22,7 +22,7 @@ class TopTrackResponse(BaseModel):
     artist: str
     play_count: int
     total_minutes: float
-    played_at_utc: list[datetime]
+    played_at: list[datetime]
 
 
 class ListeningStatsResponse(BaseModel):
@@ -42,21 +42,8 @@ class ListeningStatsResponse(BaseModel):
 
 
 class WatchEventResponse(BaseModel):
-    """視聴イベント API レスポンス。
-
-    Attributes:
-        watch_event_id: 視聴イベントID
-        watched_at_utc: 視聴日時（UTC）
-        video_id: 動画ID
-        video_url: 動画URL
-        video_title: 動画タイトル
-        channel_id: チャンネルID
-        channel_name: チャンネル名
-        content_type: コンテンツ種別（video / short）
-    """
-
     watch_event_id: str
-    watched_at_utc: str
+    watched_at: datetime
     video_id: str
     video_url: str
     video_title: str
@@ -119,8 +106,8 @@ class PageViewResponse(BaseModel):
     """Browser History page view レスポンス。"""
 
     page_view_id: str
-    started_at_utc: datetime
-    ended_at_utc: datetime
+    started_at: datetime
+    ended_at: datetime
     url: str
     title: str | None = None
     browser: str
