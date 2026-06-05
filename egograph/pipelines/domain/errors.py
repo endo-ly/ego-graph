@@ -26,4 +26,4 @@ class WorkflowLockUnavailableError(PipelinesError):
 
 
 class AuthenticationError(PipelinesError):
-    """認証エラー（トークン失効・無効なクレデンシャル等）。リトライ対象外。"""
+    """認証エラー (トークン失効・無効なクレデンシャル等)。リトライ対象外。"""

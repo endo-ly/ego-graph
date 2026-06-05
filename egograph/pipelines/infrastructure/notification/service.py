@@ -24,7 +24,7 @@ def _custom_message_for(exc: Exception | None) -> str | None:
     """例外型からユーザー/エージェント向けメッセージを組み立てる。
 
     新たな例外型に対応するときはここに ``isinstance`` 分岐を追加するだけで
-    済む（Open/Closed）。
+    済む (Open/Closed)。
     """
     if exc is None:
         return None
@@ -52,7 +52,7 @@ class NotificationService:
 
     @property
     def enabled(self) -> bool:
-        """通知が有効（webhook URL 設定済み）か。"""
+        """通知が有効 (webhook URL 設定済み) か。"""
         return self._webhook_url is not None
 
     def notify(self, event: NotificationEvent, exc: Exception | None = None) -> None:

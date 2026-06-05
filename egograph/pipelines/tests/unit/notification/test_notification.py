@@ -46,8 +46,12 @@ def _make_event(
 
 def test_webhook_adapter_is_abstract():
     """WebhookAdapter は直接インスタンス化できない。"""
+    # Arrange
+    abstract_class = WebhookAdapter
+
+    # Act & Assert
     with pytest.raises(TypeError):
-        WebhookAdapter()
+        abstract_class()
 
 
 # ===== GenericAdapter =====
@@ -302,5 +306,9 @@ def test_service_swallows_adapter_failure_with_log(caplog):
 
 def test_service_rejects_unknown_webhook_type():
     """未知の webhook_type は ValueError。"""
+    # Arrange
+    kwargs = {"webhook_url": "https://x", "webhook_type": "slack"}
+
+    # Act & Assert
     with pytest.raises(ValueError, match="unsupported webhook_type"):
-        NotificationService(webhook_url="https://x", webhook_type="slack")
+        NotificationService(**kwargs)

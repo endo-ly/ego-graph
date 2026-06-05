@@ -1,1 +1,1 @@
-"""Pipeline failure notification module."""
+"""パイプライン失敗通知モジュール。"""

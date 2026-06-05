@@ -21,7 +21,7 @@ class NotificationEvent:
     """Pipeline から発火する通知イベント。
 
     CloudEvents v1.0 の構造を参考にした **内部契約** であり、CloudEvents 仕様への
-    完全準拠は **目指さない**（必要な場合は adapter 層で正規化する想定）。
+    完全準拠は **目指さない** (必要な場合は adapter 層で正規化する想定)。
     """
 
     source: str
