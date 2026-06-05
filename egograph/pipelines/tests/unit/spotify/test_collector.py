@@ -290,7 +290,7 @@ def test_get_artists_success():
 
 @responses.activate
 def test_init_raises_authentication_error_on_invalid_grant():
-    """refresh token の invalid_grant は AuthenticationError に変換されチェインされる。"""
+    """invalid_grant は AuthenticationError に変換されチェインされる。"""
     # Arrange
     responses.add(
         responses.POST,

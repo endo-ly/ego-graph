@@ -1,0 +1,1 @@
+"""Pipeline failure notification module."""
