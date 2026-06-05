@@ -23,3 +23,7 @@ class StepRunNotFoundError(PipelinesError):
 
 class WorkflowLockUnavailableError(PipelinesError):
     """workflow lock を取得できない。"""
+
+
+class AuthenticationError(PipelinesError):
+    """認証エラー（トークン失効・無効なクレデンシャル等）。リトライ対象外。"""

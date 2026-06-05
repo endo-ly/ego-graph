@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 
-from pipelines.domain.errors import WorkflowLockUnavailableError
+from pipelines.domain.errors import AuthenticationError, WorkflowLockUnavailableError
 from pipelines.domain.workflow import (
     StepDefinition,
     StepExecutorType,
@@ -308,6 +308,8 @@ class RunDispatcher:
                     exc=exc,
                 )
                 last_error_message = f"{type(exc).__name__}: {exc}"
+                if isinstance(exc, AuthenticationError):
+                    return False, None, last_error_message
                 if attempt_no < step.max_attempts and step.retry_delay_seconds > 0:
                     time.sleep(step.retry_delay_seconds)
                 continue

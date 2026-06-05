@@ -11,13 +11,15 @@ from typing import Any
 
 import requests
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth
+from spotipy.oauth2 import SpotifyOAuth, SpotifyOauthError
 from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
+
+from pipelines.domain.errors import AuthenticationError
 
 from .config import (
     MAX_RETRIES,
@@ -128,7 +130,16 @@ class SpotifyCollector:
             open_browser=False,
         )
 
-        self.auth_manager.refresh_access_token(refresh_token)
+        try:
+            self.auth_manager.refresh_access_token(refresh_token)
+        except SpotifyOauthError as exc:
+            if exc.error == "invalid_grant":
+                raise AuthenticationError(
+                    "Spotify refresh token revoked or expired"
+                ) from exc
+            raise AuthenticationError(
+                f"Spotify OAuth error: {exc.error or 'unknown'}"
+            ) from exc
         logger.info("Successfully refreshed Spotify access token")
 
         self.sp = spotipy.Spotify(auth_manager=self.auth_manager)

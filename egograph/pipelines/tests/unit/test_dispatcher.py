@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
+from pipelines.domain.errors import AuthenticationError
 from pipelines.domain.workflow import (
     QueuedReason,
     StepDefinition,
@@ -348,6 +349,101 @@ def test_dispatch_once_marks_step_and_run_failed_on_unexpected_executor_error(tm
     ]
     assert steps[0].stderr_tail == "RuntimeError: boom"
     assert steps[0].exit_code is None
+
+
+def test_dispatch_once_skips_retries_on_authentication_error(tmp_path):
+    """AuthenticationError は max_attempts=3 でも1回で即失敗する。"""
+    # Arrange
+    workflows = {
+        "auth_workflow": WorkflowDefinition(
+            workflow_id="auth_workflow",
+            name="Auth workflow",
+            description="Workflow that raises AuthenticationError",
+            steps=(
+                StepDefinition(
+                    step_id="auth_step",
+                    step_name="Auth step",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:succeed",
+                    max_attempts=3,
+                    retry_delay_seconds=0,
+                ),
+            ),
+        )
+    }
+    run_repository, step_run_repository, dispatcher, _ = _build_dispatcher(
+        tmp_path, workflows
+    )
+    run = run_repository.enqueue_run(
+        workflow_id="auth_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+
+    def _raise_auth(**_kwargs):
+        raise AuthenticationError("Spotify refresh token revoked")
+
+    dispatcher._inprocess_executor.execute = _raise_auth
+
+    # Act
+    dispatched = dispatcher.dispatch_once()
+    updated_run = run_repository.get_run(run.run_id)
+    steps = step_run_repository.list_step_runs(run.run_id)
+
+    # Assert
+    assert dispatched is True
+    assert updated_run.status == WorkflowRunStatus.FAILED
+    assert "AuthenticationError" in (updated_run.last_error_message or "")
+    assert "Spotify refresh token revoked" in (updated_run.last_error_message or "")
+    # 1 attempt のみで終了すること（max_attempts=3 だがリトライしない）
+    assert len(steps) == 1
+    assert steps[0].status == StepRunStatus.FAILED
+    assert "AuthenticationError" in (steps[0].stderr_tail or "")
+
+
+def test_dispatch_once_retries_normal_exception_up_to_max_attempts(tmp_path):
+    """通常の例外は max_attempts 回まで retry される（regression）。"""
+    # Arrange
+    workflows = {
+        "retry_workflow": WorkflowDefinition(
+            workflow_id="retry_workflow",
+            name="Retry workflow",
+            description="Workflow that raises RuntimeError",
+            steps=(
+                StepDefinition(
+                    step_id="flaky",
+                    step_name="Flaky",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:succeed",
+                    max_attempts=3,
+                    retry_delay_seconds=0,
+                ),
+            ),
+        )
+    }
+    run_repository, step_run_repository, dispatcher, _ = _build_dispatcher(
+        tmp_path, workflows
+    )
+    run = run_repository.enqueue_run(
+        workflow_id="retry_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+
+    def _raise(**_kwargs):
+        raise RuntimeError("transient")
+
+    dispatcher._inprocess_executor.execute = _raise
+
+    # Act
+    dispatcher.dispatch_once()
+    updated_run = run_repository.get_run(run.run_id)
+    steps = step_run_repository.list_step_runs(run.run_id)
+
+    # Assert: max_attempts=3 すべて試す
+    assert updated_run.status == WorkflowRunStatus.FAILED
+    assert len(steps) == 3
+    assert all(step.status == StepRunStatus.FAILED for step in steps)
 
 
 def test_dispatch_once_marks_run_failed_when_lock_manager_crashes(
