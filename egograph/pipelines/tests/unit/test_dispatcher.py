@@ -3,7 +3,7 @@ import sqlite3
 import threading
 import time
 from datetime import datetime, timezone
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from pipelines.domain.errors import AuthenticationError
 from pipelines.domain.workflow import (
@@ -28,9 +28,16 @@ from pipelines.infrastructure.execution.log_store import LocalLogStore
 from pipelines.infrastructure.execution.subprocess_executor import (
     SubprocessStepExecutor,
 )
+from pipelines.infrastructure.notification.service import NotificationService
 
 
-def _build_dispatcher(tmp_path, workflows, *, max_concurrent_runs=1):
+def _build_dispatcher(
+    tmp_path,
+    workflows,
+    *,
+    max_concurrent_runs=1,
+    notification_service=None,
+):
     conn = connect(tmp_path / "state.sqlite3")
     initialize_schema(conn)
     db_mutex = threading.RLock()
@@ -47,6 +54,8 @@ def _build_dispatcher(tmp_path, workflows, *, max_concurrent_runs=1):
         lock_manager=lock_manager,
         subprocess_executor=SubprocessStepExecutor(log_store),
         inprocess_executor=InProcessStepExecutor(log_store),
+        notification_service=notification_service
+        or NotificationService(webhook_url=None),
         poll_seconds=0.01,
         heartbeat_seconds=60,
         max_concurrent_runs=max_concurrent_runs,
@@ -446,9 +455,198 @@ def test_dispatch_once_retries_normal_exception_up_to_max_attempts(tmp_path):
     assert all(step.status == StepRunStatus.FAILED for step in steps)
 
 
-def test_dispatch_once_marks_run_failed_when_lock_manager_crashes(
-    tmp_path, caplog
-):
+def test_dispatch_once_notifies_on_step_failure(tmp_path):
+    """step 失敗パスで NotificationService.notify が呼ばれる。"""
+    # Arrange
+    workflows = {
+        "fail_workflow": WorkflowDefinition(
+            workflow_id="fail_workflow",
+            name="Fail workflow",
+            description="Workflow that fails",
+            steps=(
+                StepDefinition(
+                    step_id="boom",
+                    step_name="Boom",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:succeed",
+                ),
+            ),
+        )
+    }
+    notification_service = NotificationService(webhook_url="https://example.com/hook")
+    run_repository, _, dispatcher, _ = _build_dispatcher(
+        tmp_path,
+        workflows,
+        notification_service=notification_service,
+    )
+    run = run_repository.enqueue_run(
+        workflow_id="fail_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+
+    def _raise(**_kwargs):
+        raise RuntimeError("step boom")
+
+    dispatcher._inprocess_executor.execute = _raise
+
+    # Act
+    with patch(
+        "pipelines.infrastructure.notification.adapters.requests.post"
+    ) as mock_post:
+        mock_post.return_value.status_code = 200
+        dispatcher.dispatch_once()
+
+    # Assert
+    updated_run = run_repository.get_run(run.run_id)
+    assert updated_run.status == WorkflowRunStatus.FAILED
+    mock_post.assert_called_once()
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["source"] == "urn:egograph:pipelines"
+    assert payload["type"] == "egograph.pipelines.workflow_failed"
+    assert payload["data"]["workflow_id"] == "fail_workflow"
+    assert payload["data"]["run_id"] == run.run_id
+    assert "RuntimeError" in payload["data"]["error_message"]
+
+
+def test_dispatch_once_notifies_with_custom_message_on_authentication_error(tmp_path):
+    """AuthenticationError 起因の失敗で custom_message が payload に乗る。"""
+    # Arrange
+    workflows = {
+        "auth_workflow": WorkflowDefinition(
+            workflow_id="auth_workflow",
+            name="Auth workflow",
+            description="Workflow that raises AuthenticationError",
+            steps=(
+                StepDefinition(
+                    step_id="auth",
+                    step_name="Auth",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:succeed",
+                ),
+            ),
+        )
+    }
+    notification_service = NotificationService(webhook_url="https://example.com/hook")
+    run_repository, _, dispatcher, _ = _build_dispatcher(
+        tmp_path,
+        workflows,
+        notification_service=notification_service,
+    )
+    run_repository.enqueue_run(
+        workflow_id="auth_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+
+    def _raise(**_kwargs):
+        raise AuthenticationError("Spotify refresh token revoked")
+
+    dispatcher._inprocess_executor.execute = _raise
+
+    # Act
+    with patch(
+        "pipelines.infrastructure.notification.adapters.requests.post"
+    ) as mock_post:
+        mock_post.return_value.status_code = 200
+        dispatcher.dispatch_once()
+
+    # Assert
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["data"]["custom_message"] is not None
+    assert "spotify_auth.py" in payload["data"]["custom_message"]
+
+
+def test_dispatch_once_does_not_crash_when_webhook_is_unset(tmp_path):
+    """WEBHOOK_URL 未設定で run 失敗しても run は FAILED に遷移する。"""
+    # Arrange
+    workflows = {
+        "fail_workflow": WorkflowDefinition(
+            workflow_id="fail_workflow",
+            name="Fail workflow",
+            description="Workflow that fails",
+            steps=(
+                StepDefinition(
+                    step_id="boom",
+                    step_name="Boom",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:succeed",
+                ),
+            ),
+        )
+    }
+    run_repository, _, dispatcher, _ = _build_dispatcher(
+        tmp_path,
+        workflows,
+        notification_service=NotificationService(webhook_url=None),
+    )
+    run = run_repository.enqueue_run(
+        workflow_id="fail_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+
+    def _raise(**_kwargs):
+        raise RuntimeError("step boom")
+
+    dispatcher._inprocess_executor.execute = _raise
+
+    # Act
+    dispatched = dispatcher.dispatch_once()
+
+    # Assert
+    assert dispatched is True
+    updated_run = run_repository.get_run(run.run_id)
+    assert updated_run.status == WorkflowRunStatus.FAILED
+
+
+def test_dispatch_once_notifies_on_unexpected_dispatcher_exception(tmp_path):
+    """予期しない例外パスでも通知が飛ぶ。"""
+    # Arrange
+    workflows = {
+        "dummy_workflow": WorkflowDefinition(
+            workflow_id="dummy_workflow",
+            name="Dummy workflow",
+            description="dummy",
+            steps=(
+                StepDefinition(
+                    step_id="succeed",
+                    step_name="Succeed",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:succeed",
+                ),
+            ),
+        )
+    }
+    notification_service = NotificationService(webhook_url="https://example.com/hook")
+    run_repository, _, dispatcher, _ = _build_dispatcher(
+        tmp_path,
+        workflows,
+        notification_service=notification_service,
+    )
+    run = run_repository.enqueue_run(
+        workflow_id="dummy_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+    dispatcher._lock_manager.acquire = Mock(side_effect=RuntimeError("lock boom"))
+
+    # Act
+    with patch(
+        "pipelines.infrastructure.notification.adapters.requests.post"
+    ) as mock_post:
+        mock_post.return_value.status_code = 200
+        dispatcher.dispatch_once()
+
+    # Assert
+    updated_run = run_repository.get_run(run.run_id)
+    assert updated_run.status == WorkflowRunStatus.FAILED
+    mock_post.assert_called_once()
+    payload = mock_post.call_args.kwargs["json"]
+    assert "unexpected dispatcher error" in payload["data"]["error_message"]
+
+
+def test_dispatch_once_marks_run_failed_when_lock_manager_crashes(tmp_path, caplog):
     """dispatch_once 想定外例外でも run を failed にして継続可能にする。"""
     workflows = {
         "dummy_workflow": WorkflowDefinition(
@@ -567,18 +765,13 @@ def test_start_runs_distinct_workflows_in_parallel(tmp_path):
             ):
                 saw_parallel_running = True
                 break
-            if (
-                current_a.status
-                in {
-                    WorkflowRunStatus.SUCCEEDED,
-                    WorkflowRunStatus.FAILED,
-                }
-                and current_b.status
-                in {
-                    WorkflowRunStatus.SUCCEEDED,
-                    WorkflowRunStatus.FAILED,
-                }
-            ):
+            if current_a.status in {
+                WorkflowRunStatus.SUCCEEDED,
+                WorkflowRunStatus.FAILED,
+            } and current_b.status in {
+                WorkflowRunStatus.SUCCEEDED,
+                WorkflowRunStatus.FAILED,
+            }:
                 break
             time.sleep(0.01)
 
@@ -735,9 +928,7 @@ def test_dispatch_available_runs_skips_blocked_run_within_same_cycle(tmp_path):
     assert run_repository.get_run(free_run.run_id).status == WorkflowRunStatus.SUCCEEDED
 
 
-def test_heartbeat_loop_logs_warning_and_continues_after_exception(
-    tmp_path, caplog
-):
+def test_heartbeat_loop_logs_warning_and_continues_after_exception(tmp_path, caplog):
     """heartbeat 失敗でスレッドが黙死しない。"""
     _, _, dispatcher, _ = _build_dispatcher(tmp_path, {})
     lease = dispatcher._lock_manager.acquire(lock_key="dummy-lock", run_id="run-1")
@@ -762,6 +953,7 @@ def test_invoke_does_not_pass_workflow_run_to_non_workflow_run_params():
     AttributeError: 'WorkflowRun' object has no attribute 'spotify' で
     クラッシュしていた問題を防止する。
     """
+
     class FakeConfig:
         spotify = "loaded"
 
