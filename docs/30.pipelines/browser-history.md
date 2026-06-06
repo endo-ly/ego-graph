@@ -196,6 +196,35 @@ Chromium の `chrome.history` API は、同じ URL に対して短時間に複�
 
 この優先順位により、`link` の直後に `reload` が来た場合でも、page view の代表 transition は `link` になる。
 
+### 7.5 提供時のデフォルトフィルタ (`include_reload`)
+
+page view の `transition` カラムは原事実として保持するが、API / MCP / LLM ツール経由で取得する際は、ブラウザ起動時にまとめて再読込される `transition='reload'` の page_view を既定で除外する。
+
+#### 仕様
+
+- パラメータ: `include_reload: bool | None` (クエリ文字列 / ツール input 共通)
+- 動作: `true` を渡したときのみ reload を含める。`null` / `false` / 省略時は reload を除外
+- 適用対象: `GET /v1/data/browser-history/page-views`, `GET /v1/data/browser-history/top-domains`, LLM ツール `get_page_views` / `get_top_domains`
+- データ層は触らない（生 parquet・compacted parquet ともに従来通り reload を含む）
+
+#### 観測データ（2026-06, home-windows-pc / edge / Default, n=1078）
+
+| 指標 | 値 |
+|---|---|
+| 全 page_view 数 | 1078 |
+| `transition='reload'` 数 | 266 (24.7%) |
+| reload のうち「起動バースト」(1分以内に 3URL 以上リロード) | 171 (64.3%) |
+| 起動バースト件数 | 14 |
+| 最大起動バースト規模 | 22 URL / 24 秒 |
+
+起動バースト代表: 2026-06-01 09:56:24-48 に 22 URL 全てが reload。バースト内ドメイン Top は YouTube (37), GitHub (29), dev-server (20)。
+
+#### 採用理由
+
+- **事実保全**: 案1（拡張機能側で除外）は再評価困難、案3（別 dataset）は構成が複雑。`events` には reload を含む page_view を残しつつ、提供層でフィルタする案2（採用）が再評価可能性・構造簡潔性のバランスに優れる
+- **既定で除外**: 機械的に「起動直後に再読込された」だけの事象は LLM にとってノイズでしかない。特殊分析時のみ `include_reload=true` で opt-in
+- **top-domains 集計でも除外**: 「よく見ているサイト」は reload 込みの数字より、明確な意図を持って訪れた数字の方が解釈しやすい
+
 ---
 
 ## 11. 実装時の考慮事項

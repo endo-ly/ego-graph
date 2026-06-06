@@ -121,6 +121,27 @@ watch event として扱うのは、動画を一意に特定できる URL のみ
 - `channel_id`, `channel_name` を確定し、必要に応じて `video_title` を補正する
 - `channel_id` をキーにチャンネル metadata を取得する
 
+### 3.5 watch_event 化ルール: `transition='reload'` の除外
+
+`extract_youtube_watch_events` は Browser History page_view のうち `transition='reload'` のものを watch_event に変換しない。YouTube 起動時にまとめて再生されるリロード由来の再生履歴を排除するため。
+
+#### 仕様
+
+- 抽出時（`pipelines/sources/youtube/extraction.py: extract_youtube_watch_events`）に page_view をスキップ
+- スキーマ・過去データ・公開 parquet は無変更
+- REST API / LLM ツールに `include_reload` パラメータは設けない（消費時に確定しているため）
+- 既存 fixture に `transition` 列が無い場合（後方互換）は `None` として扱うため、リロード判定は発火しない
+
+#### 観測データ（2026-06 抜粋）
+
+| 指標 | 値 |
+|---|---|
+| YouTube 関連 page_view | 273 |
+| `transition='reload'` 数 | 47 (17.2%) |
+| 同一動画の同日 reload 重複例 | `6d9FRcJ8e1g` が 06-02 に 6 回出現（うち reload 3 回） |
+
+YouTube 起動時のリロード再生は、ユーザーの視聴意図が弱いイベント（バッファリング再読込等）が多く、watch 統計（`watch_event_count`、top_videos / top_channels）からも除外する方が人間の見え方と整合する。
+
 ---
 
 ## 4. Parquetスキーマ
