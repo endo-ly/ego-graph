@@ -17,15 +17,24 @@ def _resolve_partition_paths(params: QueryParams) -> list[str]:
     )
 
 
+def _exclude_reload_clause(include_reload: bool | None) -> str:
+    """include_reload が False 相当のときに付与する transition 除外句を返す。"""
+    if include_reload:
+        return ""
+    return " AND transition != 'reload'"
+
+
 def get_page_views(
     params: QueryParams,
     *,
     browser: str | None = None,
     profile: str | None = None,
+    include_reload: bool | None = None,
     limit: int = DEFAULT_PAGE_VIEWS_LIMIT,
 ) -> list[dict[str, Any]]:
     """指定期間のpage view一覧を取得する。"""
     partition_paths = _resolve_partition_paths(params)
+    reload_clause = _exclude_reload_clause(include_reload)
     sql = f"""
         SELECT
             page_view_id,
@@ -42,7 +51,7 @@ def get_page_views(
         FROM read_parquet(?)
         WHERE started_at_utc::TIMESTAMP >= ? AND started_at_utc::TIMESTAMP < ?
           AND (? IS NULL OR browser = ?)
-          AND (? IS NULL OR profile = ?)
+          AND (? IS NULL OR profile = ?){reload_clause}
         ORDER BY started_at DESC
         LIMIT ?
     """
@@ -67,11 +76,13 @@ def get_top_domains(
     *,
     browser: str | None = None,
     profile: str | None = None,
+    include_reload: bool | None = None,
     limit: int = DEFAULT_TOP_DOMAINS_LIMIT,
 ) -> list[dict[str, Any]]:
     """指定期間のdomain別ランキングを取得する。"""
     partition_paths = _resolve_partition_paths(params)
-    sql = """
+    reload_clause = _exclude_reload_clause(include_reload)
+    sql = f"""
         WITH filtered_page_views AS (
             SELECT
                 NULLIF(regexp_extract(url, '^[a-zA-Z]+://([^/?#]+)', 1), '') AS domain,
@@ -79,7 +90,7 @@ def get_top_domains(
             FROM read_parquet(?)
             WHERE started_at_utc::TIMESTAMP >= ? AND started_at_utc::TIMESTAMP < ?
               AND (? IS NULL OR browser = ?)
-              AND (? IS NULL OR profile = ?)
+              AND (? IS NULL OR profile = ?){reload_clause}
         )
         SELECT
             domain,

@@ -44,6 +44,13 @@ class BrowserHistoryToolBase(ToolBase):
                     "type": "string",
                     "description": "プロファイル名",
                 },
+                "include_reload": {
+                    "type": "boolean",
+                    "description": (
+                        "true のとき transition='reload' の page_view を含める。"
+                        "既定は null/false で、ブラウザ起動時のリロードを除外する。"
+                    ),
+                },
                 "limit": {
                     "type": "integer",
                     "description": "取得件数",
@@ -88,6 +95,7 @@ class GetPageViewsTool(BrowserHistoryToolBase):
         end_date: str,
         browser: str | None = None,
         profile: str | None = None,
+        include_reload: bool | None = None,
         limit: int = DEFAULT_PAGE_VIEWS_LIMIT,
     ) -> list[dict[str, Any]]:
         start, end, validated_limit = self._validate_params(
@@ -97,11 +105,13 @@ class GetPageViewsTool(BrowserHistoryToolBase):
         )
 
         logger.info(
-            "Executing get_page_views: %s to %s, browser=%s, profile=%s, limit=%s",
+            "Executing get_page_views: %s to %s, browser=%s, profile=%s, "
+            "include_reload=%s, limit=%s",
             start,
             end,
             browser,
             profile,
+            include_reload,
             validated_limit,
         )
         with DuckDBConnection(self.repository.r2_config) as conn:
@@ -111,6 +121,7 @@ class GetPageViewsTool(BrowserHistoryToolBase):
                 end_date=end,
                 browser=browser,
                 profile=profile,
+                include_reload=include_reload,
                 limit=validated_limit,
             )
 
@@ -139,6 +150,7 @@ class GetTopDomainsTool(BrowserHistoryToolBase):
         end_date: str,
         browser: str | None = None,
         profile: str | None = None,
+        include_reload: bool | None = None,
         limit: int = DEFAULT_TOP_DOMAINS_LIMIT,
     ) -> list[dict[str, Any]]:
         start, end, validated_limit = self._validate_params(
@@ -148,11 +160,13 @@ class GetTopDomainsTool(BrowserHistoryToolBase):
         )
 
         logger.info(
-            "Executing get_top_domains: %s to %s, browser=%s, profile=%s, limit=%s",
+            "Executing get_top_domains: %s to %s, browser=%s, profile=%s, "
+            "include_reload=%s, limit=%s",
             start,
             end,
             browser,
             profile,
+            include_reload,
             validated_limit,
         )
         with DuckDBConnection(self.repository.r2_config) as conn:
@@ -162,5 +176,6 @@ class GetTopDomainsTool(BrowserHistoryToolBase):
                 end_date=end,
                 browser=browser,
                 profile=profile,
+                include_reload=include_reload,
                 limit=validated_limit,
             )
