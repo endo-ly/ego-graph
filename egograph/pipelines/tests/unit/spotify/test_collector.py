@@ -2,7 +2,10 @@
 
 import re
 
+import pytest
 import responses
+import spotipy
+from pipelines.domain.errors import AuthenticationError
 from pipelines.sources.common.utils import iso8601_to_unix_ms
 from pipelines.sources.spotify.collector import SpotifyCollector
 from pipelines.tests.fixtures.spotify_responses import (
@@ -283,3 +286,52 @@ def test_get_artists_success():
     assert len(result) == 2
     assert result[0]["id"] == "artist1"
     assert result[1]["name"] == "Artist B"
+
+
+@responses.activate
+def test_init_raises_authentication_error_on_invalid_grant():
+    """invalid_grant は AuthenticationError に変換されチェインされる。"""
+    # Arrange
+    responses.add(
+        responses.POST,
+        "https://accounts.spotify.com/api/token",
+        json={"error": "invalid_grant", "error_description": "Refresh token revoked"},
+        status=400,
+    )
+
+    # Act & Assert
+    with pytest.raises(AuthenticationError) as exc_info:
+        SpotifyCollector(
+            client_id="test_client_id",
+            client_secret="test_client_secret",
+            refresh_token="revoked_refresh_token",
+        )
+
+    assert "revoked or expired" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, spotipy.oauth2.SpotifyOauthError)
+
+
+@responses.activate
+def test_init_raises_authentication_error_on_other_oauth_error():
+    """invalid_grant 以外の OAuth エラーも AuthenticationError に変換される。"""
+    # Arrange
+    responses.add(
+        responses.POST,
+        "https://accounts.spotify.com/api/token",
+        json={
+            "error": "invalid_client",
+            "error_description": "Client authentication failed",
+        },
+        status=400,
+    )
+
+    # Act & Assert
+    with pytest.raises(AuthenticationError) as exc_info:
+        SpotifyCollector(
+            client_id="test_client_id",
+            client_secret="test_client_secret",
+            refresh_token="bad_client",
+        )
+
+    assert "invalid_client" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, spotipy.oauth2.SpotifyOauthError)

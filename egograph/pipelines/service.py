@@ -23,6 +23,7 @@ from pipelines.infrastructure.execution.log_store import LocalLogStore
 from pipelines.infrastructure.execution.subprocess_executor import (
     SubprocessStepExecutor,
 )
+from pipelines.infrastructure.notification.service import NotificationService
 from pipelines.infrastructure.scheduling.apscheduler_app import ScheduleTriggerApp
 from pipelines.workflows.registry import get_workflows
 
@@ -63,6 +64,10 @@ class PipelineService:
             mutex=db_mutex,
         )
         log_store = LocalLogStore(config.logs_root)
+        notification_service = NotificationService(
+            webhook_url=config.webhook_url,
+            webhook_type=config.webhook_type,
+        )
         service = cls(
             config=config,
             workflow_repository=workflow_repository,
@@ -84,6 +89,7 @@ class PipelineService:
                 lock_manager=lock_manager,
                 subprocess_executor=SubprocessStepExecutor(log_store),
                 inprocess_executor=InProcessStepExecutor(log_store),
+                notification_service=notification_service,
                 poll_seconds=config.dispatcher_poll_seconds,
                 heartbeat_seconds=config.lock_heartbeat_seconds,
                 max_concurrent_runs=config.max_concurrent_runs,

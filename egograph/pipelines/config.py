@@ -31,3 +31,5 @@ class PipelinesConfig(BaseSettings):
     max_concurrent_runs: int = 4
     lock_lease_seconds: int = 300
     lock_heartbeat_seconds: int = 30
+    webhook_url: str | None = None
+    webhook_type: str = "generic"

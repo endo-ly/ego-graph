@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from datetime import UTC, datetime
 
-from pipelines.domain.errors import WorkflowLockUnavailableError
+from pipelines.domain.errors import AuthenticationError, WorkflowLockUnavailableError
+from pipelines.domain.notification import NotificationData, NotificationEvent
 from pipelines.domain.workflow import (
     StepDefinition,
     StepExecutorType,
@@ -27,8 +29,12 @@ from pipelines.infrastructure.execution.inprocess_executor import (
 from pipelines.infrastructure.execution.subprocess_executor import (
     SubprocessStepExecutor,
 )
+from pipelines.infrastructure.notification.service import NotificationService
 
 logger = logging.getLogger(__name__)
+
+NOTIFICATION_SOURCE = "urn:egograph:pipelines"
+NOTIFICATION_TYPE = "egograph.pipelines.workflow_failed"
 
 
 class _DispatchOutcome:
@@ -51,6 +57,7 @@ class RunDispatcher:
         lock_manager: WorkflowLockManager,
         subprocess_executor: SubprocessStepExecutor,
         inprocess_executor: InProcessStepExecutor,
+        notification_service: NotificationService,
         poll_seconds: float,
         heartbeat_seconds: int,
         max_concurrent_runs: int = 1,
@@ -61,6 +68,7 @@ class RunDispatcher:
         self._lock_manager = lock_manager
         self._subprocess_executor = subprocess_executor
         self._inprocess_executor = inprocess_executor
+        self._notification_service = notification_service
         self._poll_seconds = poll_seconds
         self._heartbeat_seconds = heartbeat_seconds
         self._max_concurrent_runs = max(1, max_concurrent_runs)
@@ -118,6 +126,7 @@ class RunDispatcher:
     def dispatch_once(self) -> bool:
         """queued run を1件処理する。"""
         run: WorkflowRun | None = None
+        workflow: WorkflowDefinition | None = None
         try:
             run = self._run_repository.lease_next_queued_run()
             if run is None:
@@ -151,7 +160,8 @@ class RunDispatcher:
                 run.run_id,
             )
             self._mark_run_failed_after_unexpected_exception(
-                run_id=run.run_id,
+                run=run,
+                workflow=workflow,
                 exc=exc,
             )
             return True
@@ -162,6 +172,7 @@ class RunDispatcher:
         excluded_run_ids: set[str],
     ) -> _DispatchOutcome:
         run: WorkflowRun | None = None
+        workflow: WorkflowDefinition | None = None
         try:
             run = self._run_repository.lease_next_queued_run(
                 excluded_run_ids=excluded_run_ids
@@ -172,7 +183,7 @@ class RunDispatcher:
             workflow = self._workflows.get(run.workflow_id)
             if workflow is None:
                 self._fail_unknown_workflow_run(run)
-                return True
+                return _DispatchOutcome(dispatched=True)
 
             try:
                 lease = self._lock_manager.acquire(
@@ -208,7 +219,8 @@ class RunDispatcher:
                 run.run_id,
             )
             self._mark_run_failed_after_unexpected_exception(
-                run_id=run.run_id,
+                run=run,
+                workflow=workflow,
                 exc=exc,
             )
             return _DispatchOutcome(dispatched=True)
@@ -239,13 +251,14 @@ class RunDispatcher:
         last_summary: dict | None = None
         try:
             for sequence_no, step in enumerate(workflow.steps, start=1):
-                success, last_summary, error_message = self._execute_step(
+                success, last_summary, error_message, last_exc = self._execute_step(
                     workflow=workflow,
                     run=run,
                     step=step,
                     sequence_no=sequence_no,
                 )
                 if not success:
+                    final_error = error_message or f"step failed: {step.step_id}"
                     self._skip_remaining_steps(
                         run=run,
                         steps=workflow.steps[sequence_no:],
@@ -254,9 +267,14 @@ class RunDispatcher:
                     self._run_repository.update_run_result(
                         run_id=run.run_id,
                         status=WorkflowRunStatus.FAILED,
-                        error_message=error_message
-                        or f"step failed: {step.step_id}",
+                        error_message=final_error,
                         result_summary=last_summary,
+                    )
+                    self._notify_failure(
+                        workflow=workflow,
+                        run=run,
+                        error_message=final_error,
+                        exc=last_exc,
                     )
                     return
             self._run_repository.update_run_result(
@@ -270,7 +288,8 @@ class RunDispatcher:
                 run.run_id,
             )
             self._mark_run_failed_after_unexpected_exception(
-                run_id=run.run_id,
+                workflow=workflow,
+                run=run,
                 exc=exc,
             )
 
@@ -281,8 +300,14 @@ class RunDispatcher:
         run: WorkflowRun,
         step: StepDefinition,
         sequence_no: int,
-    ) -> tuple[bool, dict | None, str | None]:
+    ) -> tuple[bool, dict | None, str | None, Exception | None]:
+        """step を retry 込みで実行する。
+
+        戻り値 ``exception`` は失敗時のみ設定され、通知の ``custom_message``
+        組み立てのために ``_execute_run`` まで持ち越される。
+        """
         last_error_message: str | None = None
+        last_exception: Exception | None = None
         for attempt_no in range(1, step.max_attempts + 1):
             step_run = self._step_run_repository.insert_step_run(
                 run_id=run.run_id,
@@ -308,6 +333,9 @@ class RunDispatcher:
                     exc=exc,
                 )
                 last_error_message = f"{type(exc).__name__}: {exc}"
+                last_exception = exc
+                if isinstance(exc, AuthenticationError):
+                    return False, None, last_error_message, exc
                 if attempt_no < step.max_attempts and step.retry_delay_seconds > 0:
                     time.sleep(step.retry_delay_seconds)
                 continue
@@ -321,11 +349,11 @@ class RunDispatcher:
                 result_summary=result.result_summary,
             )
             if result.status == StepRunStatus.SUCCEEDED:
-                return True, result.result_summary, None
+                return True, result.result_summary, None, None
             last_error_message = result.error_message
             if attempt_no < step.max_attempts and step.retry_delay_seconds > 0:
                 time.sleep(step.retry_delay_seconds)
-        return False, None, last_error_message
+        return False, None, last_error_message, last_exception
 
     def _execute_definition(
         self,
@@ -468,22 +496,51 @@ class RunDispatcher:
     def _mark_run_failed_after_unexpected_exception(
         self,
         *,
-        run_id: str,
+        run: WorkflowRun,
+        workflow: WorkflowDefinition | None,
         exc: Exception,
     ) -> None:
+        """予期しない例外で run を FAILED にし、可能なら通知も送る。"""
+        error_message = f"unexpected dispatcher error: {type(exc).__name__}: {exc}"
         try:
             # Persist the failure explicitly so startup reconcile does not need
             # to clean up a RUNNING row after an in-loop crash.
             self._run_repository.update_run_result(
-                run_id=run_id,
+                run_id=run.run_id,
                 status=WorkflowRunStatus.FAILED,
-                error_message=(
-                    "unexpected dispatcher error: "
-                    f"{type(exc).__name__}: {exc}"
-                ),
+                error_message=error_message,
             )
         except Exception:
             logger.exception(
                 "failed to persist unexpected dispatcher error for run_id=%s",
-                run_id,
+                run.run_id,
             )
+        if workflow is not None:
+            self._notify_failure(
+                workflow=workflow,
+                run=run,
+                error_message=error_message,
+                exc=exc,
+            )
+
+    def _notify_failure(
+        self,
+        *,
+        workflow: WorkflowDefinition,
+        run: WorkflowRun,
+        error_message: str,
+        exc: Exception | None,
+    ) -> None:
+        """失敗イベントを構築して NotificationService に委譲する。"""
+        event = NotificationEvent(
+            source=NOTIFICATION_SOURCE,
+            type=NOTIFICATION_TYPE,
+            time=datetime.now(UTC),
+            data=NotificationData(
+                workflow_id=workflow.workflow_id,
+                run_id=run.run_id,
+                error_message=error_message,
+                custom_message=None,
+            ),
+        )
+        self._notification_service.notify(event, exc=exc)

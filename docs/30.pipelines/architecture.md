@@ -363,6 +363,7 @@ stateDiagram-v2
 | `WorkflowDisabledError` | run を reject |
 | Step timeout | FAILED として記録、再試行判定 |
 | Step exception | FAILED として記録、再試行判定 |
+| `AuthenticationError` | **即時** FAILED（リトライ対象外） |
 
 ### 再試行ロジック
 
@@ -371,10 +372,70 @@ for attempt_no in range(1, step.max_attempts + 1):
     result = execute_step(step, attempt_no)
     if result.status == SUCCEEDED:
         return True
+    if isinstance(exc, AuthenticationError):
+        return False  # 認証エラーは即 fail-fast
     if attempt_no < step.max_attempts:
         sleep(step.retry_delay_seconds)
 return False
 ```
+
+### AuthenticationError (Fail-fast)
+
+OAuth トークン失効など**回復不能な認証エラー**を通常の `SpotifyException` / `RuntimeError` と区別する。`AuthenticationError` 発生時は `step.max_attempts` に関わらず 1 回で即失敗する。
+
+```python
+# 例: SpotifyCollector で invalid_grant を変換
+try:
+    self.auth_manager.refresh_access_token(refresh_token)
+except SpotifyOauthError as exc:
+    if exc.error == "invalid_grant":
+        raise AuthenticationError(
+            "Spotify refresh token revoked or expired"
+        ) from exc
+    raise AuthenticationError(
+        f"Spotify OAuth error: {exc.error or 'unknown'}"
+    ) from exc
+```
+
+## 失敗通知 (Webhook)
+
+Pipeline run が FAILED に遷移した際、Webhook で通知する。デフォルトは無効 (`PIPELINES_WEBHOOK_URL` 未設定)。
+
+### 環境変数
+
+| 変数 | デフォルト | 説明 |
+|---|---|---|
+| `PIPELINES_WEBHOOK_URL` | 未設定 (通知無効) | Webhook 送信先 URL |
+| `PIPELINES_WEBHOOK_TYPE` | `generic` | `generic` (CloudEvents-inspired JSON) / `discord` (Embed) |
+
+### Payload 形式 (Generic)
+
+```json
+{
+  "source": "urn:egograph:pipelines",
+  "type": "egograph.pipelines.workflow_failed",
+  "time": "2026-06-05T14:00:02Z",
+  "data": {
+    "workflow_id": "spotify_ingest_workflow",
+    "run_id": "722e2f38-def8-4bba-9283-bfe07459935c",
+    "error_message": "AuthenticationError: Spotify refresh token revoked",
+    "custom_message": "認証でエラーが発生しました。再認証スクリプトを実行してください: uv run python scripts/spotify_auth.py"
+  }
+}
+```
+
+### コンポーネント
+
+- `domain/notification.py`: `NotificationEvent` / `NotificationData`（不変 dataclass）
+- `infrastructure/notification/adapters.py`: `WebhookAdapter` (抽象) / `GenericAdapter` / `DiscordAdapter`
+- `infrastructure/notification/service.py`: `NotificationService`（`custom_message` 補完と送信失敗の握りつぶし）
+
+### 発火タイミング
+
+1. step 失敗（`max_attempts` 消費後、または `AuthenticationError` 即時 skip）
+2. 予期しない dispatcher 例外 (`_mark_run_failed_after_unexpected_exception` 経由）
+
+Lock 競合 (`WorkflowLockUnavailableError` での requeue) や未知 workflow 設定エラーでは通知しない。
 
 ---
 
