@@ -58,6 +58,16 @@ AIエージェントランタイムは長時間稼働し、並行して複数チ
 
 EgoGraph（Pipelines、Backend）とEgoPulseとFrontendは、それぞれ独立して動作する。EgoPulseがなくてもEgoGraphはデータを収集・分析できる。EgoGraphがなくてもEgoPulseはAIエージェントとして動く。Frontendはその両方にアクセスするUI。ゆるい結合で、必要なところだけを使える。
 
+### ストレージ責務分離
+
+SQLite と DuckDB / Parquet を責務で分離する。
+
+- 更新系・会話履歴・運用メタデータ → SQLite
+- 分析・集計・横断参照 → DuckDB
+- 分析用データセット・長期保存 → Parquet
+
+詳細は [data-strategy.md §1.1](./architecture/data-strategy.md#11-ストレージ責務分離) を参照。
+
 ---
 
 ## Roadmap
