@@ -37,6 +37,24 @@ class TestPageViewsEndpoint:
         data = response.json()
         assert data[0]["page_view_id"] == "pv_1"
         assert data[0]["browser"] == "edge"
+        assert mock_repo.get_page_views.call_args.kwargs["include_reload"] is None
+
+    def test_get_page_views_includes_reload_with_query_param(
+        self, test_client, mock_db_and_parquet
+    ):
+        """?include_reload=true を渡すとリポジトリまで伝播する。"""
+        mock_repo = MagicMock()
+        mock_repo.get_page_views.return_value = []
+        test_client.app.dependency_overrides[
+            get_browser_history_repository
+        ] = lambda: mock_repo
+        response = test_client.get(
+            "/v1/data/browser-history/page-views?start_date=2026-03-20&end_date=2026-03-22&include_reload=true",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        assert mock_repo.get_page_views.call_args.kwargs["include_reload"] is True
 
     def test_get_page_views_requires_api_key(self, test_client):
         response = test_client.get(
@@ -79,6 +97,24 @@ class TestTopDomainsEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data == mock_result
+        assert mock_repo.get_top_domains.call_args.kwargs["include_reload"] is None
+
+    def test_get_top_domains_includes_reload_with_query_param(
+        self, test_client, mock_db_and_parquet
+    ):
+        """?include_reload=true を top-domains でも伝播する。"""
+        mock_repo = MagicMock()
+        mock_repo.get_top_domains.return_value = []
+        test_client.app.dependency_overrides[
+            get_browser_history_repository
+        ] = lambda: mock_repo
+        response = test_client.get(
+            "/v1/data/browser-history/top-domains?start_date=2026-03-20&end_date=2026-03-22&include_reload=true",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        assert mock_repo.get_top_domains.call_args.kwargs["include_reload"] is True
 
     def test_get_top_domains_requires_dates(self, test_client):
         response = test_client.get(
