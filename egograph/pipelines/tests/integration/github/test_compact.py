@@ -96,7 +96,8 @@ def test_compact_deduplicates_commits():
 
         _seed_duplicate_commits(memory_s3)
 
-        result = run_github_compact(config=config)
+        # 投入月を明示。日付ドリフト回避
+        result = run_github_compact(config=config, year=2026, month=4)
 
         assert result["operation"] == "compact"
         assert len(result["compacted_keys"]) > 0

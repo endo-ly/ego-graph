@@ -121,8 +121,8 @@ def test_compact_deduplicates_events():
         # 重複データを投入
         _seed_duplicate_events(memory_s3)
 
-        # Compaction 実行
-        result = run_spotify_compact(config=config)
+        # Compaction 実行 (投入月を明示。日付ドリフト回避)
+        result = run_spotify_compact(config=config, year=2026, month=4)
 
         assert result["operation"] == "compact"
         assert len(result["compacted_keys"]) > 0
