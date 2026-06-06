@@ -56,6 +56,23 @@ class TestPageViewsEndpoint:
         assert response.status_code == 200
         assert mock_repo.get_page_views.call_args.kwargs["include_reload"] is True
 
+    def test_get_page_views_includes_reload_false_propagates(
+        self, test_client, mock_db_and_parquet
+    ):
+        """?include_reload=false もリポジトリまで伝播する。"""
+        mock_repo = MagicMock()
+        mock_repo.get_page_views.return_value = []
+        test_client.app.dependency_overrides[
+            get_browser_history_repository
+        ] = lambda: mock_repo
+        response = test_client.get(
+            "/v1/data/browser-history/page-views?start_date=2026-03-20&end_date=2026-03-22&include_reload=false",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        assert mock_repo.get_page_views.call_args.kwargs["include_reload"] is False
+
     def test_get_page_views_requires_api_key(self, test_client):
         response = test_client.get(
             "/v1/data/browser-history/page-views?start_date=2026-03-20&end_date=2026-03-22"
@@ -115,6 +132,23 @@ class TestTopDomainsEndpoint:
 
         assert response.status_code == 200
         assert mock_repo.get_top_domains.call_args.kwargs["include_reload"] is True
+
+    def test_get_top_domains_includes_reload_false_propagates(
+        self, test_client, mock_db_and_parquet
+    ):
+        """?include_reload=false も top-domains でリポジトリまで伝播する。"""
+        mock_repo = MagicMock()
+        mock_repo.get_top_domains.return_value = []
+        test_client.app.dependency_overrides[
+            get_browser_history_repository
+        ] = lambda: mock_repo
+        response = test_client.get(
+            "/v1/data/browser-history/top-domains?start_date=2026-03-20&end_date=2026-03-22&include_reload=false",
+            headers={"X-API-Key": "test-backend-key"},
+        )
+
+        assert response.status_code == 200
+        assert mock_repo.get_top_domains.call_args.kwargs["include_reload"] is False
 
     def test_get_top_domains_requires_dates(self, test_client):
         response = test_client.get(

@@ -83,6 +83,23 @@ class TestGetPageViewsTool:
 
         assert repository.get_page_views.call_args.kwargs["include_reload"] is True
 
+    @patch("backend.domain.tools.browser_history.page_views.DuckDBConnection")
+    def test_execute_passes_include_reload_false(self, MockConn):
+        """include_reload=False をリポジトリまで伝播する。"""
+        MockConn.return_value = _mock_conn_ctx()
+
+        repository = MagicMock()
+        repository.get_page_views.return_value = []
+        tool = GetPageViewsTool(repository)
+
+        tool.execute(
+            start_date="2026-03-20",
+            end_date="2026-03-22",
+            include_reload=False,
+        )
+
+        assert repository.get_page_views.call_args.kwargs["include_reload"] is False
+
     def test_execute_with_invalid_date_raises_error(self):
         tool = GetPageViewsTool(MagicMock())
 
@@ -151,6 +168,23 @@ class TestGetTopDomainsTool:
         )
 
         assert repository.get_top_domains.call_args.kwargs["include_reload"] is True
+
+    @patch("backend.domain.tools.browser_history.page_views.DuckDBConnection")
+    def test_execute_passes_include_reload_false(self, MockConn):
+        """top_domains でも include_reload=False をリポジトリまで伝播する。"""
+        MockConn.return_value = _mock_conn_ctx()
+
+        repository = MagicMock()
+        repository.get_top_domains.return_value = []
+        tool = GetTopDomainsTool(repository)
+
+        tool.execute(
+            start_date="2026-03-20",
+            end_date="2026-03-22",
+            include_reload=False,
+        )
+
+        assert repository.get_top_domains.call_args.kwargs["include_reload"] is False
 
     def test_execute_with_invalid_date_raises_error(self):
         tool = GetTopDomainsTool(MagicMock())

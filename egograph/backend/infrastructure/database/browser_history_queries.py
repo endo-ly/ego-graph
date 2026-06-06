@@ -6,6 +6,8 @@ from backend.constants import DEFAULT_PAGE_VIEWS_LIMIT, DEFAULT_TOP_DOMAINS_LIMI
 from backend.infrastructure.database.parquet_paths import build_partition_paths
 from backend.infrastructure.database.query_params import QueryParams, execute_query
 
+_RELOAD_FILTER_CLAUSE = " AND (? OR transition IS DISTINCT FROM 'reload')"
+
 
 def _resolve_partition_paths(params: QueryParams) -> list[str]:
     return build_partition_paths(
@@ -15,13 +17,6 @@ def _resolve_partition_paths(params: QueryParams) -> list[str]:
         utc_start=params.utc_start,
         utc_end=params.utc_end,
     )
-
-
-def _exclude_reload_clause(include_reload: bool | None) -> str:
-    """include_reload が False 相当のときに付与する transition 除外句を返す。"""
-    if include_reload:
-        return ""
-    return " AND transition != 'reload'"
 
 
 def get_page_views(
@@ -34,7 +29,6 @@ def get_page_views(
 ) -> list[dict[str, Any]]:
     """指定期間のpage view一覧を取得する。"""
     partition_paths = _resolve_partition_paths(params)
-    reload_clause = _exclude_reload_clause(include_reload)
     sql = f"""
         SELECT
             page_view_id,
@@ -51,7 +45,7 @@ def get_page_views(
         FROM read_parquet(?)
         WHERE started_at_utc::TIMESTAMP >= ? AND started_at_utc::TIMESTAMP < ?
           AND (? IS NULL OR browser = ?)
-          AND (? IS NULL OR profile = ?){reload_clause}
+          AND (? IS NULL OR profile = ?){_RELOAD_FILTER_CLAUSE}
         ORDER BY started_at DESC
         LIMIT ?
     """
@@ -66,6 +60,7 @@ def get_page_views(
             browser,
             profile,
             profile,
+            bool(include_reload),
             limit,
         ],
     )
@@ -81,7 +76,6 @@ def get_top_domains(
 ) -> list[dict[str, Any]]:
     """指定期間のdomain別ランキングを取得する。"""
     partition_paths = _resolve_partition_paths(params)
-    reload_clause = _exclude_reload_clause(include_reload)
     sql = f"""
         WITH filtered_page_views AS (
             SELECT
@@ -90,7 +84,7 @@ def get_top_domains(
             FROM read_parquet(?)
             WHERE started_at_utc::TIMESTAMP >= ? AND started_at_utc::TIMESTAMP < ?
               AND (? IS NULL OR browser = ?)
-              AND (? IS NULL OR profile = ?){reload_clause}
+              AND (? IS NULL OR profile = ?){_RELOAD_FILTER_CLAUSE}
         )
         SELECT
             domain,
@@ -113,6 +107,7 @@ def get_top_domains(
             browser,
             profile,
             profile,
+            bool(include_reload),
             limit,
         ],
     )
