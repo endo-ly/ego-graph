@@ -6,6 +6,8 @@ from backend.constants import DEFAULT_PAGE_VIEWS_LIMIT, DEFAULT_TOP_DOMAINS_LIMI
 from backend.infrastructure.database.parquet_paths import build_partition_paths
 from backend.infrastructure.database.query_params import QueryParams, execute_query
 
+_RELOAD_FILTER_CLAUSE = " AND (? OR transition IS DISTINCT FROM 'reload')"
+
 
 def _resolve_partition_paths(params: QueryParams) -> list[str]:
     return build_partition_paths(
@@ -22,6 +24,7 @@ def get_page_views(
     *,
     browser: str | None = None,
     profile: str | None = None,
+    include_reload: bool | None = None,
     limit: int = DEFAULT_PAGE_VIEWS_LIMIT,
 ) -> list[dict[str, Any]]:
     """指定期間のpage view一覧を取得する。"""
@@ -42,7 +45,7 @@ def get_page_views(
         FROM read_parquet(?)
         WHERE started_at_utc::TIMESTAMP >= ? AND started_at_utc::TIMESTAMP < ?
           AND (? IS NULL OR browser = ?)
-          AND (? IS NULL OR profile = ?)
+          AND (? IS NULL OR profile = ?){_RELOAD_FILTER_CLAUSE}
         ORDER BY started_at DESC
         LIMIT ?
     """
@@ -57,6 +60,7 @@ def get_page_views(
             browser,
             profile,
             profile,
+            bool(include_reload),
             limit,
         ],
     )
@@ -67,11 +71,12 @@ def get_top_domains(
     *,
     browser: str | None = None,
     profile: str | None = None,
+    include_reload: bool | None = None,
     limit: int = DEFAULT_TOP_DOMAINS_LIMIT,
 ) -> list[dict[str, Any]]:
     """指定期間のdomain別ランキングを取得する。"""
     partition_paths = _resolve_partition_paths(params)
-    sql = """
+    sql = f"""
         WITH filtered_page_views AS (
             SELECT
                 NULLIF(regexp_extract(url, '^[a-zA-Z]+://([^/?#]+)', 1), '') AS domain,
@@ -79,7 +84,7 @@ def get_top_domains(
             FROM read_parquet(?)
             WHERE started_at_utc::TIMESTAMP >= ? AND started_at_utc::TIMESTAMP < ?
               AND (? IS NULL OR browser = ?)
-              AND (? IS NULL OR profile = ?)
+              AND (? IS NULL OR profile = ?){_RELOAD_FILTER_CLAUSE}
         )
         SELECT
             domain,
@@ -102,6 +107,7 @@ def get_top_domains(
             browser,
             profile,
             profile,
+            bool(include_reload),
             limit,
         ],
     )

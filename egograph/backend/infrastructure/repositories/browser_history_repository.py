@@ -50,6 +50,7 @@ class BrowserHistoryRepository:
         end_date: date,
         browser: str | None,
         profile: str | None,
+        include_reload: bool | None,
         limit: int,
         query_func,
         log_label: str,
@@ -59,16 +60,18 @@ class BrowserHistoryRepository:
             params,
             browser=browser,
             profile=profile,
+            include_reload=include_reload,
             limit=limit,
         )
         logger.info(
             "Retrieved %s: start_date=%s, end_date=%s, browser=%s, "
-            "profile=%s, limit=%s, count=%s",
+            "profile=%s, include_reload=%s, limit=%s, count=%s",
             log_label,
             start_date,
             end_date,
             browser,
             profile,
+            include_reload,
             limit,
             len(result),
         )
@@ -82,6 +85,7 @@ class BrowserHistoryRepository:
         *,
         browser: str | None = None,
         profile: str | None = None,
+        include_reload: bool | None = None,
         limit: int,
     ) -> list[dict[str, Any]]:
         """指定期間のpage view一覧を取得する。"""
@@ -91,6 +95,7 @@ class BrowserHistoryRepository:
             end_date=end_date,
             browser=browser,
             profile=profile,
+            include_reload=include_reload,
             limit=limit,
             query_func=get_page_views,
             log_label="page views",
@@ -104,6 +109,7 @@ class BrowserHistoryRepository:
         *,
         browser: str | None = None,
         profile: str | None = None,
+        include_reload: bool | None = None,
         limit: int,
     ) -> list[dict[str, Any]]:
         """指定期間のdomainランキングを取得する。"""
@@ -113,6 +119,7 @@ class BrowserHistoryRepository:
             end_date=end_date,
             browser=browser,
             profile=profile,
+            include_reload=include_reload,
             limit=limit,
             query_func=get_top_domains,
             log_label="top domains",

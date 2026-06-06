@@ -3,6 +3,7 @@
 from datetime import date, timezone
 from unittest.mock import patch
 
+import pandas as pd
 from pydantic import SecretStr
 
 from backend.config import R2Config
@@ -91,12 +92,78 @@ class TestGetPageViews:
                 params,
                 browser="edge",
                 profile="Default",
+                include_reload=True,
                 limit=10,
             )
 
         assert [row["page_view_id"] for row in result] == ["pv_5", "pv_2", "pv_1"]
         assert all(row["browser"] == "edge" for row in result)
         assert all(row["profile"] == "Default" for row in result)
+
+    def test_excludes_reload_when_include_reload_is_none(
+        self, browser_history_with_sample_data
+    ):
+        """include_reload=None の既定で reload 由来の page_view は除外される。"""
+        parquet_path = browser_history_with_sample_data.test_page_views_parquet_path
+
+        with patch(
+            "backend.infrastructure.database.browser_history_queries._resolve_partition_paths",
+            return_value=[parquet_path],
+        ):
+            params = _bqp(
+                conn=browser_history_with_sample_data,
+                start_date=date(2026, 3, 20),
+                end_date=date(2026, 3, 22),
+            )
+
+            result = get_page_views(params, limit=10)
+
+        page_view_ids = [row["page_view_id"] for row in result]
+        assert "pv_2" not in page_view_ids
+        assert all(row["transition"] != "reload" for row in result)
+        assert len(result) == 4
+
+    def test_excludes_reload_when_include_reload_is_false(
+        self, browser_history_with_sample_data
+    ):
+        """明示的に include_reload=False を渡しても reload は除外される。"""
+        parquet_path = browser_history_with_sample_data.test_page_views_parquet_path
+
+        with patch(
+            "backend.infrastructure.database.browser_history_queries._resolve_partition_paths",
+            return_value=[parquet_path],
+        ):
+            params = _bqp(
+                conn=browser_history_with_sample_data,
+                start_date=date(2026, 3, 20),
+                end_date=date(2026, 3, 22),
+            )
+
+            result = get_page_views(params, include_reload=False, limit=10)
+
+        assert "pv_2" not in [row["page_view_id"] for row in result]
+
+    def test_includes_reload_when_include_reload_is_true(
+        self, browser_history_with_sample_data
+    ):
+        """include_reload=True で reload を含む全件が返る。"""
+        parquet_path = browser_history_with_sample_data.test_page_views_parquet_path
+
+        with patch(
+            "backend.infrastructure.database.browser_history_queries._resolve_partition_paths",
+            return_value=[parquet_path],
+        ):
+            params = _bqp(
+                conn=browser_history_with_sample_data,
+                start_date=date(2026, 3, 20),
+                end_date=date(2026, 3, 22),
+            )
+
+            result = get_page_views(params, include_reload=True, limit=10)
+
+        page_view_ids = [row["page_view_id"] for row in result]
+        assert "pv_2" in page_view_ids
+        assert len(result) == 5
 
 
 class TestGetTopDomains:
@@ -116,7 +183,7 @@ class TestGetTopDomains:
                 end_date=date(2026, 3, 22),
             )
 
-            result = get_top_domains(params, limit=10)
+            result = get_top_domains(params, include_reload=True, limit=10)
 
         assert result[0] == {
             "domain": "github.com",
@@ -144,6 +211,7 @@ class TestGetTopDomains:
                 params,
                 browser="edge",
                 profile="Default",
+                include_reload=True,
                 limit=10,
             )
 
@@ -159,3 +227,89 @@ class TestGetTopDomains:
                 "unique_urls": 1,
             },
         ]
+
+    def test_top_domains_excludes_reload_by_default(
+        self, browser_history_with_sample_data
+    ):
+        """top_domains 集計の既定で transition='reload' の page_view は除外される。"""
+        parquet_path = browser_history_with_sample_data.test_page_views_parquet_path
+
+        with patch(
+            "backend.infrastructure.database.browser_history_queries._resolve_partition_paths",
+            return_value=[parquet_path],
+        ):
+            params = _bqp(
+                conn=browser_history_with_sample_data,
+                start_date=date(2026, 3, 20),
+                end_date=date(2026, 3, 22),
+            )
+
+            result = get_top_domains(params, limit=10)
+
+        github = next(row for row in result if row["domain"] == "github.com")
+        assert github == {
+            "domain": "github.com",
+            "page_view_count": 2,
+            "unique_urls": 2,
+        }
+
+    def test_keeps_rows_with_null_transition_when_reload_excluded(
+        self, browser_history_with_sample_data, tmp_path
+    ):
+        """transition が NULL の行も reload 除外時に保持される。"""
+        null_row_path = tmp_path / "browser_history_with_null.parquet"
+        pd.DataFrame(
+            {
+                "page_view_id": ["pv_link", "pv_reload", "pv_null"],
+                "started_at_utc": pd.to_datetime(
+                    [
+                        "2026-03-22 09:00:00+00:00",
+                        "2026-03-22 10:00:00+00:00",
+                        "2026-03-22 11:00:00+00:00",
+                    ],
+                    utc=True,
+                ),
+                "ended_at_utc": pd.to_datetime(
+                    [
+                        "2026-03-22 09:00:01+00:00",
+                        "2026-03-22 10:00:02+00:00",
+                        "2026-03-22 11:00:03+00:00",
+                    ],
+                    utc=True,
+                ),
+                "url": [
+                    "https://example.com/a",
+                    "https://example.com/b",
+                    "https://example.com/c",
+                ],
+                "title": ["A", "B", "C"],
+                "browser": ["edge", "edge", "edge"],
+                "profile": ["Default", "Default", "Default"],
+                "source_device": ["home-pc", "home-pc", "home-pc"],
+                "transition": ["link", "reload", None],
+                "visit_span_count": [1, 1, 1],
+                "synced_at_utc": pd.to_datetime(
+                    ["2026-03-22 12:00:00+00:00"] * 3, utc=True
+                ),
+                "ingested_at_utc": pd.to_datetime(
+                    ["2026-03-22 12:01:00+00:00"] * 3, utc=True
+                ),
+            }
+        ).to_parquet(null_row_path)
+
+        with patch(
+            "backend.infrastructure.database.browser_history_queries._resolve_partition_paths",
+            return_value=[str(null_row_path)],
+        ):
+            params = _bqp(
+                conn=browser_history_with_sample_data,
+                start_date=date(2026, 3, 22),
+                end_date=date(2026, 3, 23),
+            )
+
+            result = get_page_views(params, include_reload=False, limit=10)
+
+        page_view_ids = [row["page_view_id"] for row in result]
+        assert "pv_reload" not in page_view_ids
+        assert "pv_link" in page_view_ids
+        assert "pv_null" in page_view_ids

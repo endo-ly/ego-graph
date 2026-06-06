@@ -37,6 +37,8 @@ class TestGetPageViewsTool:
         assert "browser" in schema["properties"]
         assert "profile" in schema["properties"]
         assert "limit" in schema["properties"]
+        assert "include_reload" in schema["properties"]
+        assert schema["properties"]["include_reload"]["type"] == "boolean"
 
     @patch("backend.domain.tools.browser_history.page_views.DuckDBConnection")
     def test_execute_validates_and_delegates(self, MockConn):
@@ -62,6 +64,41 @@ class TestGetPageViewsTool:
         assert call_args.kwargs["browser"] == "edge"
         assert call_args.kwargs["profile"] == "Default"
         assert call_args.kwargs["limit"] == 20
+        assert call_args.kwargs["include_reload"] is None
+
+    @patch("backend.domain.tools.browser_history.page_views.DuckDBConnection")
+    def test_execute_passes_include_reload_true(self, MockConn):
+        """include_reload=True をリポジトリまで伝播する。"""
+        MockConn.return_value = _mock_conn_ctx()
+
+        repository = MagicMock()
+        repository.get_page_views.return_value = []
+        tool = GetPageViewsTool(repository)
+
+        tool.execute(
+            start_date="2026-03-20",
+            end_date="2026-03-22",
+            include_reload=True,
+        )
+
+        assert repository.get_page_views.call_args.kwargs["include_reload"] is True
+
+    @patch("backend.domain.tools.browser_history.page_views.DuckDBConnection")
+    def test_execute_passes_include_reload_false(self, MockConn):
+        """include_reload=False をリポジトリまで伝播する。"""
+        MockConn.return_value = _mock_conn_ctx()
+
+        repository = MagicMock()
+        repository.get_page_views.return_value = []
+        tool = GetPageViewsTool(repository)
+
+        tool.execute(
+            start_date="2026-03-20",
+            end_date="2026-03-22",
+            include_reload=False,
+        )
+
+        assert repository.get_page_views.call_args.kwargs["include_reload"] is False
 
     def test_execute_with_invalid_date_raises_error(self):
         tool = GetPageViewsTool(MagicMock())
@@ -88,6 +125,8 @@ class TestGetTopDomainsTool:
         assert "browser" in schema["properties"]
         assert "profile" in schema["properties"]
         assert "limit" in schema["properties"]
+        assert "include_reload" in schema["properties"]
+        assert schema["properties"]["include_reload"]["type"] == "boolean"
 
     @patch("backend.domain.tools.browser_history.page_views.DuckDBConnection")
     def test_execute_validates_and_delegates(self, MockConn):
@@ -111,6 +150,41 @@ class TestGetTopDomainsTool:
         assert call_args.kwargs["browser"] == "edge"
         assert call_args.kwargs["profile"] == "Default"
         assert call_args.kwargs["limit"] == 10
+        assert call_args.kwargs["include_reload"] is None
+
+    @patch("backend.domain.tools.browser_history.page_views.DuckDBConnection")
+    def test_execute_passes_include_reload_true(self, MockConn):
+        """top_domains でも include_reload=True をリポジトリまで伝播する。"""
+        MockConn.return_value = _mock_conn_ctx()
+
+        repository = MagicMock()
+        repository.get_top_domains.return_value = []
+        tool = GetTopDomainsTool(repository)
+
+        tool.execute(
+            start_date="2026-03-20",
+            end_date="2026-03-22",
+            include_reload=True,
+        )
+
+        assert repository.get_top_domains.call_args.kwargs["include_reload"] is True
+
+    @patch("backend.domain.tools.browser_history.page_views.DuckDBConnection")
+    def test_execute_passes_include_reload_false(self, MockConn):
+        """top_domains でも include_reload=False をリポジトリまで伝播する。"""
+        MockConn.return_value = _mock_conn_ctx()
+
+        repository = MagicMock()
+        repository.get_top_domains.return_value = []
+        tool = GetTopDomainsTool(repository)
+
+        tool.execute(
+            start_date="2026-03-20",
+            end_date="2026-03-22",
+            include_reload=False,
+        )
+
+        assert repository.get_top_domains.call_args.kwargs["include_reload"] is False
 
     def test_execute_with_invalid_date_raises_error(self):
         tool = GetTopDomainsTool(MagicMock())

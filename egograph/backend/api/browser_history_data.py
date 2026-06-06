@@ -40,6 +40,13 @@ def get_page_views_endpoint(
     ),
     browser: str | None = Query(None, description="フィルタ対象のブラウザ"),
     profile: str | None = Query(None, description="フィルタ対象のプロファイル"),
+    include_reload: bool | None = Query(
+        None,
+        description=(
+            "true のとき transition='reload' の page_view を含める。"
+            "既定は null/false で、ブラウザ起動時のリロードを除外する。"
+        ),
+    ),
     db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
     repository: BrowserHistoryRepository = Depends(get_browser_history_repository),
     _api_key: None = Depends(verify_api_key_docs),
@@ -57,6 +64,7 @@ def get_page_views_endpoint(
         end,
         browser=browser,
         profile=profile,
+        include_reload=include_reload,
         limit=validated_limit,
     )
 
@@ -73,6 +81,13 @@ def get_top_domains_endpoint(
     ),
     browser: str | None = Query(None, description="フィルタ対象のブラウザ"),
     profile: str | None = Query(None, description="フィルタ対象のプロファイル"),
+    include_reload: bool | None = Query(
+        None,
+        description=(
+            "true のとき transition='reload' の page_view を含めて集計する。"
+            "既定は null/false で、ブラウザ起動時のリロードを除外する。"
+        ),
+    ),
     db_connection: duckdb.DuckDBPyConnection = Depends(get_db_connection),
     repository: BrowserHistoryRepository = Depends(get_browser_history_repository),
     _api_key: None = Depends(verify_api_key_docs),
@@ -90,5 +105,6 @@ def get_top_domains_endpoint(
         end,
         browser=browser,
         profile=profile,
+        include_reload=include_reload,
         limit=validated_limit,
     )

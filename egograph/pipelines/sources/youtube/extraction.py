@@ -70,6 +70,8 @@ def extract_youtube_watch_events(page_view_rows: list[dict]) -> list[dict]:
     events: list[dict] = []
 
     for row in page_view_rows:
+        if row.get("transition") == "reload":
+            continue
         url = row.get("url", "")
         title = row.get("title")
         normalized = normalize_youtube_url(url)
