@@ -153,6 +153,7 @@ class YouTubeStorage:
             "url",
             "title",
             "source_device",
+            "transition",
             "ingested_at_utc",
         ]
         rows: list[dict[str, Any]] = []
