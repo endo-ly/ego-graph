@@ -70,7 +70,7 @@ def test_mixed_input_filters_only_reload():
 
 
 def test_no_transition_field_is_kept():
-    """page_view に transition が無い場合（後方互換）は除外しない。"""
+    """page_view に transition が無い場合 (後方互換) は除外しない。"""
     row = _row(page_view_id="pv-legacy")
     del row["transition"]
 
