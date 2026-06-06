@@ -181,8 +181,8 @@ egograph/pipelines/
 
 | トピック | ドキュメント |
 |----------|-------------|
-| アーキテクチャ設計 | [docs/20.egograph/pipelines/architecture.md](../../docs/20.egograph/pipelines/architecture.md) |
-| テスト戦略 | [docs/20.egograph/pipelines/testing-strategy.md](../../docs/20.egograph/pipelines/testing-strategy.md) |
-| データソース一覧 | [docs/20.egograph/pipelines/README.md](../../docs/20.egograph/pipelines/README.md) |
-| データ戦略 | [docs/10.architecture/data-strategy.md](../../docs/10.architecture/data-strategy.md) |
-| デプロイ手順 | [docs/50.deploy/pipelines.md](../../docs/50.deploy/pipelines.md) |
+| アーキテクチャ設計 | [docs/pipelines/architecture.md](../../docs/pipelines/architecture.md) |
+| テスト戦略 | [docs/pipelines/testing-strategy.md](../../docs/pipelines/testing-strategy.md) |
+| データソース一覧 | [docs/pipelines/README.md](../../docs/pipelines/README.md) |
+| データ戦略 | [docs/architecture/data-strategy.md](../../docs/architecture/data-strategy.md) |
+| デプロイ手順 | [docs/deploy/pipelines.md](../../docs/deploy/pipelines.md) |

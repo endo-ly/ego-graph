@@ -72,7 +72,7 @@ cd frontend
 - **ストリーミングチャット** — AI チャットインターフェース（ストリーミング対応）
 - **データ可視化** — 個人データのグラフ・チャート表示（WIP）
 
-詳細なアーキテクチャ設計は [docs/10.architecture/](./docs/10.architecture/) を参照。
+詳細なアーキテクチャ設計は [docs/architecture/](./docs/architecture/) を参照。
 
 ## Current Status
 
@@ -87,9 +87,9 @@ cd frontend
 | Document | Description |
 |----------|-------------|
 | [CONCEPT.md](./docs/CONCEPT.md) | ビジョン・目的・設計思想 |
-| [Architecture](./docs/10.architecture/) | システムアーキテクチャ設計 |
-| [Tech Stack](./docs/70.knowledge/technical-selections/) | 技術選定記録（ADR） |
-| [Deploy](./docs/50.deploy/) | デプロイ手順 |
+| [Architecture](./docs/architecture/) | システムアーキテクチャ設計 |
+| [Tech Stack](./docs/knowledge/technical-selections/) | 技術選定記録（ADR） |
+| [Deploy](./docs/deploy/) | デプロイ手順 |
 
 ### Component READMEs
 

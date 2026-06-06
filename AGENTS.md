@@ -14,19 +14,19 @@ Python (uv workspace) + Kotlin Multiplatform / Compose Multiplatform
 ### egograph/pipelines (データ収集・ジョブ実行)
 
 常駐 Pipelines Service + ETL/ELT Pipeline。R2 に Parquet + JSON を保存し、SQLite でジョブ状態を管理。
-詳細: @docs/20.egograph/pipelines/
+詳細: @docs/pipelines/
 
 ### egograph/backend (データ提供API)
 
 DDD レイヤードアーキテクチャ（api / usecases / infrastructure / database）。DuckDBでParquet読み込み。
-詳細: @docs/20.egograph/backend/
+詳細: @docs/backend/
 
 ### frontend (Mobile App)
 
 MVVM (StateFlow + Channel) - Kotlin Multiplatform + Compose Multiplatform。
 features/ 配下に Screen + ScreenModel + State + Effect の各モジュール。DI は Koin。
 将来的に、収集データの可視化やエージェントの管理画面などで使用する予定。
-詳細: @docs/40.frontend/
+詳細: @docs/frontend/
 
 ### 関連レポジトリ
 
