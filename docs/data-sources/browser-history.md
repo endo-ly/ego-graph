@@ -308,5 +308,5 @@ page view の `transition` カラムは原事実として保持するが、API /
 
 ## 参考
 
-- [Browser History Collection 要件](../../99.archive/done_requirements/browser_history_collection.md)
-- [データ戦略](../../10.architecture/data-strategy.md)
+- [Browser History Collection 要件](../../_archive/done_requirements/browser_history_collection.md)
+- [データ戦略](../architecture/data-strategy.md)

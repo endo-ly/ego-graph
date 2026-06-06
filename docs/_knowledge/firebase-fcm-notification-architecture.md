@@ -1,7 +1,7 @@
 # Firebase / FCM 通知アーキテクチャ
 
 このドキュメントは、EgoGraph の通知機能における Firebase / FCM の役割と、実装上の責務分離を整理したものです。
-Webhook の手順詳細は `docs/70.knowledge/webhook-guide.md` を参照してください。
+Webhook の手順詳細は [webhook-guide.md](./webhook-guide.md) を参照してください。
 
 ## Firebase とは
 

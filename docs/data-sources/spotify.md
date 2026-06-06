@@ -286,5 +286,5 @@ s3://egograph/
 ## 参考
 
 - [Spotify Web API Documentation](https://developer.spotify.com/documentation/web-api)
-- [Ingest 共通アーキテクチャ](./README.md)
-- [データ戦略](../../10.architecture/data-strategy.md)
+- [Ingest 共通アーキテクチャ](../architecture/pipelines.md)
+- [データ戦略](../architecture/data-strategy.md)

@@ -380,5 +380,5 @@ YouTube は単なるドメインフィルタではなく、動画・チャンネ
 ## 参考
 
 - [Browser History データソース](./browser-history.md)
-- [Pipelines Service Architecture](./architecture.md)
-- [YouTube 視聴履歴収集セットアップガイド](../../70.knowledge/youtube_watch_history_setup.md)
+- [Pipelines Service Architecture](../architecture/pipelines.md)
+- [YouTube 視聴履歴収集セットアップガイド](../../_knowledge/youtube_watch_history_setup.md)

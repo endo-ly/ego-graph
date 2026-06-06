@@ -14,12 +14,12 @@ Python (uv workspace) + Kotlin Multiplatform / Compose Multiplatform
 ### egograph/pipelines (データ収集・ジョブ実行)
 
 常駐 Pipelines Service + ETL/ELT Pipeline。R2 に Parquet + JSON を保存し、SQLite でジョブ状態を管理。
-詳細: @docs/pipelines/
+詳細: @docs/architecture/pipelines.md, @docs/data-sources/
 
 ### egograph/backend (データ提供API)
 
 DDD レイヤードアーキテクチャ（api / usecases / infrastructure / database）。DuckDBでParquet読み込み。
-詳細: @docs/backend/
+詳細: @docs/architecture/backend.md
 
 ### frontend (Mobile App)
 

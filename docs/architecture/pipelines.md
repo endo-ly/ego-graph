@@ -482,8 +482,8 @@ uv run python -m pipelines.main serve
 
 ## 参考
 
-- [Testing Strategy](./testing-strategy.md)
-- [データ戦略](../../10.architecture/data-strategy.md)
+- [Testing Strategy](./pipelines-testing.md)
+- [データ戦略](./data-strategy.md)
 
 ---
 
@@ -493,7 +493,7 @@ uv run python -m pipelines.main serve
 
 | No. | データソース | ドキュメント | データタイプ | 優先度 |
 |---|---|---|---|---|
-| 01 | Spotify | [spotify.md](./spotify.md) | 構造化ログ | MVP |
-| 02 | GitHub | [github.md](./github.md) | 構造化ログ | MVP |
-| 03 | Browser History | [browser-history.md](./browser-history.md) | 時系列・行動履歴 | MVP |
-| 04 | YouTube | [youtube.md](./youtube.md) | 時系列・行動履歴 | MVP |
+| 01 | Spotify | [spotify.md](../data-sources/spotify.md) | 構造化ログ | MVP |
+| 02 | GitHub | [github.md](../data-sources/github.md) | 構造化ログ | MVP |
+| 03 | Browser History | [browser-history.md](../data-sources/browser-history.md) | 時系列・行動履歴 | MVP |
+| 04 | YouTube | [youtube.md](../data-sources/youtube.md) | 時系列・行動履歴 | MVP |

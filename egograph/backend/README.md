@@ -57,5 +57,5 @@ egograph/backend/
 
 | トピック | ドキュメント |
 |----------|-------------|
-| アーキテクチャ設計 | [docs/backend/architecture.md](../../docs/backend/architecture.md) |
+| アーキテクチャ設計 | [docs/architecture/backend.md](../../docs/architecture/backend.md) |
 | デプロイ手順 | [docs/deploy/backend.md](../../docs/deploy/backend.md) |
