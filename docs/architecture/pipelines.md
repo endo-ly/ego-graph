@@ -23,6 +23,7 @@ flowchart TB
         B[GitHub API]
         C[Spotify API]
         D[Google Takeout]
+        F[Google Health API]
     end
 
     subgraph "Pipelines Service"
@@ -51,6 +52,7 @@ flowchart TB
             BH[browser_history/]
             GA[google_activity/]
             LM[local_mirror_sync/]
+            GHA[google_health/]
         end
     end
 
@@ -69,6 +71,7 @@ flowchart TB
     X1 --> BH
     X1 --> GA
     X1 --> LM
+    F --> GHA
     GH --> R2
     SP --> R2
     BH --> R2
@@ -477,6 +480,11 @@ uv run python -m pipelines.main serve
 | POST | `/v1/runs/{id}/retry` | 再実行 |
 | POST | `/v1/runs/{id}/cancel` | キャンセル |
 | POST | `/v1/ingest/browser-history` | Browser History 受信 |
+| GET | `/v1/sources/google-health/auth/start` | Google Health OAuth 認可 URL 生成 |
+| GET | `/v1/sources/google-health/auth/callback` | Google Health OAuth callback |
+| GET | `/v1/sources/google-health/connection` | Google Health 接続状態 |
+| DELETE | `/v1/sources/google-health/connection` | Google Health 接続削除 |
+| POST | `/v1/sources/google-health/connection/smoke-test` | Google Health 疎通確認 |
 
 ---
 
@@ -497,3 +505,4 @@ uv run python -m pipelines.main serve
 | 02 | GitHub | [github.md](../data-sources/github.md) | 構造化ログ | MVP |
 | 03 | Browser History | [browser-history.md](../data-sources/browser-history.md) | 時系列・行動履歴 | MVP |
 | 04 | YouTube | [youtube.md](../data-sources/youtube.md) | 時系列・行動履歴 | MVP |
+| 05 | Google Health | [google-health.md](../data-sources/google-health.md) | 時系列・行動履歴 | Phase 1 |
