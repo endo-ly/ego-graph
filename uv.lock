@@ -468,6 +468,7 @@ source = { editable = "egograph/pipelines" }
 dependencies = [
     { name = "apscheduler" },
     { name = "boto3" },
+    { name = "cryptography" },
     { name = "duckdb" },
     { name = "fastapi" },
     { name = "pandas" },
@@ -492,6 +493,7 @@ dev = [
 requires-dist = [
     { name = "apscheduler", specifier = ">=3.10.4" },
     { name = "boto3", specifier = ">=1.35.0" },
+    { name = "cryptography", specifier = ">=45.0.0" },
     { name = "duckdb", specifier = ">=1.1.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "pandas", specifier = ">=2.0.0" },
