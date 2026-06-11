@@ -156,6 +156,42 @@ def test_unauthorized_response_refreshes_and_retries_request(tmp_path):
     )
 
 
+def test_unauthorized_refresh_does_not_consume_only_request_attempt(tmp_path):
+    """401後のrefresh再送はmax_attemptsが1でも実行できる。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path)
+    session = FakeSession(
+        [
+            FakeResponse({}, status_code=401),
+            FakeResponse(
+                {
+                    "access_token": "new-access-token",
+                    "expires_in": 3600,
+                    "token_type": "Bearer",
+                }
+            ),
+            FakeResponse({"dataPoints": []}),
+        ]
+    )
+    client = GoogleHealthAPIClient(
+        repository,
+        cipher,
+        client_id="client-id",
+        client_secret="client-secret",
+        session=session,
+        max_attempts=1,
+    )
+
+    # Act
+    result = client.list_data_points(connection.connection_id, "steps")
+
+    # Assert
+    assert result == {"dataPoints": []}
+    assert session.calls[2][2]["headers"]["Authorization"] == (
+        "Bearer new-access-token"
+    )
+
+
 def test_network_error_and_server_error_are_retried(tmp_path):
     """network error と 5xx は retry する。"""
     # Arrange

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
+from typing import cast
+
+from pydantic import SecretStr
 
 from pipelines.config import PipelinesConfig
 from pipelines.domain.errors import WorkflowNotFoundError
@@ -79,30 +82,27 @@ class PipelineService:
         google_health_auth = None
         google_health_client = None
         if config.google_health_is_configured:
-            client_id = config.google_health_client_id
-            client_secret = config.google_health_client_secret
-            encryption_key = config.google_health_token_encryption_key
-            redirect_uri = config.google_health_redirect_uri
-            if (
-                client_id is not None
-                and client_secret is not None
-                and encryption_key is not None
-                and redirect_uri is not None
-            ):
-                token_cipher = TokenCipher(encryption_key.get_secret_value())
-                google_health_auth = GoogleHealthAuth(
-                    client_id=client_id.get_secret_value(),
-                    client_secret=client_secret.get_secret_value(),
-                    redirect_uri=redirect_uri,
-                    repository=google_health_repository,
-                    token_cipher=token_cipher,
-                )
-                google_health_client = GoogleHealthAPIClient(
-                    google_health_repository,
-                    token_cipher,
-                    client_id=client_id.get_secret_value(),
-                    client_secret=client_secret.get_secret_value(),
-                )
+            client_id = cast(SecretStr, config.google_health_client_id)
+            client_secret = cast(SecretStr, config.google_health_client_secret)
+            encryption_key = cast(
+                SecretStr,
+                config.google_health_token_encryption_key,
+            )
+            redirect_uri = cast(str, config.google_health_redirect_uri)
+            token_cipher = TokenCipher(encryption_key.get_secret_value())
+            google_health_auth = GoogleHealthAuth(
+                client_id=client_id.get_secret_value(),
+                client_secret=client_secret.get_secret_value(),
+                redirect_uri=redirect_uri,
+                repository=google_health_repository,
+                token_cipher=token_cipher,
+            )
+            google_health_client = GoogleHealthAPIClient(
+                google_health_repository,
+                token_cipher,
+                client_id=client_id.get_secret_value(),
+                client_secret=client_secret.get_secret_value(),
+            )
         service = cls(
             config=config,
             workflow_repository=workflow_repository,

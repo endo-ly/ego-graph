@@ -1,1 +1,1 @@
-"""Google Health API integration."""
+"""Google Health API 連携。"""

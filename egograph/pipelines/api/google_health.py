@@ -1,6 +1,7 @@
 """Google Health OAuth and connection API."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import ValidationError
 
 from pipelines.api.dependencies import get_service, verify_api_key
 from pipelines.service import PipelineService
@@ -11,6 +12,23 @@ router = APIRouter(
     prefix="/v1/sources/google-health",
     tags=["sources", "google_health"],
 )
+
+
+def _format_invalid_detail(exc: Exception) -> str:
+    if isinstance(exc, ValidationError):
+        details = []
+        for error in exc.errors():
+            field = ".".join(str(part) for part in error["loc"]) or "request"
+            details.append(f"invalid_{field}: {error['msg']}")
+        return "; ".join(details)
+
+    message = str(getattr(exc, "message", None) or exc).strip()
+    if message.startswith("invalid_") and ":" in message:
+        return message
+
+    field = str(getattr(exc, "field", None) or "request").strip()
+    reason = message.splitlines()[0] if message else exc.__class__.__name__
+    return f"invalid_{field}: {reason}"
 
 
 def _require_auth(service: PipelineService):
@@ -52,7 +70,10 @@ def complete_authorization(
     try:
         connection = auth.complete_authorization(code=code, state=state)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail=_format_invalid_detail(exc),
+        ) from exc
     return {
         "connection_id": connection.connection_id,
         "status": connection.status,
@@ -115,5 +136,8 @@ def smoke_test_connection(
             for data_type in SMOKE_TEST_DATA_TYPES
         }
     except GoogleHealthAPIError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=_format_invalid_detail(exc),
+        ) from exc
     return {"status": "ok", "data_types": results}

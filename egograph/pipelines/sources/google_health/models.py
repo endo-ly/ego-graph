@@ -1,4 +1,4 @@
-"""Google Health connection domain models."""
+"""Google Health 接続のドメインモデル。"""
 
 from dataclasses import dataclass
 from datetime import datetime

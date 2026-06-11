@@ -54,11 +54,14 @@ class PipelinesConfig(BaseSettings):
     @property
     def google_health_is_configured(self) -> bool:
         """Google Health OAuth 設定がすべて揃っているか返す。"""
+        secrets = (
+            self.google_health_client_id,
+            self.google_health_client_secret,
+            self.google_health_token_encryption_key,
+        )
         return all(
-            (
-                self.google_health_client_id,
-                self.google_health_client_secret,
-                self.google_health_redirect_uri,
-                self.google_health_token_encryption_key,
-            )
+            secret is not None and bool(secret.get_secret_value().strip())
+            for secret in secrets
+        ) and bool(
+            self.google_health_redirect_uri and self.google_health_redirect_uri.strip()
         )

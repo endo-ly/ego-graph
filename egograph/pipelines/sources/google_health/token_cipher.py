@@ -1,4 +1,4 @@
-"""OAuth token encryption."""
+"""OAuth token の暗号化。"""
 
 from cryptography.fernet import Fernet, InvalidToken
 

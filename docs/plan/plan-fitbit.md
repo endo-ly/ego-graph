@@ -96,7 +96,7 @@ Google Health APIとEgoGraphを接続するための認証・接続基盤を作�
 | `sources/google_health/auth.py`       | OAuth start / callback / token refresh |
 | `sources/google_health/client.py`     | Google Health API client               |
 | `sources/google_health/data_types.py` | Fitbit Air対象data type定義                |
-| `api/routes/google_health.py`         | OAuth / connection API                 |
+| `api/google_health.py`                | OAuth / connection API                 |
 | SQLite migration                      | connection / token / cursor用テーブル       |
 | config                                | Google Health用env                      |
 | minimal smoke test                    | OAuth接続と代表API呼び出し確認                    |

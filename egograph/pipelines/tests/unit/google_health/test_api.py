@@ -9,6 +9,7 @@ from pipelines.app import create_app
 from pipelines.config import PipelinesConfig
 from pipelines.infrastructure.logging_filters import OAuthCallbackAccessLogFilter
 from pipelines.sources.google_health.auth import DEFAULT_SCOPES
+from pipelines.sources.google_health.client import GoogleHealthRateLimitError
 from pydantic import SecretStr
 
 
@@ -28,6 +29,15 @@ def _config(tmp_path, *, configured=True):
                 "google_health_token_encryption_key": SecretStr(
                     Fernet.generate_key().decode()
                 ),
+            }
+        )
+    else:
+        values.update(
+            {
+                "google_health_client_id": None,
+                "google_health_client_secret": None,
+                "google_health_redirect_uri": None,
+                "google_health_token_encryption_key": None,
             }
         )
     return PipelinesConfig(**values)
@@ -88,6 +98,70 @@ def test_auth_start_rejects_incomplete_configuration(tmp_path):
     # Assert
     assert response.status_code == 503
     assert response.json()["detail"].startswith("invalid_google_health_config:")
+
+
+def test_auth_callback_returns_standardized_invalid_detail(tmp_path):
+    """OAuth callback の失敗は統一APIエラー形式で返す。"""
+    # Arrange
+    app = create_app(_config(tmp_path))
+
+    # Act
+    with TestClient(app) as client:
+        response = client.get(
+            "/v1/sources/google-health/auth/callback",
+            params={"code": "code", "state": "unknown-state"},
+        )
+
+    # Assert
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "invalid_oauth_state: state is expired or already used"
+    )
+
+
+def test_google_health_api_error_returns_standardized_invalid_detail(tmp_path):
+    """Google Health API failure は統一APIエラー形式で返す。"""
+    # Arrange
+    app = create_app(_config(tmp_path))
+    service = app.state.service
+    connection = type(
+        "Connection",
+        (),
+        {"connection_id": "google-health-primary"},
+    )()
+    service.google_health_repository.get_connection = lambda: connection
+    service.google_health_client.list_data_points = lambda *_: (_ for _ in ()).throw(
+        GoogleHealthRateLimitError("google_health_rate_limit_exceeded")
+    )
+
+    # Act
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/sources/google-health/connection/smoke-test",
+            headers={"X-API-Key": "api-key"},
+        )
+
+    # Assert
+    assert response.status_code == 502
+    assert response.json()["detail"] == (
+        "invalid_request: google_health_rate_limit_exceeded"
+    )
+
+
+def test_google_health_configuration_rejects_blank_values(tmp_path):
+    """空白のみのGoogle Health設定は未設定として扱う。"""
+    # Arrange
+    config = PipelinesConfig(
+        database_path=tmp_path / "state.sqlite3",
+        logs_root=tmp_path / "logs",
+        google_health_client_id=SecretStr(" "),
+        google_health_client_secret=SecretStr("\t"),
+        google_health_redirect_uri="  ",
+        google_health_token_encryption_key=SecretStr("\n"),
+    )
+
+    # Act & Assert
+    assert config.google_health_is_configured is False
 
 
 def test_oauth_callback_access_log_redacts_query_string():

@@ -1,4 +1,4 @@
-"""Google Health API v4 client."""
+"""Google Health API v4 クライアント。"""
 
 from __future__ import annotations
 
@@ -198,7 +198,8 @@ class GoogleHealthAPIClient:
     ) -> dict[str, Any]:
         last_error: GoogleHealthAPIError | None = None
         refreshed_after_unauthorized = False
-        for attempt in range(1, self._max_attempts + 1):
+        attempt = 1
+        while attempt <= self._max_attempts:
             try:
                 response = self._session.request(
                     method,
@@ -215,6 +216,7 @@ class GoogleHealthAPIClient:
                 if attempt == self._max_attempts:
                     raise last_error from exc
                 self._sleep(2 ** (attempt - 1))
+                attempt += 1
                 continue
 
             if response.status_code < 400:
@@ -250,6 +252,7 @@ class GoogleHealthAPIClient:
                     attempt,
                 )
                 self._sleep(2 ** (attempt - 1))
+            attempt += 1
         if last_error is None:  # pragma: no cover
             raise GoogleHealthAPIError("google_health_request_failed")
         raise last_error

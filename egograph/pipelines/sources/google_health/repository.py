@@ -1,4 +1,4 @@
-"""Google Health connection persistence."""
+"""Google Health 接続の永続化。"""
 
 from __future__ import annotations
 

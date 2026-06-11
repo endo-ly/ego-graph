@@ -1,4 +1,4 @@
-"""Google Health OAuth 2.0 flow."""
+"""Google Health OAuth 2.0 認証。"""
 
 from __future__ import annotations
 
