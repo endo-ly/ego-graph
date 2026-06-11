@@ -480,10 +480,92 @@ uv run python -m pipelines.main serve
 
 `Uvicorn running`と表示されたら、接続作業が完了するまでこのターミナルを開いたままにする。
 
-#### 10.3.2 OAuth callbackを公開する
+#### 10.3.2 OAuth callbackの受信方法を選択する
 
-`GOOGLE_HEALTH_REDIRECT_URI`へ到達できるよう、利用環境に応じてTailscale Serve、Cloudflare Tunnel、独自ドメイン、localhostのいずれかを設定する。
-公開先のcallback URIは、Google Cloudへ登録した`GOOGLE_HEALTH_REDIRECT_URI`と完全に一致させる。
+次の3方式から1つを選択する。
+どの方式でも、Google CloudのAuthorized redirect URIと`GOOGLE_HEALTH_REDIRECT_URI`を完全に一致させる。
+callbackはOAuth認証時だけ必要であり、認証完了後は公開やトンネルを停止してよい。
+
+##### A. Tailscale Serve
+
+tailnet内のHTTPS URLを一時的にPipelines Serviceへ転送する。
+
+Google Cloudと`.env`には次の形式で設定する。
+
+```text
+https://<tailscale-host>:<https-port>/v1/sources/google-health/auth/callback
+```
+
+サーバーで次を実行する。
+
+```bash
+tailscale serve --bg \
+  --https=<https-port> \
+  "http://${PIPELINES_HOST:-127.0.0.1}:${PIPELINES_PORT:-8001}"
+```
+
+認証完了後に停止する。
+
+```bash
+tailscale serve --https=<https-port> off
+```
+
+##### B. Tailscale以外の外部HTTPS
+
+Cloudflare Tunnelや独自ドメインのHTTPS reverse proxyを利用し、Pipelines Serviceへ転送する。
+例としてCloudflare Tunnelを使用する場合、固定ホスト名を割り当てたnamed tunnelを作成し、次のように転送する。
+
+```yaml
+# ~/.cloudflared/config.yml
+tunnel: <tunnel-id>
+credentials-file: /path/to/<tunnel-id>.json
+
+ingress:
+  - hostname: <callback-host>
+    path: ^/v1/sources/google-health/auth/callback$
+    service: http://127.0.0.1:8001
+  - service: http_status:404
+```
+
+Google Cloudと`.env`には次を設定する。
+
+```text
+https://<callback-host>/v1/sources/google-health/auth/callback
+```
+
+サーバーでtunnelを起動する。
+
+```bash
+cloudflared tunnel run <tunnel-name>
+```
+
+認証完了後は`cloudflared`を停止する。
+独自ドメインのreverse proxyを使う場合も、公開するcallback URIだけをPipelines Serviceへ転送する。
+
+##### C. 手元PCからSSHローカルフォワード
+
+外部HTTPSを公開せず、手元PCのloopback URLでcallbackを受け、SSH経由でサーバーのPipelines Serviceへ転送する。
+
+Google Cloudとサーバーの`.env`には次を設定する。
+
+```text
+http://127.0.0.1:18001/v1/sources/google-health/auth/callback
+```
+
+設定変更後にPipelines Serviceを再起動する。
+手元PCで次を実行し、認証完了まで開いたままにする。
+
+```bash
+ssh -N \
+  -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:18001:127.0.0.1:8001 \
+  <user>@<server>
+```
+
+サーバー側のPipelines Serviceが`8001`以外で待ち受ける場合は、コマンド末尾のポートを合わせる。
+認可URLは10.3.3の手順でサーバー上から取得し、手元PCのブラウザで開く。
+callbackは手元PCの`127.0.0.1:18001`からSSHトンネルを通ってサーバーへ届く。
+認証完了後はSSHコマンドを`Ctrl+C`で停止する。
 
 #### 10.3.3 認可URLを取得する
 
