@@ -1,6 +1,6 @@
 """Google Health API client のテスト。"""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 import requests
@@ -83,6 +83,79 @@ def test_list_data_points_uses_bearer_token(tmp_path):
     assert session.calls[0][2]["headers"]["Authorization"] == (
         "Bearer old-access-token"
     )
+
+
+def test_reconcile_data_points_sends_filter_and_page_token(tmp_path):
+    """reconcileは期間filterとpagination tokenを送信する。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path)
+    session = FakeSession([FakeResponse({"dataPoints": []})])
+    client = GoogleHealthAPIClient(repository, cipher, session=session)
+
+    # Act
+    client.reconcile_data_points(
+        connection.connection_id,
+        "steps",
+        filter_expression='steps.interval.start_time >= "2026-06-01T00:00:00Z"',
+        page_size=10000,
+        page_token="next-token",
+    )
+
+    # Assert
+    params = session.calls[0][2]["params"]
+    assert params["pageToken"] == "next-token"
+    assert params["pageSize"] == 10000
+    assert params["dataSourceFamily"].endswith("/google-wearables")
+
+
+def test_daily_rollup_sends_closed_open_civil_range(tmp_path):
+    """daily rollupはcivil dateのclosed-open範囲を送信する。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path)
+    session = FakeSession([FakeResponse({"rollupDataPoints": []})])
+    client = GoogleHealthAPIClient(repository, cipher, session=session)
+
+    # Act
+    client.daily_rollup(
+        connection.connection_id,
+        "steps",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 3),
+    )
+
+    # Assert
+    body = session.calls[0][2]["json"]
+    assert body["range"]["start"]["date"] == {
+        "year": 2026,
+        "month": 6,
+        "day": 1,
+    }
+    assert body["range"]["end"]["date"]["day"] == 3
+
+
+def test_rollup_sends_physical_range_and_window(tmp_path):
+    """physical rollupはRFC3339範囲とwindow sizeを送信する。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path)
+    session = FakeSession([FakeResponse({"rollupDataPoints": []})])
+    client = GoogleHealthAPIClient(repository, cipher, session=session)
+
+    # Act
+    client.rollup(
+        connection.connection_id,
+        "calories-in-heart-rate-zone",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 3),
+        window_size_seconds=300,
+    )
+
+    # Assert
+    body = session.calls[0][2]["json"]
+    assert body["range"] == {
+        "startTime": "2026-06-01T00:00:00Z",
+        "endTime": "2026-06-03T00:00:00Z",
+    }
+    assert body["windowSize"] == "300s"
 
 
 def test_expired_access_token_is_refreshed_before_request(tmp_path):

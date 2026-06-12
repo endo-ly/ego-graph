@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import requests
@@ -83,6 +83,96 @@ class GoogleHealthAPIClient:
             connection_id=connection_id,
             token=token,
             params={"pageSize": page_size},
+        )
+
+    def reconcile_data_points(
+        self,
+        connection_id: str,
+        data_type: str,
+        *,
+        filter_expression: str,
+        page_size: int,
+        page_token: str | None = None,
+    ) -> dict[str, Any]:
+        """指定期間のreconciled data pointを取得する。"""
+        token = self._get_valid_token(connection_id)
+        url = f"{API_BASE_URL}/users/me/dataTypes/{data_type}/dataPoints:reconcile"
+        params: dict[str, Any] = {
+            "filter": filter_expression,
+            "pageSize": page_size,
+            "dataSourceFamily": "users/me/dataSourceFamilies/google-wearables",
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        return self._request_json(
+            "GET",
+            url,
+            connection_id=connection_id,
+            token=token,
+            params=params,
+        )
+
+    def daily_rollup(
+        self,
+        connection_id: str,
+        data_type: str,
+        *,
+        date_from: date,
+        date_to: date,
+        page_token: str | None = None,
+    ) -> dict[str, Any]:
+        """指定civil date範囲の日次rollupを取得する。"""
+        token = self._get_valid_token(connection_id)
+        url = f"{API_BASE_URL}/users/me/dataTypes/{data_type}/dataPoints:dailyRollUp"
+        body: dict[str, Any] = {
+            "range": {
+                "start": _civil_midnight(date_from),
+                "end": _civil_midnight(date_to),
+            },
+            "windowSizeDays": 1,
+            "pageSize": 10_000,
+            "dataSourceFamily": "users/me/dataSourceFamilies/google-wearables",
+        }
+        if page_token:
+            body["pageToken"] = page_token
+        return self._request_json(
+            "POST",
+            url,
+            connection_id=connection_id,
+            token=token,
+            json=body,
+        )
+
+    def rollup(
+        self,
+        connection_id: str,
+        data_type: str,
+        *,
+        date_from: date,
+        date_to: date,
+        window_size_seconds: int,
+        page_token: str | None = None,
+    ) -> dict[str, Any]:
+        """指定物理時間範囲を固定windowでrollupする。"""
+        token = self._get_valid_token(connection_id)
+        url = f"{API_BASE_URL}/users/me/dataTypes/{data_type}/dataPoints:rollUp"
+        body: dict[str, Any] = {
+            "range": {
+                "startTime": _rfc3339_midnight(date_from),
+                "endTime": _rfc3339_midnight(date_to),
+            },
+            "windowSize": f"{window_size_seconds}s",
+            "pageSize": 10_000,
+            "dataSourceFamily": "users/me/dataSourceFamilies/google-wearables",
+        }
+        if page_token:
+            body["pageToken"] = page_token
+        return self._request_json(
+            "POST",
+            url,
+            connection_id=connection_id,
+            token=token,
+            json=body,
         )
 
     def _get_valid_token(self, connection_id: str) -> OAuthToken:
@@ -195,6 +285,7 @@ class GoogleHealthAPIClient:
         connection_id: str,
         token: OAuthToken,
         params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         last_error: GoogleHealthAPIError | None = None
         refreshed_after_unauthorized = False
@@ -209,6 +300,7 @@ class GoogleHealthAPIClient:
                         "Accept": "application/json",
                     },
                     params=params,
+                    json=json,
                     timeout=30,
                 )
             except requests.RequestException as exc:
@@ -256,3 +348,23 @@ class GoogleHealthAPIClient:
         if last_error is None:  # pragma: no cover
             raise GoogleHealthAPIError("google_health_request_failed")
         raise last_error
+
+
+def _civil_midnight(value: date) -> dict[str, Any]:
+    """Google Health CivilDateTimeの日付境界を組み立てる。"""
+    return {
+        "date": {
+            "year": value.year,
+            "month": value.month,
+            "day": value.day,
+        },
+        "time": {},
+    }
+
+
+def _rfc3339_midnight(value: date) -> str:
+    return (
+        datetime.combine(value, datetime.min.time(), tzinfo=UTC)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )

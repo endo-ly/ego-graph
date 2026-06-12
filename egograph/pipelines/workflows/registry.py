@@ -142,6 +142,29 @@ def get_workflows() -> dict[str, WorkflowDefinition]:
             misfire_policy=MisfirePolicy.SKIP_MISFIRE,
         ),
         WorkflowDefinition(
+            workflow_id="google_health_ingest_workflow",
+            name="Google Health ingest workflow",
+            description="Collect Google Health data and store Raw JSON and Parquet",
+            steps=(
+                _inprocess_step(
+                    "run_google_health_ingest",
+                    "Run Google Health ingest",
+                    "pipelines.sources.google_health.workflow:run_google_health_ingest",
+                    timeout_seconds=7200,
+                ),
+                _inprocess_step(
+                    "run_google_health_compact",
+                    "Run Google Health compact",
+                    "pipelines.sources.google_health.workflow:run_google_health_compact",
+                    timeout_seconds=1800,
+                ),
+            ),
+            triggers=(),
+            concurrency_key="google_health_ingest_workflow",
+            timeout_seconds=9000,
+            misfire_policy=MisfirePolicy.SKIP_MISFIRE,
+        ),
+        WorkflowDefinition(
             workflow_id="local_mirror_sync_workflow",
             name="Local compacted parquet mirror sync",
             description="Sync compacted parquet files from R2 to local mirror",

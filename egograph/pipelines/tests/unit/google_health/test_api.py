@@ -1,6 +1,7 @@
 """Google Health connection API のテスト。"""
 
 import logging
+from datetime import date, timedelta
 from urllib.parse import parse_qs, urlparse
 
 from cryptography.fernet import Fernet
@@ -10,6 +11,7 @@ from pipelines.config import PipelinesConfig
 from pipelines.infrastructure.logging_filters import OAuthCallbackAccessLogFilter
 from pipelines.sources.google_health.auth import DEFAULT_SCOPES
 from pipelines.sources.google_health.client import GoogleHealthRateLimitError
+from pipelines.sources.google_health.models import ConnectionStatus
 from pydantic import SecretStr
 
 
@@ -190,3 +192,129 @@ def test_oauth_callback_access_log_redacts_query_string():
     assert "secret" not in record.getMessage()
     assert "state=state" not in record.getMessage()
     assert "[REDACTED]" in record.getMessage()
+
+
+def test_create_range_ingest_run_preserves_request_context(tmp_path):
+    """range run作成APIはclosed-open期間をrunへ保存する。"""
+    # Arrange
+    app = create_app(_config(tmp_path))
+    service = app.state.service
+    service.google_health_repository.get_connection = lambda: type(
+        "Connection",
+        (),
+        {"status": ConnectionStatus.ACTIVE},
+    )()
+
+    # Act
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/sources/google-health/runs",
+            headers={"X-API-Key": "api-key"},
+            json={
+                "mode": "range",
+                "from": "2026-06-01",
+                "to": "2026-06-03",
+            },
+        )
+
+    # Assert
+    assert response.status_code == 201
+    run = service.run_repository.get_run(response.json()["run_id"])
+    assert run.workflow_id == "google_health_ingest_workflow"
+    assert run.result_summary == {
+        "request": {
+            "mode": "range",
+            "from": "2026-06-01",
+            "to": "2026-06-03",
+            "data_types": [],
+        }
+    }
+
+
+def test_create_initial_backfill_resolves_ninety_day_range(tmp_path):
+    """initial_backfillは実行時点までの90日をrunへ保存する。"""
+    # Arrange
+    app = create_app(_config(tmp_path))
+    service = app.state.service
+    service.google_health_repository.get_connection = lambda: type(
+        "Connection",
+        (),
+        {"status": ConnectionStatus.ACTIVE},
+    )()
+
+    # Act
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/sources/google-health/runs",
+            headers={"X-API-Key": "api-key"},
+            json={"mode": "initial_backfill"},
+        )
+
+    # Assert
+    assert response.status_code == 201
+    run = service.run_repository.get_run(response.json()["run_id"])
+    request = run.result_summary["request"]
+    assert request["mode"] == "initial_backfill"
+    assert date.fromisoformat(request["to"]) - date.fromisoformat(
+        request["from"]
+    ) == timedelta(days=90)
+    assert request["data_types"] == []
+
+
+def test_create_data_type_range_preserves_selected_types(tmp_path):
+    """data_type_rangeは指定data typeと期間をrunへ保存する。"""
+    # Arrange
+    app = create_app(_config(tmp_path))
+    service = app.state.service
+    service.google_health_repository.get_connection = lambda: type(
+        "Connection",
+        (),
+        {"status": ConnectionStatus.ACTIVE},
+    )()
+
+    # Act
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/sources/google-health/runs",
+            headers={"X-API-Key": "api-key"},
+            json={
+                "mode": "data_type_range",
+                "from": "2026-06-01",
+                "to": "2026-06-03",
+                "data_types": ["steps", "sleep"],
+            },
+        )
+
+    # Assert
+    assert response.status_code == 201
+    run = service.run_repository.get_run(response.json()["run_id"])
+    assert run.result_summary == {
+        "request": {
+            "mode": "data_type_range",
+            "from": "2026-06-01",
+            "to": "2026-06-03",
+            "data_types": ["steps", "sleep"],
+        }
+    }
+
+
+def test_create_data_type_range_requires_data_types(tmp_path):
+    """data_type_rangeは対象data typeなしでは受理しない。"""
+    # Arrange
+    app = create_app(_config(tmp_path))
+
+    # Act
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/sources/google-health/runs",
+            headers={"X-API-Key": "api-key"},
+            json={
+                "mode": "data_type_range",
+                "from": "2026-06-01",
+                "to": "2026-06-03",
+            },
+        )
+
+    # Assert
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith("invalid_data_types:")

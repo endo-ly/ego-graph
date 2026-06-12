@@ -184,6 +184,21 @@ class PipelineService:
             requested_by=requested_by,
         )
 
+    def trigger_google_health_ingest(
+        self,
+        request: dict,
+        *,
+        requested_by: str = "api",
+    ) -> WorkflowRun:
+        """Google Health取り込みrunを入力付きでqueueへ積む。"""
+        return self.run_repository.enqueue_run(
+            workflow_id="google_health_ingest_workflow",
+            trigger_type=TriggerType.MANUAL,
+            queued_reason=QueuedReason.MANUAL_REQUEST,
+            requested_by=requested_by,
+            result_summary={"request": request},
+        )
+
     def set_workflow_enabled(self, workflow_id: str, enabled: bool) -> dict:
         """workflow の有効/無効フラグを更新し scheduler を再同期する。"""
         workflow = self.workflow_repository.set_workflow_enabled(workflow_id, enabled)
