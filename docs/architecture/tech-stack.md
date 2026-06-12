@@ -4,16 +4,6 @@
 
 ---
 
-## モノレポ構成
-
-| コンポーネント | 言語 | パッケージマネージャー |
-|---|---|---|
-| `egograph/pipelines/` | Python 3.12+ | uv (workspace) |
-| `egograph/backend/` | Python 3.12+ | uv (workspace) |
-| `frontend/` | Kotlin 2.2.21 | Gradle |
-
----
-
 ## Pipelines Service
 
 | カテゴリ | 技術 |
@@ -68,25 +58,3 @@
 | Object Storage | Cloudflare R2 (S3互換) |
 | CI/CD | GitHub Actions |
 | コンテナ | Dockerfile (Backend/Pipelines) |
-
----
-
-## CI/CD
-
-| ワークフロー | トリガー | 内容 |
-|---|---|---|
-| `ci-backend.yml` | `egograph/backend/**` | Backend テスト・Lint |
-| `ci-pipelines.yml` | `egograph/pipelines/**` | Pipelines テスト・Lint |
-| `ci-frontend.yml` | `frontend/**` | Frontend テスト・Lint |
-| `ci-browser-extension.yml` | `browser-extension/**` | Extension ビルド |
-| `deploy-backend.yml` | `main` push | Backend/Pipelines デプロイ |
-| `release-frontend-kmp.yml` | タグ | Frontend リリース |
-
-## テスト戦略
-
-| レイヤー | Python | Frontend |
-|---|---|---|
-| Unit | pytest | kotlin-test |
-| Integration | pytest (fixtures) | Turbine + MockK |
-| E2E | pytest (live, 要認証) | Maestro |
-| Lint/Format | Ruff | Ktlint + Detekt |
