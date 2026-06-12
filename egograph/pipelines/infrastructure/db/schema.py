@@ -86,6 +86,46 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
             heartbeat_at TEXT NOT NULL,
             lease_expires_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS google_health_connections (
+            connection_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL CHECK (
+                status IN ('active', 'expired', 'revoked', 'error')
+            ),
+            scopes_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_error_message TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS google_health_oauth_tokens (
+            connection_id TEXT PRIMARY KEY,
+            access_token_encrypted BLOB NOT NULL,
+            refresh_token_encrypted BLOB NOT NULL,
+            expires_at TEXT NOT NULL,
+            token_type TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (connection_id)
+              REFERENCES google_health_connections(connection_id)
+              ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS google_health_sync_cursors (
+            connection_id TEXT NOT NULL,
+            data_type TEXT NOT NULL,
+            cursor TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (connection_id, data_type),
+            FOREIGN KEY (connection_id)
+              REFERENCES google_health_connections(connection_id)
+              ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS google_health_oauth_states (
+            state_hash TEXT PRIMARY KEY,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         """
     )
     conn.commit()

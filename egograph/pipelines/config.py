@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from egograph_paths import PIPELINES_LOGS_DIR, PIPELINES_STATE_DB_PATH
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 USE_ENV_FILE = os.getenv("USE_ENV_FILE", "true").lower() in ("true", "1", "yes")
@@ -19,6 +19,7 @@ class PipelinesConfig(BaseSettings):
         env_file_encoding="utf-8",
         env_prefix="PIPELINES_",
         extra="ignore",
+        populate_by_name=True,
     )
 
     database_path: Path = PIPELINES_STATE_DB_PATH
@@ -33,3 +34,34 @@ class PipelinesConfig(BaseSettings):
     lock_heartbeat_seconds: int = 30
     webhook_url: str | None = None
     webhook_type: str = "generic"
+    google_health_client_id: SecretStr | None = Field(
+        None,
+        validation_alias="GOOGLE_HEALTH_CLIENT_ID",
+    )
+    google_health_client_secret: SecretStr | None = Field(
+        None,
+        validation_alias="GOOGLE_HEALTH_CLIENT_SECRET",
+    )
+    google_health_redirect_uri: str | None = Field(
+        None,
+        validation_alias="GOOGLE_HEALTH_REDIRECT_URI",
+    )
+    google_health_token_encryption_key: SecretStr | None = Field(
+        None,
+        validation_alias="GOOGLE_HEALTH_TOKEN_ENCRYPTION_KEY",
+    )
+
+    @property
+    def google_health_is_configured(self) -> bool:
+        """Google Health OAuth 設定がすべて揃っているか返す。"""
+        secrets = (
+            self.google_health_client_id,
+            self.google_health_client_secret,
+            self.google_health_token_encryption_key,
+        )
+        return all(
+            secret is not None and bool(secret.get_secret_value().strip())
+            for secret in secrets
+        ) and bool(
+            self.google_health_redirect_uri and self.google_health_redirect_uri.strip()
+        )

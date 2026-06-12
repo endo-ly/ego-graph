@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
+from typing import cast
+
+from pydantic import SecretStr
 
 from pipelines.config import PipelinesConfig
 from pipelines.domain.errors import WorkflowNotFoundError
@@ -25,6 +28,10 @@ from pipelines.infrastructure.execution.subprocess_executor import (
 )
 from pipelines.infrastructure.notification.service import NotificationService
 from pipelines.infrastructure.scheduling.apscheduler_app import ScheduleTriggerApp
+from pipelines.sources.google_health.auth import GoogleHealthAuth
+from pipelines.sources.google_health.client import GoogleHealthAPIClient
+from pipelines.sources.google_health.repository import GoogleHealthRepository
+from pipelines.sources.google_health.token_cipher import TokenCipher
 from pipelines.workflows.registry import get_workflows
 
 
@@ -41,6 +48,9 @@ class PipelineService:
     scheduler: ScheduleTriggerApp
     dispatcher: RunDispatcher
     log_store: LocalLogStore
+    google_health_repository: GoogleHealthRepository
+    google_health_auth: GoogleHealthAuth | None
+    google_health_client: GoogleHealthAPIClient | None
 
     @classmethod
     def create(cls, config: PipelinesConfig | None = None) -> "PipelineService":
@@ -68,6 +78,31 @@ class PipelineService:
             webhook_url=config.webhook_url,
             webhook_type=config.webhook_type,
         )
+        google_health_repository = GoogleHealthRepository(conn, mutex=db_mutex)
+        google_health_auth = None
+        google_health_client = None
+        if config.google_health_is_configured:
+            client_id = cast(SecretStr, config.google_health_client_id)
+            client_secret = cast(SecretStr, config.google_health_client_secret)
+            encryption_key = cast(
+                SecretStr,
+                config.google_health_token_encryption_key,
+            )
+            redirect_uri = cast(str, config.google_health_redirect_uri)
+            token_cipher = TokenCipher(encryption_key.get_secret_value())
+            google_health_auth = GoogleHealthAuth(
+                client_id=client_id.get_secret_value(),
+                client_secret=client_secret.get_secret_value(),
+                redirect_uri=redirect_uri,
+                repository=google_health_repository,
+                token_cipher=token_cipher,
+            )
+            google_health_client = GoogleHealthAPIClient(
+                google_health_repository,
+                token_cipher,
+                client_id=client_id.get_secret_value(),
+                client_secret=client_secret.get_secret_value(),
+            )
         service = cls(
             config=config,
             workflow_repository=workflow_repository,
@@ -95,6 +130,9 @@ class PipelineService:
                 max_concurrent_runs=config.max_concurrent_runs,
             ),
             log_store=log_store,
+            google_health_repository=google_health_repository,
+            google_health_auth=google_health_auth,
+            google_health_client=google_health_client,
         )
         service.workflow_repository.register_workflows(workflows)
         return service
