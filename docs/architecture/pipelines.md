@@ -316,6 +316,7 @@ class WorkflowDefinition:
 | `spotify_ingest_workflow` | 6回/日 (0,4,8,12,16,22 JST) | ingest → compact |
 | `github_ingest_workflow` | 1回/日 (00:00 JST) | ingest → compact |
 | `google_activity_ingest_workflow` | 1回/日 (23:00 JST) | ingest |
+| `google_health_ingest_workflow` | API手動実行 | Raw JSON / events保存 → compacted範囲置換 |
 | `local_mirror_sync_workflow` | 6時間ごと | sync |
 | `browser_history_compact_workflow` | イベント駆動 | compact |
 | `browser_history_compact_maintenance_workflow` | 6時間ごと | compact maintenance |
@@ -485,6 +486,7 @@ uv run python -m pipelines.main serve
 | GET | `/v1/sources/google-health/connection` | Google Health 接続状態 |
 | DELETE | `/v1/sources/google-health/connection` | Google Health 接続削除 |
 | POST | `/v1/sources/google-health/connection/smoke-test` | Google Health 疎通確認 |
+| POST | `/v1/sources/google-health/runs` | Google Health backfill・期間指定run作成 |
 
 ---
 

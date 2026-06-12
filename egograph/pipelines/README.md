@@ -126,6 +126,7 @@ Pipelines Service はポート `8001`（デフォルト）で HTTP API を提供
 | `POST` | `/v1/workflows/{workflow_id}/runs` | ワークフロー手動実行 |
 | `POST` | `/v1/workflows/{workflow_id}/enable` | ワークフロー有効化 |
 | `POST` | `/v1/workflows/{workflow_id}/disable` | ワークフロー無効化 |
+| `POST` | `/v1/sources/google-health/runs` | Google Health取り込みrun作成 |
 | `GET` | `/v1/runs` | 全 run 一覧 |
 | `GET` | `/v1/runs/{run_id}` | run 詳細 |
 | `GET` | `/v1/runs/{run_id}/steps/{step_id}/log` | step ログ全文 |
