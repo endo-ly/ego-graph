@@ -3,6 +3,7 @@
 from datetime import UTC, date, datetime
 from io import BytesIO
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from botocore.exceptions import ClientError
@@ -27,7 +28,7 @@ class MemoryS3:
         self.objects.pop(Key, None)
 
 
-def _writer(memory_s3):
+def _writer(memory_s3, *, timezone=None):
     with patch(
         "pipelines.sources.google_health.writer.boto3.client",
         return_value=memory_s3,
@@ -37,6 +38,7 @@ def _writer(memory_s3):
             access_key_id="key",
             secret_access_key="secret",
             bucket_name="bucket",
+            timezone=timezone,
         )
 
 
@@ -197,6 +199,44 @@ def test_compact_range_removes_no_data_range_without_deleting_events():
     # Assert
     assert compacted_key not in memory_s3.objects
     assert unrelated_event_key in memory_s3.objects
+
+
+def test_compact_range_reads_utc_month_crossed_by_local_date():
+    """JST日付が跨ぐ前月UTC partitionもcompact対象にする。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3, timezone=ZoneInfo("Asia/Tokyo"))
+    event_key = "events/google_health/samples/year=2026/month=05/run-1.parquet"
+    compacted_key = (
+        "compacted/events/google_health/samples/year=2026/month=05/data.parquet"
+    )
+    _put_parquet(
+        memory_s3,
+        event_key,
+        [
+            {
+                "connection_id": "google-health-primary",
+                "data_type": "heart-rate",
+                "measured_at_utc": datetime(2026, 5, 31, 15, 30, tzinfo=UTC),
+                "value": 75.0,
+            }
+        ],
+    )
+
+    # Act
+    writer.compact_range(
+        connection_id="google-health-primary",
+        selected_data_types=("heart-rate",),
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+        run_id="run-1",
+    )
+
+    # Assert
+    assert compacted_key in memory_s3.objects
+    rows = pd.read_parquet(BytesIO(memory_s3.objects[compacted_key]))
+    assert rows.iloc[0]["value"] == 75.0
+    assert event_key in memory_s3.objects
 
 
 def test_sleep_uses_end_date_for_range_and_start_date_for_partition():

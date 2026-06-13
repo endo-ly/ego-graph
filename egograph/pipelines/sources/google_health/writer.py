@@ -6,6 +6,7 @@ import json
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import boto3
 import pandas as pd
@@ -14,6 +15,10 @@ from botocore.exceptions import ClientError
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
     dataframe_to_parquet_bytes,
+)
+from pipelines.sources.google_health.timezone import (
+    local_date,
+    local_date_start_utc,
 )
 
 DATASET_DATE_COLUMNS = {
@@ -37,11 +42,13 @@ class GoogleHealthWriter:
         raw_path: str = "raw/",
         events_path: str = "events/",
         compacted_path: str = COMPACTED_ROOT,
+        timezone: ZoneInfo | None = None,
     ) -> None:
         self.bucket_name = bucket_name
         self.raw_path = _normalize_path(raw_path)
         self.events_path = _normalize_path(events_path)
         self.compacted_path = _normalize_path(compacted_path)
+        self.timezone = timezone or ZoneInfo("UTC")
         self.s3 = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
@@ -118,10 +125,20 @@ class GoogleHealthWriter:
         """既存compactedの対象範囲を今回runのeventsで置換する。"""
         compacted_keys: list[str] = []
         for dataset, date_column in DATASET_DATE_COLUMNS.items():
-            months = set(_iter_months(date_from, date_to))
+            months = set(
+                _target_months(
+                    dataset,
+                    date_from=date_from,
+                    date_to=date_to,
+                    timezone=self.timezone,
+                )
+            )
             if dataset == "sessions" and "sleep" in selected_data_types:
-                previous_day = date_from - timedelta(days=1)
-                months.add((previous_day.year, previous_day.month))
+                sleep_start = local_date_start_utc(
+                    date_from - timedelta(days=1),
+                    self.timezone,
+                )
+                months.add((sleep_start.year, sleep_start.month))
             for year, month in sorted(months):
                 compacted_key = self._compacted_key(dataset, year, month)
                 existing = self._load_parquet(compacted_key)
@@ -132,6 +149,7 @@ class GoogleHealthWriter:
                     date_column=date_column,
                     date_from=date_from,
                     date_to=date_to,
+                    timezone=self.timezone,
                 )
                 event_key = self._event_key(dataset, year, month, run_id)
                 current = self._load_parquet(event_key)
@@ -193,6 +211,7 @@ def _retain_outside_target(
     date_column: str,
     date_from: date,
     date_to: date,
+    timezone: ZoneInfo,
 ) -> list[dict[str, Any]]:
     retained = []
     selected = set(selected_data_types)
@@ -204,7 +223,7 @@ def _retain_outside_target(
             and "ended_at_utc" in row
             else date_column
         )
-        row_date = _as_date(row[target_column])
+        row_date = _target_date(row[target_column], date_column, timezone)
         is_target = (
             row.get("connection_id") == connection_id
             and row.get("data_type") in selected
@@ -228,9 +247,35 @@ def _as_date(value: Any) -> date:
     return pd.Timestamp(value).date()
 
 
-def _iter_months(date_from: date, date_to: date):
-    current = date(date_from.year, date_from.month, 1)
-    while current < date_to:
+def _target_date(
+    value: Any,
+    date_column: str,
+    timezone: ZoneInfo,
+) -> date:
+    if date_column == "date":
+        return _as_date(value)
+    timestamp = pd.Timestamp(value)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.tz_localize("UTC")
+    return local_date(timestamp.to_pydatetime(), timezone)
+
+
+def _target_months(
+    dataset: str,
+    *,
+    date_from: date,
+    date_to: date,
+    timezone: ZoneInfo,
+):
+    if dataset == "daily_metrics":
+        current = date(date_from.year, date_from.month, 1)
+        limit = date_to
+    else:
+        start_utc = local_date_start_utc(date_from, timezone)
+        end_utc = local_date_start_utc(date_to, timezone)
+        current = date(start_utc.year, start_utc.month, 1)
+        limit = end_utc.date() + timedelta(days=1)
+    while current < limit:
         yield current.year, current.month
         current = (
             date(current.year + 1, 1, 1)

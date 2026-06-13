@@ -1,6 +1,7 @@
 """Google Health API client のテスト。"""
 
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 import requests
@@ -156,6 +157,34 @@ def test_rollup_sends_physical_range_and_window(tmp_path):
         "endTime": "2026-06-03T00:00:00Z",
     }
     assert body["windowSize"] == "300s"
+
+
+def test_rollup_uses_configured_timezone_boundary(tmp_path):
+    """physical rollupは設定TZのローカル日付境界をUTCで送信する。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path)
+    session = FakeSession([FakeResponse({"rollupDataPoints": []})])
+    client = GoogleHealthAPIClient(
+        repository,
+        cipher,
+        session=session,
+        timezone=ZoneInfo("Asia/Tokyo"),
+    )
+
+    # Act
+    client.rollup(
+        connection.connection_id,
+        "heart-rate",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+        window_size_seconds=300,
+    )
+
+    # Assert
+    assert session.calls[0][2]["json"]["range"] == {
+        "startTime": "2026-05-31T15:00:00Z",
+        "endTime": "2026-06-01T15:00:00Z",
+    }
 
 
 def test_expired_access_token_is_refreshed_before_request(tmp_path):

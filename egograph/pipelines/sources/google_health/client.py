@@ -7,12 +7,14 @@ import time
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 from requests import Response
 
 from pipelines.sources.google_health.models import ConnectionStatus, OAuthToken
 from pipelines.sources.google_health.repository import GoogleHealthRepository
+from pipelines.sources.google_health.timezone import local_date_start_rfc3339
 from pipelines.sources.google_health.token_cipher import TokenCipher
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,7 @@ class GoogleHealthAPIClient:
         session: requests.Session | None = None,
         sleep: Callable[[float], None] = time.sleep,
         max_attempts: int = 3,
+        timezone: ZoneInfo | None = None,
     ) -> None:
         self._repository = repository
         self._token_cipher = token_cipher
@@ -66,6 +69,7 @@ class GoogleHealthAPIClient:
         self._session = session or requests.Session()
         self._sleep = sleep
         self._max_attempts = max_attempts
+        self._timezone = timezone or ZoneInfo("UTC")
 
     def list_data_points(
         self,
@@ -158,8 +162,8 @@ class GoogleHealthAPIClient:
         url = f"{API_BASE_URL}/users/me/dataTypes/{data_type}/dataPoints:rollUp"
         body: dict[str, Any] = {
             "range": {
-                "startTime": _rfc3339_midnight(date_from),
-                "endTime": _rfc3339_midnight(date_to),
+                "startTime": local_date_start_rfc3339(date_from, self._timezone),
+                "endTime": local_date_start_rfc3339(date_to, self._timezone),
             },
             "windowSize": f"{window_size_seconds}s",
             "pageSize": 10_000,
@@ -360,11 +364,3 @@ def _civil_midnight(value: date) -> dict[str, Any]:
         },
         "time": {},
     }
-
-
-def _rfc3339_midnight(value: date) -> str:
-    return (
-        datetime.combine(value, datetime.min.time(), tzinfo=UTC)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )

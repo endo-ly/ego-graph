@@ -1,11 +1,16 @@
 """Google Health connection API のテスト。"""
 
 import logging
-from datetime import date, timedelta
+import os
+from datetime import date, datetime, timedelta
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
+from zoneinfo import ZoneInfo
 
+import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from pipelines.api.google_health import GoogleHealthRunRequest
 from pipelines.app import create_app
 from pipelines.config import PipelinesConfig
 from pipelines.infrastructure.logging_filters import OAuthCallbackAccessLogFilter
@@ -166,6 +171,35 @@ def test_google_health_configuration_rejects_blank_values(tmp_path):
     assert config.google_health_is_configured is False
 
 
+def test_pipelines_config_reads_shared_timezone(tmp_path):
+    """PipelinesもBackendと同じTIMEZONEを読み込む。"""
+    # Arrange
+    with patch.dict(
+        os.environ,
+        {
+            "TIMEZONE": "Asia/Tokyo",
+            "PIPELINES_DATABASE_PATH": str(tmp_path / "state.sqlite3"),
+        },
+        clear=True,
+    ):
+        # Act
+        config = PipelinesConfig(_env_file=None)
+
+    # Assert
+    assert config.timezone == "Asia/Tokyo"
+
+
+def test_pipelines_config_rejects_invalid_timezone(tmp_path):
+    """存在しないタイムゾーン名を起動設定として受理しない。"""
+    # Arrange / Act / Assert
+    with patch.dict(os.environ, {"TIMEZONE": "Mars/Olympus"}, clear=True):
+        with pytest.raises(ValueError, match="invalid timezone"):
+            PipelinesConfig(
+                database_path=tmp_path / "state.sqlite3",
+                _env_file=None,
+            )
+
+
 def test_oauth_callback_access_log_redacts_query_string():
     """OAuth callback の code/state は access log で伏せる。"""
     # Arrange
@@ -259,6 +293,23 @@ def test_create_initial_backfill_resolves_ninety_day_range(tmp_path):
         request["from"]
     ) == timedelta(days=90)
     assert request["data_types"] == []
+
+
+def test_initial_backfill_uses_configured_local_date():
+    """initial_backfillの今日を設定タイムゾーンで判定する。"""
+    # Arrange
+    request = GoogleHealthRunRequest(mode="initial_backfill")
+    now = datetime(2026, 6, 1, 15, 30, tzinfo=ZoneInfo("UTC"))
+
+    # Act
+    result = request.to_run_input(
+        timezone=ZoneInfo("Asia/Tokyo"),
+        now=now,
+    )
+
+    # Assert
+    assert result["to"] == "2026-06-03"
+    assert result["from"] == "2026-03-05"
 
 
 def test_create_data_type_range_preserves_selected_types(tmp_path):

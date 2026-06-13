@@ -1,6 +1,7 @@
 """Google Health OAuth、connection、ingest API。"""
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, ValidationError, model_validator
@@ -55,10 +56,16 @@ class GoogleHealthRunRequest(BaseModel):
             raise ValueError("invalid_data_types: range targets all data types")
         return self
 
-    def to_run_input(self) -> dict:
+    def to_run_input(
+        self,
+        *,
+        timezone: ZoneInfo,
+        now: datetime | None = None,
+    ) -> dict:
         """実行時に解決済みのclosed-open期間へ変換する。"""
         if self.mode is GoogleHealthRunMode.INITIAL_BACKFILL:
-            date_to = datetime.now(tz=UTC).date() + timedelta(days=1)
+            current = now or datetime.now(tz=timezone)
+            date_to = current.astimezone(timezone).date() + timedelta(days=1)
             date_from = date_to - timedelta(days=90)
         else:
             date_from = self.date_from
@@ -228,5 +235,7 @@ def create_ingest_run(
             detail="invalid_google_health_connection: active connection not found",
         )
     _require_client(service)
-    run = service.trigger_google_health_ingest(request.to_run_input())
+    run = service.trigger_google_health_ingest(
+        request.to_run_input(timezone=ZoneInfo(service.config.timezone))
+    )
     return run.__dict__

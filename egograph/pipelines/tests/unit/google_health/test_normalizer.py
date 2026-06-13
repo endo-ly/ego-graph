@@ -1,6 +1,7 @@
 """Google Health normalizerのテスト。"""
 
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from pipelines.sources.google_health.data_types import DATA_TYPE_BY_NAME
 from pipelines.sources.google_health.normalizer import (
@@ -101,6 +102,40 @@ def test_aggregate_daily_metrics_sums_multiple_sessions():
     # Assert
     assert len(result) == 1
     assert result[0]["value"] == 2700
+
+
+def test_derived_daily_date_uses_configured_timezone_and_keeps_utc_timestamp():
+    """派生日次は設定TZの日付、時刻列はUTCで保存する。"""
+    # Arrange
+    point = {
+        "dataPointName": "sleep-1",
+        "sleep": {
+            "interval": {
+                "startTime": "2026-05-31T15:30:00Z",
+                "endTime": "2026-05-31T23:00:00Z",
+            },
+            "type": "SLEEP",
+        },
+    }
+
+    # Act
+    result = normalize_google_health_payload(
+        connection_id="connection-1",
+        data_type=DATA_TYPE_BY_NAME["sleep"],
+        payload={"reconcileResponses": [{"dataPoints": [point]}]},
+        raw_ref="raw/example.json",
+        timezone=ZoneInfo("Asia/Tokyo"),
+    )
+
+    # Assert
+    assert result["daily_metrics"][0]["date"].isoformat() == "2026-06-01"
+    assert result["sessions"][0]["ended_at_utc"] == datetime(
+        2026,
+        5,
+        31,
+        23,
+        tzinfo=UTC,
+    )
 
 
 def test_normalizes_physical_rollup_and_averages_respiratory_daily():

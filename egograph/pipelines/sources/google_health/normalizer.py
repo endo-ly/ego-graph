@@ -6,11 +6,13 @@ import re
 from collections import defaultdict
 from datetime import UTC, date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pipelines.sources.google_health.data_types import (
     GoogleHealthDataType,
     RecordKind,
 )
+from pipelines.sources.google_health.timezone import local_date
 
 _DURATION_PATTERN = re.compile(r"^-?\d+(?:\.\d+)?s$")
 _IGNORED_NUMERIC_PATH_PARTS = {
@@ -38,9 +40,11 @@ def normalize_google_health_payload(
     payload: dict[str, Any],
     raw_ref: str,
     ingested_at: datetime | None = None,
+    timezone: ZoneInfo | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """APIレスポンス原本を4種類のParquet行へ変換する。"""
     ingested_at = ingested_at or datetime.now(tz=UTC)
+    timezone = timezone or ZoneInfo("UTC")
     result: dict[str, list[dict[str, Any]]] = {
         "daily_metrics": [],
         "samples": [],
@@ -57,6 +61,7 @@ def normalize_google_health_payload(
                 point=point,
                 raw_ref=raw_ref,
                 ingested_at=ingested_at,
+                timezone=timezone,
             )
 
     for response in payload.get("rollupResponses") or []:
@@ -68,6 +73,7 @@ def normalize_google_health_payload(
                 point=point,
                 raw_ref=raw_ref,
                 ingested_at=ingested_at,
+                timezone=timezone,
             )
 
     for response in payload.get("dailyRollupResponses") or []:
@@ -79,6 +85,7 @@ def normalize_google_health_payload(
                 point=point,
                 raw_ref=raw_ref,
                 ingested_at=ingested_at,
+                timezone=timezone,
             )
     return result
 
@@ -91,6 +98,7 @@ def _normalize_data_point(
     point: dict[str, Any],
     raw_ref: str,
     ingested_at: datetime,
+    timezone: ZoneInfo,
 ) -> None:
     payload = _payload_for(point, data_type)
     device_family = _device_family(point)
@@ -110,6 +118,7 @@ def _normalize_data_point(
             point=point,
             raw_ref=raw_ref,
             ingested_at=ingested_at,
+            timezone=timezone,
         )
         return
 
@@ -132,7 +141,7 @@ def _normalize_data_point(
                     {
                         "connection_id": connection_id,
                         "data_type": data_type.name,
-                        "date": measured_at.date(),
+                        "date": local_date(measured_at, timezone),
                         "metric_name": "respiratory_rate_sleep_summary",
                         "value": value,
                         "unit": data_type.unit,
@@ -181,7 +190,10 @@ def _normalize_data_point(
         {
             "connection_id": connection_id,
             "data_type": data_type.name,
-            "date": ended_at.date() if data_type.name == "sleep" else started_at.date(),
+            "date": local_date(
+                ended_at if data_type.name == "sleep" else started_at,
+                timezone,
+            ),
             "metric_name": (
                 "sleep_duration" if data_type.name == "sleep" else "exercise_duration"
             ),
@@ -202,6 +214,7 @@ def _append_daily_metrics(
     point: dict[str, Any],
     raw_ref: str,
     ingested_at: datetime,
+    timezone: ZoneInfo,
 ) -> None:
     payload = _payload_for(point, data_type)
     metric_date = _daily_date(point, payload)

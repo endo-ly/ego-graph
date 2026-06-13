@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pipelines.sources.google_health.client import GoogleHealthAPIClient
 from pipelines.sources.google_health.data_types import (
@@ -12,6 +13,7 @@ from pipelines.sources.google_health.data_types import (
     GoogleHealthDataType,
     RecordKind,
 )
+from pipelines.sources.google_health.timezone import local_date_start_rfc3339
 
 DEFAULT_PAGE_SIZE = 10_000
 SESSION_PAGE_SIZE = 25
@@ -35,8 +37,14 @@ class ExtractedGoogleHealthData:
 class GoogleHealthExtractor:
     """期間指定、pagination、daily rollup分割を扱う。"""
 
-    def __init__(self, client: GoogleHealthAPIClient) -> None:
+    def __init__(
+        self,
+        client: GoogleHealthAPIClient,
+        *,
+        timezone: ZoneInfo | None = None,
+    ) -> None:
         self._client = client
+        self._timezone = timezone or ZoneInfo("UTC")
 
     def extract(
         self,
@@ -117,7 +125,12 @@ class GoogleHealthExtractor:
             response = self._client.reconcile_data_points(
                 connection_id,
                 data_type.name,
-                filter_expression=_build_filter(data_type, date_from, date_to),
+                filter_expression=_build_filter(
+                    data_type,
+                    date_from,
+                    date_to,
+                    timezone=self._timezone,
+                ),
                 page_size=(
                     SESSION_PAGE_SIZE
                     if data_type.record_kind is RecordKind.SESSION
@@ -194,6 +207,8 @@ def _build_filter(
     data_type: GoogleHealthDataType,
     date_from: date,
     date_to: date,
+    *,
+    timezone: ZoneInfo | None = None,
 ) -> str:
     """record種別に対応するGoogle Health filter式を返す。"""
     if data_type.record_kind is RecordKind.DAILY:
@@ -202,20 +217,14 @@ def _build_filter(
         end = date_to.isoformat()
     elif data_type.record_kind is RecordKind.SAMPLE:
         field = f"{data_type.filter_name}.sample_time.physical_time"
-        start = _rfc3339_midnight(date_from)
-        end = _rfc3339_midnight(date_to)
+        start = local_date_start_rfc3339(date_from, timezone or ZoneInfo("UTC"))
+        end = local_date_start_rfc3339(date_to, timezone or ZoneInfo("UTC"))
     elif data_type.record_kind is RecordKind.SESSION and data_type.name == "sleep":
         field = "sleep.interval.end_time"
-        start = _rfc3339_midnight(date_from)
-        end = _rfc3339_midnight(date_to)
+        start = local_date_start_rfc3339(date_from, timezone or ZoneInfo("UTC"))
+        end = local_date_start_rfc3339(date_to, timezone or ZoneInfo("UTC"))
     else:
         field = f"{data_type.filter_name}.interval.start_time"
-        start = _rfc3339_midnight(date_from)
-        end = _rfc3339_midnight(date_to)
+        start = local_date_start_rfc3339(date_from, timezone or ZoneInfo("UTC"))
+        end = local_date_start_rfc3339(date_to, timezone or ZoneInfo("UTC"))
     return f'{field} >= "{start}" AND {field} < "{end}"'
-
-
-def _rfc3339_midnight(value: date) -> str:
-    return (
-        datetime.combine(value, time.min, tzinfo=UTC).isoformat().replace("+00:00", "Z")
-    )

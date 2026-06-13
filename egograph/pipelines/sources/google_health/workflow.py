@@ -7,6 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from typing import cast
+from zoneinfo import ZoneInfo
 
 from pydantic import SecretStr
 
@@ -43,6 +44,7 @@ class GoogleHealthWorkflowDependencies:
     repository: GoogleHealthRepository
     extractor: GoogleHealthExtractor
     writer: GoogleHealthWriter
+    timezone: ZoneInfo = ZoneInfo("UTC")
     db_connection: sqlite3.Connection | None = None
 
 
@@ -97,6 +99,7 @@ def _execute_google_health_ingest(
                 data_type=data_type,
                 payload=extracted.payload,
                 raw_ref=raw_ref,
+                timezone=dependencies.timezone,
             )
             normalized_count = sum(len(rows) for rows in normalized.values())
             if extracted.record_count > 0 and normalized_count == 0:
@@ -356,6 +359,7 @@ def _build_dependencies() -> GoogleHealthWorkflowDependencies:
             cipher,
             client_id=client_id.get_secret_value(),
             client_secret=client_secret.get_secret_value(),
+            timezone=ZoneInfo(config.timezone),
         )
 
         source_config = PipelinesSettings.load()
@@ -364,7 +368,10 @@ def _build_dependencies() -> GoogleHealthWorkflowDependencies:
         r2 = source_config.duckdb.r2
         return GoogleHealthWorkflowDependencies(
             repository=repository,
-            extractor=GoogleHealthExtractor(client),
+            extractor=GoogleHealthExtractor(
+                client,
+                timezone=ZoneInfo(config.timezone),
+            ),
             writer=GoogleHealthWriter(
                 endpoint_url=r2.endpoint_url,
                 access_key_id=r2.access_key_id,
@@ -372,7 +379,9 @@ def _build_dependencies() -> GoogleHealthWorkflowDependencies:
                 bucket_name=r2.bucket_name,
                 raw_path=r2.raw_path,
                 events_path=r2.events_path,
+                timezone=ZoneInfo(config.timezone),
             ),
+            timezone=ZoneInfo(config.timezone),
             db_connection=conn,
         )
     except Exception:

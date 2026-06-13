@@ -75,6 +75,7 @@ APIレスポンス原本をRaw JSONとして保持し、日次指標、サンプ
 | **Daily rollup endpoint** | `POST /users/me/dataTypes/{dataType}/dataPoints:dailyRollUp` |
 | **認証方式** | Google OAuth 2.0 Web Server flow |
 | **必要なスコープ** | Activity and Fitness / Health Metrics and Measurements / Sleep のread-only scope |
+| **期間の日付解釈** | `TIMEZONE`のローカル日付。物理時刻APIにはUTCへ変換して送信 |
 
 ### 3.2 取得対象data type
 
@@ -220,9 +221,10 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 ### 4.5 パーティション
 
 - **パーティションキー**: `year`, `month`
-- **基準日**: dailyは`date`、sampleは`measured_at_utc`、interval/sessionは`started_at_utc`
+- **基準日**: dailyはローカル`date`、sampleは`measured_at_utc`、interval/sessionは`started_at_utc`
 - **再取得**: compacted内の対象期間を置換する
-- **理由**: 期間指定クエリのpartition pruningと再取得時の重複防止
+- **時刻partition**: sample / interval / sessionの`year` / `month`はUTC基準
+- **理由**: 保存時刻をUTCへ統一し、期間指定クエリのpartition pruningと再取得時の重複を防ぐ
 
 ---
 
@@ -297,6 +299,11 @@ data typeごとに個別テーブルを増やさず、Daily / Sample / Interval 
 取得ごとにeventsへ`{uuid}.parquet`を追加し、compact処理で対象期間を反映したcompactedの`data.parquet`を再生成する。
 events側のUUID Parquetは削除しない。
 Google Health側の遅延同期や後日補完を取り込みながら、重複レコードを残さない。
+
+APIの`from` / `to`は`TIMEZONE`のローカル日付として扱う。
+`reconcile`とphysical `rollUp`には、各日付のローカル0時をUTCへ変換して送信する。
+`dailyRollUp`にはcivil dateをそのまま送信する。
+取得した絶対時刻と`ingested_at_utc`はUTCで保存し、睡眠などから生成する日次行の日付は`TIMEZONE`で判定する。
 
 ### 7.4 同期状態
 
@@ -490,6 +497,7 @@ https://www.googleapis.com/auth/googlehealth.sleep.readonly
 
 | 変数 | 必須 | 内容 |
 |---|---|---|
+| `TIMEZONE` | Yes | 取得日付と日次判定に使うIANAタイムゾーン名（例: `Asia/Tokyo`） |
 | `GOOGLE_HEALTH_CLIENT_ID` | Yes | OAuth client ID |
 | `GOOGLE_HEALTH_CLIENT_SECRET` | Yes | OAuth client secret |
 | `GOOGLE_HEALTH_REDIRECT_URI` | Yes | Google Cloud登録済みcallback URI |
@@ -508,6 +516,7 @@ keyを変更すると既存tokenは復号できないため、tokenとは別のs
 `egograph/pipelines/.env`へ次を設定する。
 
 ```dotenv
+TIMEZONE=Asia/Tokyo
 PIPELINES_API_KEY=<十分に長いランダム文字列>
 GOOGLE_HEALTH_CLIENT_ID=<14.1.5で取得したClient ID>
 GOOGLE_HEALTH_CLIENT_SECRET=<14.1.5で取得したClient secret>

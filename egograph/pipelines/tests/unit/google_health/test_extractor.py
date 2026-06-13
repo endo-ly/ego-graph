@@ -1,6 +1,7 @@
 """Google Health extractorのテスト。"""
 
 from datetime import date
+from zoneinfo import ZoneInfo
 
 import pytest
 from pipelines.sources.google_health.data_types import DATA_TYPE_BY_NAME
@@ -105,6 +106,23 @@ def test_daily_filter_uses_proto_field_name():
     assert result == (
         'daily_resting_heart_rate.date >= "2026-06-01" AND '
         'daily_resting_heart_rate.date < "2026-06-03"'
+    )
+
+
+def test_physical_filter_uses_configured_timezone_boundary():
+    """物理時刻filterは設定TZのローカル日付境界をUTCへ変換する。"""
+    # Act
+    result = _build_filter(
+        DATA_TYPE_BY_NAME["heart-rate"],
+        date(2026, 6, 1),
+        date(2026, 6, 2),
+        timezone=ZoneInfo("Asia/Tokyo"),
+    )
+
+    # Assert
+    assert result == (
+        'heart_rate.sample_time.physical_time >= "2026-05-31T15:00:00Z" AND '
+        'heart_rate.sample_time.physical_time < "2026-06-01T15:00:00Z"'
     )
 
 

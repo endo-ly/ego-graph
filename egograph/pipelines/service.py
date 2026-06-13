@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from typing import cast
+from zoneinfo import ZoneInfo
 
 from pydantic import SecretStr
 
@@ -102,6 +103,7 @@ class PipelineService:
                 token_cipher,
                 client_id=client_id.get_secret_value(),
                 client_secret=client_secret.get_secret_value(),
+                timezone=ZoneInfo(config.timezone),
             )
         service = cls(
             config=config,
