@@ -32,3 +32,11 @@ def sleep_briefly() -> dict:
     """並列実行テスト用に短時間 sleep する。"""
     time.sleep(0.5)
     return {"slept": True}
+
+
+def partial_failure() -> dict:
+    """部分失敗summaryを返すテストstep。"""
+    return {
+        "status": "partial_failed",
+        "errors": ["sleep: unavailable"],
+    }

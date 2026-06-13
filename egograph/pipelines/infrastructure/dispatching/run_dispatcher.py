@@ -277,11 +277,29 @@ class RunDispatcher:
                         exc=last_exc,
                     )
                     return
+            final_status = _status_from_summary(last_summary)
+            error_message = (
+                _error_from_summary(last_summary)
+                if final_status
+                in {
+                    WorkflowRunStatus.PARTIAL_FAILED,
+                    WorkflowRunStatus.FAILED,
+                }
+                else None
+            )
             self._run_repository.update_run_result(
                 run_id=run.run_id,
-                status=WorkflowRunStatus.SUCCEEDED,
+                status=final_status,
+                error_message=error_message,
                 result_summary=last_summary,
             )
+            if final_status == WorkflowRunStatus.FAILED:
+                self._notify_failure(
+                    workflow=workflow,
+                    run=run,
+                    error_message=error_message or "workflow reported failed status",
+                    exc=None,
+                )
         except Exception as exc:
             logger.exception(
                 "run execution crashed unexpectedly: run_id=%s",
@@ -544,3 +562,37 @@ class RunDispatcher:
             ),
         )
         self._notification_service.notify(event, exc=exc)
+
+
+def _status_from_summary(
+    summary: dict | None,
+) -> WorkflowRunStatus:
+    if summary is None:
+        return WorkflowRunStatus.SUCCEEDED
+    raw_status = summary.get("status", WorkflowRunStatus.SUCCEEDED.value)
+    normalized_status = str(raw_status).strip().lower()
+    terminal_statuses = {
+        status.value: status
+        for status in (
+            WorkflowRunStatus.SUCCEEDED,
+            WorkflowRunStatus.PARTIAL_FAILED,
+            WorkflowRunStatus.FAILED,
+        )
+    }
+    status = terminal_statuses.get(normalized_status)
+    if status is not None:
+        return status
+    logger.warning(
+        "workflow returned non-terminal or unknown summary status: status=%r",
+        raw_status,
+    )
+    return WorkflowRunStatus.SUCCEEDED
+
+
+def _error_from_summary(summary: dict | None) -> str:
+    if summary is None:
+        return "workflow reported failed status"
+    errors = summary.get("errors")
+    if isinstance(errors, list) and errors:
+        return "; ".join(str(error) for error in errors)
+    return "workflow reported failed status"

@@ -2,9 +2,10 @@
 
 import os
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from egograph_paths import PIPELINES_LOGS_DIR, PIPELINES_STATE_DB_PATH
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 USE_ENV_FILE = os.getenv("USE_ENV_FILE", "true").lower() in ("true", "1", "yes")
@@ -27,7 +28,7 @@ class PipelinesConfig(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8001
     api_key: SecretStr | None = None
-    timezone: str = "UTC"
+    timezone: str = Field("UTC", validation_alias="TIMEZONE")
     dispatcher_poll_seconds: float = 1.0
     max_concurrent_runs: int = 4
     lock_lease_seconds: int = 300
@@ -50,6 +51,16 @@ class PipelinesConfig(BaseSettings):
         None,
         validation_alias="GOOGLE_HEALTH_TOKEN_ENCRYPTION_KEY",
     )
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        """IANAタイムゾーン名を検証する。"""
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"invalid timezone: {value}") from exc
+        return value
 
     @property
     def google_health_is_configured(self) -> bool:

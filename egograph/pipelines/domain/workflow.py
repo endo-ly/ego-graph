@@ -43,6 +43,7 @@ class WorkflowRunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
+    PARTIAL_FAILED = "partial_failed"
     FAILED = "failed"
     CANCELED = "canceled"
 

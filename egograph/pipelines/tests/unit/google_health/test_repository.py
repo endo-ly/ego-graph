@@ -1,11 +1,15 @@
 """Google Health connection repository のテスト。"""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from pipelines.infrastructure.db.connection import connect
 from pipelines.infrastructure.db.schema import initialize_schema
-from pipelines.sources.google_health.models import ConnectionStatus, OAuthToken
+from pipelines.sources.google_health.models import (
+    ConnectionStatus,
+    OAuthToken,
+    SyncStatus,
+)
 from pipelines.sources.google_health.repository import GoogleHealthRepository
 
 
@@ -119,3 +123,53 @@ def test_update_status_preserves_supported_connection_state(repository):
     # Assert
     assert updated.status is ConnectionStatus.REVOKED
     assert updated.last_error_message == "refresh token revoked"
+
+
+def test_save_sync_result_upserts_data_type_state(repository):
+    """data type単位の同期結果をSQLiteへupsertできる。"""
+    # Arrange
+    token = OAuthToken(
+        access_token="access-token",
+        refresh_token="refresh-token",
+        expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+        token_type="Bearer",
+        scopes=("scope-a",),
+    )
+    connection = repository.save_connection(
+        token=token,
+        access_token_encrypted=b"encrypted-access",
+        refresh_token_encrypted=b"encrypted-refresh",
+    )
+
+    # Act
+    repository.save_sync_result(
+        connection_id=connection.connection_id,
+        data_type="steps",
+        status=SyncStatus.FAILED,
+        range_start=date(2026, 6, 1),
+        range_end=date(2026, 6, 3),
+        run_id="run-1",
+        error_message="temporary failure",
+    )
+    updated = repository.save_sync_result(
+        connection_id=connection.connection_id,
+        data_type="steps",
+        status=SyncStatus.SUCCESS,
+        range_start=date(2026, 6, 1),
+        range_end=date(2026, 6, 3),
+        run_id="run-2",
+        record_count=42,
+    )
+    run_results = repository.list_sync_results_for_run(
+        connection.connection_id,
+        "run-2",
+    )
+
+    # Assert
+    assert updated.status is SyncStatus.SUCCESS
+    assert updated.range_start == date(2026, 6, 1)
+    assert updated.range_end == date(2026, 6, 3)
+    assert updated.last_run_id == "run-2"
+    assert updated.record_count == 42
+    assert updated.last_error_message is None
+    assert run_results == [updated]

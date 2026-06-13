@@ -128,4 +128,41 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    _migrate_google_health_sync_cursors(conn)
     conn.commit()
+
+
+def _migrate_google_health_sync_cursors(conn: sqlite3.Connection) -> None:
+    """既存のGoogle Health sync cursorへPhase 2列を追加する。"""
+    columns = {
+        row[1]
+        for row in conn.execute(
+            "PRAGMA table_info(google_health_sync_cursors)"
+        ).fetchall()
+    }
+    additions = {
+        "status": (
+            "ALTER TABLE google_health_sync_cursors "
+            "ADD COLUMN status TEXT NOT NULL DEFAULT 'success'"
+        ),
+        "range_start": (
+            "ALTER TABLE google_health_sync_cursors ADD COLUMN range_start TEXT"
+        ),
+        "range_end": (
+            "ALTER TABLE google_health_sync_cursors ADD COLUMN range_end TEXT"
+        ),
+        "last_run_id": (
+            "ALTER TABLE google_health_sync_cursors ADD COLUMN last_run_id TEXT"
+        ),
+        "record_count": (
+            "ALTER TABLE google_health_sync_cursors "
+            "ADD COLUMN record_count INTEGER NOT NULL DEFAULT 0"
+        ),
+        "last_error_message": (
+            "ALTER TABLE google_health_sync_cursors "
+            "ADD COLUMN last_error_message TEXT"
+        ),
+    }
+    for name, statement in additions.items():
+        if name not in columns:
+            conn.execute(statement)

@@ -1,12 +1,19 @@
-"""Google Health OAuth and connection API."""
+"""Google Health OAuth、connection、ingest API。"""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import ValidationError
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from pipelines.api.dependencies import get_service, verify_api_key
 from pipelines.service import PipelineService
 from pipelines.sources.google_health.client import GoogleHealthAPIError
-from pipelines.sources.google_health.data_types import SMOKE_TEST_DATA_TYPES
+from pipelines.sources.google_health.data_types import (
+    DATA_TYPE_BY_NAME,
+    SMOKE_TEST_DATA_TYPES,
+)
+from pipelines.sources.google_health.models import GoogleHealthRunMode
 
 router = APIRouter(
     prefix="/v1/sources/google-health",
@@ -14,12 +21,76 @@ router = APIRouter(
 )
 
 
+class GoogleHealthRunRequest(BaseModel):
+    """Google Health取り込みrun作成リクエスト。"""
+
+    mode: GoogleHealthRunMode
+    date_from: date | None = Field(None, alias="from")
+    date_to: date | None = Field(None, alias="to")
+    data_types: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "GoogleHealthRunRequest":
+        unknown = set(self.data_types) - DATA_TYPE_BY_NAME.keys()
+        if unknown:
+            raise ValueError(
+                f"invalid_data_types: unsupported values: {', '.join(sorted(unknown))}"
+            )
+        if self.mode is GoogleHealthRunMode.INITIAL_BACKFILL:
+            if self.date_from is not None or self.date_to is not None:
+                raise ValueError(
+                    "invalid_range: initial_backfill does not accept from/to"
+                )
+            if self.data_types:
+                raise ValueError(
+                    "invalid_data_types: initial_backfill targets all data types"
+                )
+            return self
+        if self.date_from is None or self.date_to is None:
+            raise ValueError("invalid_range: from and to are required")
+        if self.date_from >= self.date_to:
+            raise ValueError("invalid_range: from must be earlier than to")
+        if self.mode is GoogleHealthRunMode.DATA_TYPE_RANGE and not self.data_types:
+            raise ValueError("invalid_data_types: data_type_range requires data_types")
+        if self.mode is GoogleHealthRunMode.RANGE and self.data_types:
+            raise ValueError("invalid_data_types: range targets all data types")
+        return self
+
+    def to_run_input(
+        self,
+        *,
+        timezone: ZoneInfo,
+        now: datetime | None = None,
+    ) -> dict:
+        """実行時に解決済みのclosed-open期間へ変換する。"""
+        if self.mode is GoogleHealthRunMode.INITIAL_BACKFILL:
+            current = now or datetime.now(tz=timezone)
+            date_to = current.astimezone(timezone).date() + timedelta(days=1)
+            date_from = date_to - timedelta(days=90)
+        else:
+            date_from = self.date_from
+            date_to = self.date_to
+        if date_from is None or date_to is None:  # pragma: no cover
+            raise ValueError("invalid_range: unresolved range")
+        return {
+            "mode": self.mode.value,
+            "from": date_from.isoformat(),
+            "to": date_to.isoformat(),
+            "data_types": self.data_types,
+        }
+
+
 def _format_invalid_detail(exc: Exception) -> str:
     if isinstance(exc, ValidationError):
         details = []
         for error in exc.errors():
             field = ".".join(str(part) for part in error["loc"]) or "request"
-            details.append(f"invalid_{field}: {error['msg']}")
+            reason = str(error["msg"])
+            marker = "invalid_"
+            if marker in reason and ":" in reason:
+                details.append(reason[reason.index(marker) :])
+            else:
+                details.append(f"invalid_{field}: {reason}")
         return "; ".join(details)
 
     message = str(getattr(exc, "message", None) or exc).strip()
@@ -141,3 +212,30 @@ def smoke_test_connection(
             detail=_format_invalid_detail(exc),
         ) from exc
     return {"status": "ok", "data_types": results}
+
+
+@router.post("/runs", status_code=201)
+def create_ingest_run(
+    request_body: dict = Body(...),
+    _: None = Depends(verify_api_key),
+    service: PipelineService = Depends(get_service),
+) -> dict:
+    """Google Health取り込みrunを作成する。"""
+    try:
+        request = GoogleHealthRunRequest.model_validate(request_body)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=_format_invalid_detail(exc),
+        ) from exc
+    connection = service.google_health_repository.get_connection()
+    if connection is None or connection.status.value != "active":
+        raise HTTPException(
+            status_code=409,
+            detail="invalid_google_health_connection: active connection not found",
+        )
+    _require_client(service)
+    run = service.trigger_google_health_ingest(
+        request.to_run_input(timezone=ZoneInfo(service.config.timezone))
+    )
+    return run.__dict__

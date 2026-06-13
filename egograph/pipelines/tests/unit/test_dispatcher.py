@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
+import pytest
 from pipelines.domain.errors import AuthenticationError
 from pipelines.domain.workflow import (
     QueuedReason,
@@ -22,7 +23,10 @@ from pipelines.infrastructure.db.schema import initialize_schema
 from pipelines.infrastructure.db.step_run_repository import StepRunRepository
 from pipelines.infrastructure.db.workflow_repository import WorkflowRepository
 from pipelines.infrastructure.dispatching.lock_manager import WorkflowLockManager
-from pipelines.infrastructure.dispatching.run_dispatcher import RunDispatcher
+from pipelines.infrastructure.dispatching.run_dispatcher import (
+    RunDispatcher,
+    _status_from_summary,
+)
 from pipelines.infrastructure.execution.inprocess_executor import InProcessStepExecutor
 from pipelines.infrastructure.execution.log_store import LocalLogStore
 from pipelines.infrastructure.execution.subprocess_executor import (
@@ -103,6 +107,56 @@ def test_dispatch_once_succeeds_and_writes_step_log(tmp_path):
     assert steps[0].stdout_tail == "dummy step succeeded\n"
     assert steps[0].log_path is not None
     assert "dummy step succeeded" in LocalLogStore.read_log(steps[0].log_path)
+
+
+def test_dispatch_once_persists_partial_failed_summary_status(tmp_path):
+    """step summaryのpartial_failedをrun statusへ反映する。"""
+    # Arrange
+    workflows = {
+        "partial_workflow": WorkflowDefinition(
+            workflow_id="partial_workflow",
+            name="Partial workflow",
+            description="Partial workflow for tests",
+            steps=(
+                StepDefinition(
+                    step_id="partial",
+                    step_name="Partial",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref=(
+                        "pipelines.tests.support.dummy_steps:partial_failure"
+                    ),
+                ),
+            ),
+        )
+    }
+    run_repository, _, dispatcher, _ = _build_dispatcher(tmp_path, workflows)
+    run = run_repository.enqueue_run(
+        workflow_id="partial_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+
+    # Act
+    dispatcher.dispatch_once()
+    updated_run = run_repository.get_run(run.run_id)
+
+    # Assert
+    assert updated_run.status is WorkflowRunStatus.PARTIAL_FAILED
+    assert updated_run.last_error_message == "sleep: unavailable"
+    assert updated_run.result_summary == {
+        "status": "partial_failed",
+        "errors": ["sleep: unavailable"],
+    }
+
+
+@pytest.mark.parametrize("summary_status", ["unexpected", "running", "queued"])
+def test_invalid_summary_status_logs_warning_and_succeeds(caplog, summary_status):
+    """未知または非終端statusは警告を残してsucceededへ寄せる。"""
+    with caplog.at_level(logging.WARNING):
+        status = _status_from_summary({"status": summary_status})
+
+    assert status is WorkflowRunStatus.SUCCEEDED
+    assert "non-terminal or unknown summary status" in caplog.text
 
 
 def test_dispatch_once_skips_remaining_steps_after_failure(tmp_path):

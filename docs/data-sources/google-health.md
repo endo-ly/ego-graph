@@ -49,7 +49,11 @@ APIレスポンス原本をRaw JSONとして保持し、日次指標、サンプ
          ↓
 [Normalizer: Daily / Sample / Interval / Session]
          ↓
-[Storage: R2へParquet保存]
+[Storage: R2 eventsへ{uuid}.parquet保存]
+         ↓
+[Compact: 対象期間を統合・置換]
+         ↓
+[Storage: R2 compactedへdata.parquet保存]
          ↓
 [DuckDB: 日次・時系列分析]
 ```
@@ -71,6 +75,7 @@ APIレスポンス原本をRaw JSONとして保持し、日次指標、サンプ
 | **Daily rollup endpoint** | `POST /users/me/dataTypes/{dataType}/dataPoints:dailyRollUp` |
 | **認証方式** | Google OAuth 2.0 Web Server flow |
 | **必要なスコープ** | Activity and Fitness / Health Metrics and Measurements / Sleep のread-only scope |
+| **期間の日付解釈** | `TIMEZONE`のローカル日付。物理時刻APIにはUTCへ変換して送信 |
 
 ### 3.2 取得対象data type
 
@@ -135,11 +140,12 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 
 | フィールド名 | 型 | 必須 | 説明 | 例 |
 |---|---|---|---|---|
-| `instantTime` | datetime | Conditional | サンプルの測定時刻 | `"2026-06-10T00:15:00Z"` |
-| `interval.startTime` | datetime | Conditional | 区間・セッション開始時刻 | `"2026-06-10T00:00:00Z"` |
-| `interval.endTime` | datetime | Conditional | 区間・セッション終了時刻 | `"2026-06-10T00:05:00Z"` |
-| `civilTimeInterval.startTime` | string | Conditional | 日次集計のローカル開始時刻 | `"2026-06-10T00:00:00"` |
-| `civilTimeInterval.endTime` | string | Conditional | 日次集計のローカル終了時刻 | `"2026-06-11T00:00:00"` |
+| `{dataType}.sampleTime.physicalTime` | datetime | Conditional | サンプルの測定時刻。欠落時は`{dataType}.instantTime`を使用 | `"2026-06-10T00:15:00Z"` |
+| `{dataType}.interval.startTime` | datetime | Conditional | 区間・セッション開始時刻 | `"2026-06-10T00:00:00Z"` |
+| `{dataType}.interval.endTime` | datetime | Conditional | 区間・セッション終了時刻 | `"2026-06-10T00:05:00Z"` |
+| `{dataType}.date` | date | Conditional | Daily recordの日付 | `"2026-06-10"` |
+| `civilStartTime` | object | Conditional | daily rollupのローカル開始日時 | `{"date":{"year":2026,"month":6,"day":10}}` |
+| `civilEndTime` | object | Conditional | daily rollupのローカル終了日時 | `{"date":{"year":2026,"month":6,"day":11}}` |
 
 #### data type固有値
 
@@ -161,7 +167,8 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 | 列名 | 型 | 説明 | 変換元 |
 |---|---|---|---|
 | `connection_id` | VARCHAR | 接続識別子 | SQLite connection |
-| `date` | DATE | 指標のローカル日付 | `civilTimeInterval` |
+| `data_type` | VARCHAR | Google Health data type | API path |
+| `date` | DATE | 指標のローカル日付 | `{dataType}.date` / `civilStartTime` |
 | `metric_name` | VARCHAR | 正規化した指標名 | data type |
 | `value` | DOUBLE | 数値 | data type固有値 |
 | `unit` | VARCHAR | 単位 | data type定義 |
@@ -175,7 +182,7 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 |---|---|---|---|
 | `connection_id` | VARCHAR | 接続識別子 | SQLite connection |
 | `data_type` | VARCHAR | Google Health data type | API path |
-| `measured_at_utc` | TIMESTAMP | 測定時刻 | `instantTime` |
+| `measured_at_utc` | TIMESTAMP | 測定時刻 | `{dataType}.sampleTime.physicalTime`（欠落時は`{dataType}.instantTime`） |
 | `value` | DOUBLE | 測定値 | data type固有値 |
 | `unit` | VARCHAR | 単位 | data type定義 |
 | `device_family` | VARCHAR | `fitbit_air`または`unknown` | `dataOrigin` |
@@ -214,9 +221,10 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 ### 4.5 パーティション
 
 - **パーティションキー**: `year`, `month`
-- **基準日**: dailyは`date`、sampleは`measured_at_utc`、interval/sessionは`started_at_utc`
-- **再取得**: 対象期間のpartitionをoverwriteする
-- **理由**: 期間指定クエリのpartition pruningと再取得時の重複防止
+- **基準日**: dailyはローカル`date`、sampleは`measured_at_utc`、interval/sessionは`started_at_utc`
+- **再取得**: compacted内の対象期間を置換する
+- **時刻partition**: sample / interval / sessionの`year` / `month`はUTC基準
+- **理由**: 保存時刻をUTCへ統一し、期間指定クエリのpartition pruningと再取得時の重複を防ぐ
 
 ---
 
@@ -232,14 +240,16 @@ s3://egograph/
   │           └── from={from}/
   │               └── to={to}/
   │                   └── run_id={run_id}.json
-  └── events/google_health/
-      ├── daily_metrics/
-      ├── samples/
-      ├── intervals/
-      └── sessions/
+  ├── events/google_health/
+  │   └── {daily_metrics|samples|intervals|sessions}/
+  │       └── year=YYYY/
+  │           └── month=MM/
+  │               └── {uuid}.parquet
+  └── compacted/events/google_health/
+      └── {daily_metrics|samples|intervals|sessions}/
           └── year=YYYY/
               └── month=MM/
-                  └── {uuid}.parquet
+                  └── data.parquet
 ```
 
 同期cursor、connection、OAuth tokenはR2ではなくPipelines ServiceのSQLiteへ保存する。
@@ -251,6 +261,7 @@ s3://egograph/
 - **Sample**: `s3://egograph/events/google_health/samples/year=2026/month=06/{uuid}.parquet`
 - **Interval**: `s3://egograph/events/google_health/intervals/year=2026/month=06/{uuid}.parquet`
 - **Session**: `s3://egograph/events/google_health/sessions/year=2026/month=06/{uuid}.parquet`
+- **Compacted**: `s3://egograph/compacted/events/google_health/samples/year=2026/month=06/data.parquet`
 
 ---
 
@@ -272,7 +283,8 @@ s3://egograph/
 | 対象 | 保存先 | 理由 |
 |---|---|---|
 | APIレスポンス原本 | R2 Raw JSON | normalizer修正後の再処理と監査に使用する |
-| 正規化データ | R2 Parquet | DuckDBの列指向分析とpartition pruningに適する |
+| 取得単位の正規化データ | R2 events Parquet | runごとの取得結果を保持する |
+| 分析用の正規化データ | R2 compacted Parquet | DuckDBの列指向分析とpartition pruningに適する |
 | connection / token / cursor | SQLite | Pipelines Serviceの状態として一貫して更新する |
 
 ### 7.2 正規化粒度
@@ -282,14 +294,39 @@ data typeごとに個別テーブルを増やさず、Daily / Sample / Interval 
 
 ### 7.3 再取得
 
-同一期間を再取得した場合は対象partitionをoverwriteする。
+同一期間を再取得した場合は、選択したdata typeの対象期間だけを月partition内で置換する。
+同じ月に保存されている他のdata typeと対象期間外の行は保持する。
+`compact_range`は`connection_id`と`data_type`が一致し、`date_from <= row_date < date_to`となる行だけを置換する。
+sessionの`data_type`が`sleep`の場合、対象日には`started_at_utc`ではなく`ended_at_utc`を使用する。
+取得ごとにeventsへ`{uuid}.parquet`を追加し、compact処理で対象期間を反映したcompactedの`data.parquet`を再生成する。
+events側の`{run_id}.parquet`は削除せず、削除対象になるのは置換後に空となったcompactedファイルだけである。
 Google Health側の遅延同期や後日補完を取り込みながら、重複レコードを残さない。
+
+APIの`from` / `to`は`TIMEZONE`のローカル日付として扱う。
+`reconcile`とphysical `rollUp`には、各日付のローカル0時をUTCへ変換して送信する。
+`dailyRollUp`にはcivil dateをそのまま送信する。
+取得した絶対時刻と`ingested_at_utc`はUTCで保存し、睡眠などから生成する日次行の日付は`TIMEZONE`で判定する。
+
+### 7.4 同期状態
+
+`google_health_sync_cursors`へdata type単位で次を保存する。
+同期結果は`save_sync_result`がupsertし、compact処理では`last_run_id`を使って対象runの結果だけを読み込む。
+
+| 列 | 内容 |
+|---|---|
+| `status` | `success` / `no_data` / `failed` |
+| `range_start` | 取得範囲の開始日 |
+| `range_end` | 取得範囲の終了日（この日を含まない） |
+| `last_run_id` | 最後に処理したworkflow run ID |
+| `record_count` | 正規化後の保存件数 |
+| `last_error_message` | 失敗理由 |
+| `updated_at` | 更新時刻 |
 
 ---
 
-## 8. 実装時の考慮事項
+## 11. 実装時の考慮事項
 
-### 8.1 エッジケース
+### 11.1 エッジケース
 
 - 値が返らないdata typeは失敗ではなく`no_data`として扱う
 - 一部data typeが失敗しても、他data typeの取得と保存を継続する
@@ -297,7 +334,7 @@ Google Health側の遅延同期や後日補完を取り込みながら、重複�
 - 取得期間上限が異なるdata typeはリクエスト期間を分割する
 - Fitbitアプリとの同期遅延を考慮して直近期間を再取得する
 
-### 8.2 セキュリティ
+### 11.2 制約・制限
 
 - access tokenとrefresh tokenはFernetで暗号化してSQLiteへ保存する
 - token、authorization code、Raw JSON本文をログへ出さない
@@ -305,26 +342,27 @@ Google Health側の遅延同期や後日補完を取り込みながら、重複�
 - callbackのquery stringはaccess logで伏せる
 - 健康データを含むため、Raw JSONとParquetをHigh sensitivityとして扱う
 
-### 8.3 障害処理
+### 11.3 将来拡張
 
-- access tokenは期限切れ前、またはAPIの401応答時にrefreshする
-- refresh tokenが拒否された場合はconnectionを`revoked`にする
-- 429、5xx、network errorは指数backoffで再試行する
-- API errorはauthentication、rate limit、server、network、clientに分類する
+- Schedulerによるsame-day / daily / weekly repair
+- DuckDB viewによる日次サマリ参照
+- 失敗runの運用向け再実行導線
 
 ---
 
-## 9. サンプルデータ
+## 12. サンプルデータ
 
-### 9.1 入力データ例
+### 12.1 入力データ例
 
 ```json
 {
   "dataPoints": [
     {
       "name": "users/me/dataTypes/heart-rate/dataPoints/example",
-      "instantTime": "2026-06-10T00:15:00Z",
       "heartRate": {
+        "sampleTime": {
+          "physicalTime": "2026-06-10T00:15:00Z"
+        },
         "beatsPerMinute": 72
       }
     }
@@ -332,7 +370,7 @@ Google Health側の遅延同期や後日補完を取り込みながら、重複�
 }
 ```
 
-### 9.2 Parquet行例
+### 12.2 Parquet行例
 
 ```json
 {
@@ -349,11 +387,32 @@ Google Health側の遅延同期や後日補完を取り込みながら、重複�
 
 ---
 
-## 10. セットアップ・運用手順
+## 13. 次のステップ
 
-### 10.1 Google Cloud
+### 実装状況
 
-#### 10.1.1 プロジェクトを選択する
+- [x] OAuth接続、token暗号化保存、token refresh
+- [x] 対象data typeの取得とpagination
+- [x] Raw JSON保存
+- [x] Daily / Sample / Interval / Session正規化
+- [x] events保存とcompactedの月partition範囲置換
+- [x] data type単位の同期状態保存
+- [x] backfill / range / data type指定run API
+- [x] 単体テスト・統合テスト
+- [ ] DuckDBマウント
+
+### 未実装機能
+
+- [ ] Schedulerによる定期取得とrepair
+- [ ] `google_health_daily_summary` view
+
+---
+
+## 14. セットアップ・運用手順
+
+### 14.1 Google Cloud
+
+#### 14.1.1 プロジェクトを選択する
 
 1. [Google Cloud Console](https://console.cloud.google.com/)を開き、Google Accountでログインする。
 2. 画面上部のプロジェクト名をクリックする。
@@ -368,7 +427,7 @@ Google Health側の遅延同期や後日補完を取り込みながら、重複�
 
 以降の操作前に、画面上部で選択中のプロジェクトがEgoGraph用になっていることを確認する。
 
-#### 10.1.2 Google Health APIを有効化する
+#### 14.1.2 Google Health APIを有効化する
 
 1. [Google Health APIのAPIライブラリ](https://console.cloud.google.com/apis/library/health.googleapis.com)を開く。
 2. ページ上部の選択中プロジェクトがEgoGraph用であることを確認する。
@@ -377,7 +436,7 @@ Google Health側の遅延同期や後日補完を取り込みながら、重複�
 
 ページが見つからない場合は、[APIライブラリ](https://console.cloud.google.com/apis/library)を開き、検索欄へ`Google Health API`と入力して同名のAPIを選択する。
 
-#### 10.1.3 OAuth consent screenとAudienceを設定する
+#### 14.1.3 OAuth consent screenとAudienceを設定する
 
 1. [Google Auth Platform Overview](https://console.cloud.google.com/auth/overview)を開く。
 2. 未設定の場合は`Get started`をクリックする。
@@ -404,7 +463,7 @@ OAuth認証時は、Test userへ追加したメインGoogle Accountでログイ�
 継続運用へ移行する際は`In production`へ変更し、OAuth app verificationを完了する。
 100ユーザーを超える利用や一般公開では、Google Healthの第三者セキュリティレビューも必要になる。
 
-#### 10.1.4 OAuth scopeを追加する
+#### 14.1.4 OAuth scopeを追加する
 
 1. [Data Access](https://console.cloud.google.com/auth/scopes)を開く。
 2. `Add or remove scopes`をクリックする。
@@ -420,7 +479,7 @@ https://www.googleapis.com/auth/googlehealth.sleep.readonly
 5. `Update`をクリックする。
 6. Data Access画面へ戻ったら`Save`をクリックする。
 
-#### 10.1.5 OAuth clientを作成する
+#### 14.1.5 OAuth clientを作成する
 
 1. [Clients](https://console.cloud.google.com/auth/clients)を開く。
 2. `Create client`をクリックする。
@@ -437,10 +496,11 @@ https://www.googleapis.com/auth/googlehealth.sleep.readonly
 5. 表示されたClient IDとClient secretを安全な場所へ控える。
 6. Client IDとClient secretをGit、Issue、PR、チャットへ貼らない。
 
-### 10.2 環境変数
+### 14.2 環境変数
 
 | 変数 | 必須 | 内容 |
 |---|---|---|
+| `TIMEZONE` | Yes | 取得日付と日次判定に使うIANAタイムゾーン名（例: `Asia/Tokyo`） |
 | `GOOGLE_HEALTH_CLIENT_ID` | Yes | OAuth client ID |
 | `GOOGLE_HEALTH_CLIENT_SECRET` | Yes | OAuth client secret |
 | `GOOGLE_HEALTH_REDIRECT_URI` | Yes | Google Cloud登録済みcallback URI |
@@ -459,18 +519,19 @@ keyを変更すると既存tokenは復号できないため、tokenとは別のs
 `egograph/pipelines/.env`へ次を設定する。
 
 ```dotenv
+TIMEZONE=Asia/Tokyo
 PIPELINES_API_KEY=<十分に長いランダム文字列>
-GOOGLE_HEALTH_CLIENT_ID=<10.1.5で取得したClient ID>
-GOOGLE_HEALTH_CLIENT_SECRET=<10.1.5で取得したClient secret>
+GOOGLE_HEALTH_CLIENT_ID=<14.1.5で取得したClient ID>
+GOOGLE_HEALTH_CLIENT_SECRET=<14.1.5で取得したClient secret>
 GOOGLE_HEALTH_REDIRECT_URI=https://<callback-host>/v1/sources/google-health/auth/callback
 GOOGLE_HEALTH_TOKEN_ENCRYPTION_KEY=<生成したFernet key>
 ```
 
-### 10.3 接続
+### 14.3 接続
 
-10.2まで完了したら、次の手順を上から順に実行する。
+14.2まで完了したら、次の手順を上から順に実行する。
 
-#### 10.3.1 Pipelines Serviceを起動する
+#### 14.3.1 Pipelines Serviceを起動する
 
 リポジトリルートで次を実行する。
 
@@ -480,7 +541,7 @@ uv run python -m pipelines.main serve
 
 `Uvicorn running`と表示されたら、接続作業が完了するまでこのターミナルを開いたままにする。
 
-#### 10.3.2 OAuth callbackの受信方法を選択する
+#### 14.3.2 OAuth callbackの受信方法を選択する
 
 次の3方式から1つを選択する。
 どの方式でも、Google CloudのAuthorized redirect URIと`GOOGLE_HEALTH_REDIRECT_URI`を完全に一致させる。
@@ -563,11 +624,11 @@ ssh -N \
 ```
 
 サーバー側のPipelines Serviceが`8001`以外で待ち受ける場合は、コマンド末尾のポートを合わせる。
-認可URLは10.3.3の手順でサーバー上から取得し、手元PCのブラウザで開く。
+認可URLは14.3.3の手順でサーバー上から取得し、手元PCのブラウザで開く。
 callbackは手元PCの`127.0.0.1:18001`からSSHトンネルを通ってサーバーへ届く。
 認証完了後はSSHコマンドを`Ctrl+C`で停止する。
 
-#### 10.3.3 認可URLを取得する
+#### 14.3.3 認可URLを取得する
 
 別のターミナルを開き、リポジトリルートで次を実行する。
 
@@ -579,32 +640,33 @@ set +a
 curl -s \
   -H "X-API-Key: ${PIPELINES_API_KEY}" \
   "http://${PIPELINES_HOST:-127.0.0.1}:${PIPELINES_PORT:-8001}/v1/sources/google-health/auth/start" \
-  | jq -r '.authorization_url'
+  | uv run python -c \
+    'import json, sys; print(json.load(sys.stdin)["authorization_url"])'
 ```
 
 表示された`https://accounts.google.com/...`で始まるURLをブラウザで開く。
 
-#### 10.3.4 Google Accountで認証する
+#### 14.3.4 Google Accountで認証する
 
 1. Test userへ追加した、Google Fitbit Airの健康データを持つメインGoogle Accountを選択する。
 2. EgoGraphが要求する3つのread-only権限を確認する。
 3. 権限を許可する。
 4. callbackの結果として、connection IDと`active`がブラウザへ表示されることを確認する。
 
-#### 10.3.5 接続状態を確認する
+#### 14.3.5 接続状態を確認する
 
-10.3.3で使用したターミナルで次を実行する。
+14.3.3で使用したターミナルで次を実行する。
 
 ```bash
 curl -s \
   -H "X-API-Key: ${PIPELINES_API_KEY}" \
   "http://${PIPELINES_HOST:-127.0.0.1}:${PIPELINES_PORT:-8001}/v1/sources/google-health/connection" \
-  | jq
+  | uv run python -m json.tool
 ```
 
 `connected`が`true`、`status`が`active`であれば接続完了。
 
-### 10.4 疎通確認
+### 14.4 疎通確認
 
 `steps`と`sleep`を各1件まで取得する。
 
@@ -614,7 +676,92 @@ curl -X POST \
   "http://${PIPELINES_HOST:-127.0.0.1}:${PIPELINES_PORT:-8001}/v1/sources/google-health/connection/smoke-test"
 ```
 
-### 10.5 接続削除
+### 14.5 データ取得
+
+すべての期間指定は`from`を含み、`to`を含まない。
+たとえば`from=2026-06-01`, `to=2026-06-03`は6月1日と6月2日を取得する。
+
+#### 14.5.1 初回90日分を取得する
+
+```bash
+curl -s -X POST \
+  -H "X-API-Key: ${PIPELINES_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"initial_backfill"}' \
+  "http://${PIPELINES_HOST:-127.0.0.1}:${PIPELINES_PORT:-8001}/v1/sources/google-health/runs" \
+  | uv run python -m json.tool
+```
+
+#### 14.5.2 指定期間を全data type再取得する
+
+```bash
+curl -s -X POST \
+  -H "X-API-Key: ${PIPELINES_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"range","from":"2026-06-01","to":"2026-06-03"}' \
+  "http://${PIPELINES_HOST:-127.0.0.1}:${PIPELINES_PORT:-8001}/v1/sources/google-health/runs" \
+  | uv run python -m json.tool
+```
+
+#### 14.5.3 指定data typeだけ再取得する
+
+```bash
+curl -s -X POST \
+  -H "X-API-Key: ${PIPELINES_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mode":"data_type_range",
+    "from":"2026-06-01",
+    "to":"2026-06-03",
+    "data_types":["steps","sleep","heart-rate"]
+  }' \
+  "http://${PIPELINES_HOST:-127.0.0.1}:${PIPELINES_PORT:-8001}/v1/sources/google-health/runs" \
+  | uv run python -m json.tool
+```
+
+レスポンスの`run_id`を使って実行結果を確認する。
+
+```bash
+RUN_ID=<レスポンスのrun_id>
+
+curl -s \
+  -H "X-API-Key: ${PIPELINES_API_KEY}" \
+  "http://${PIPELINES_HOST:-127.0.0.1}:${PIPELINES_PORT:-8001}/v1/runs/${RUN_ID}" \
+  | uv run python -m json.tool
+```
+
+runの`status`は`succeeded`、`partial_failed`、`failed`のいずれかになる。
+`result_summary.data_types`でdata typeごとの`success`、`no_data`、`failed`、件数、エラーを確認する。
+
+#### 14.5.4 SQLiteの同期状態を確認する
+
+```bash
+uv run python <<'PY'
+import sqlite3
+from pipelines.config import PipelinesConfig
+
+db_path = PipelinesConfig().database_path
+conn = sqlite3.connect(db_path)
+conn.row_factory = sqlite3.Row
+
+for row in conn.execute("""
+    SELECT
+        data_type,
+        status,
+        range_start,
+        range_end,
+        last_run_id,
+        record_count,
+        last_error_message,
+        updated_at
+    FROM google_health_sync_cursors
+    ORDER BY data_type
+"""):
+    print(dict(row))
+PY
+```
+
+### 14.6 接続削除
 
 ```bash
 curl -X DELETE \
@@ -624,7 +771,7 @@ curl -X DELETE \
 
 connectionを削除すると、SQLite内のOAuth tokenとsync cursorも削除される。
 
-### 10.6 参照
+### 14.7 参照
 
 - [Google Health API: Set up Google Cloud and OAuth](https://developers.google.com/health/setup)
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server)

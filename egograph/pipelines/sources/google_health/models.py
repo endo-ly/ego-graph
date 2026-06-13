@@ -1,7 +1,7 @@
-"""Google Health 接続のドメインモデル。"""
+"""Google Healthのドメインモデル。"""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 
@@ -46,4 +46,46 @@ class EncryptedOAuthToken:
     refresh_token_encrypted: bytes
     expires_at: datetime
     token_type: str
+    updated_at: datetime
+
+
+class GoogleHealthRunMode(StrEnum):
+    """Google Health取り込みの実行モード。"""
+
+    INITIAL_BACKFILL = "initial_backfill"
+    RANGE = "range"
+    DATA_TYPE_RANGE = "data_type_range"
+
+
+class SyncStatus(StrEnum):
+    """data type単位の同期結果。"""
+
+    SUCCESS = "success"
+    NO_DATA = "no_data"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class GoogleHealthIngestRequest:
+    """Google Health取り込みrunの入力。"""
+
+    mode: GoogleHealthRunMode
+    date_from: date
+    date_to: date
+    data_types: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class GoogleHealthSyncCursor:
+    """data type単位の最終同期結果。"""
+
+    connection_id: str
+    data_type: str
+    cursor: str | None
+    status: SyncStatus
+    range_start: date | None
+    range_end: date | None
+    last_run_id: str | None
+    record_count: int
+    last_error_message: str | None
     updated_at: datetime
