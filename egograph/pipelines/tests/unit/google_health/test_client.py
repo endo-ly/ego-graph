@@ -104,6 +104,7 @@ def test_reconcile_data_points_sends_filter_and_page_token(tmp_path):
 
     # Assert
     params = session.calls[0][2]["params"]
+    assert params["filter"] == 'steps.interval.start_time >= "2026-06-01T00:00:00Z"'
     assert params["pageToken"] == "next-token"
     assert params["pageSize"] == 10000
     assert params["dataSourceFamily"].endswith("/google-wearables")

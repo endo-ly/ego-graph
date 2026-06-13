@@ -139,3 +139,38 @@ def test_extract_rejects_empty_or_reversed_range():
             date_from=date(2026, 6, 3),
             date_to=date(2026, 6, 3),
         )
+    with pytest.raises(ValueError, match="date_from must be earlier"):
+        extractor.extract(
+            connection_id="connection-1",
+            data_type=DATA_TYPE_BY_NAME["steps"],
+            date_from=date(2026, 6, 4),
+            date_to=date(2026, 6, 3),
+        )
+
+
+@pytest.mark.parametrize(
+    "data_type_name",
+    ["steps", "total-calories", "calories-in-heart-rate-zone"],
+)
+def test_extract_rejects_repeated_page_token(data_type_name):
+    """同じpage tokenが再返却された場合は無限取得を防止する。"""
+
+    class RepeatingTokenClient(FakeClient):
+        def reconcile_data_points(self, *args, **kwargs):
+            return {"dataPoints": [], "nextPageToken": "repeated"}
+
+        def daily_rollup(self, *args, **kwargs):
+            return {"rollupDataPoints": [], "nextPageToken": "repeated"}
+
+        def rollup(self, *args, **kwargs):
+            return {"rollupDataPoints": [], "nextPageToken": "repeated"}
+
+    extractor = GoogleHealthExtractor(RepeatingTokenClient())
+
+    with pytest.raises(RuntimeError, match="google_health_repeated_page_token"):
+        extractor.extract(
+            connection_id="connection-1",
+            data_type=DATA_TYPE_BY_NAME[data_type_name],
+            date_from=date(2026, 6, 1),
+            date_to=date(2026, 6, 2),
+        )

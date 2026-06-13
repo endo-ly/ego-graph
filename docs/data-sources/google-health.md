@@ -140,7 +140,7 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 
 | フィールド名 | 型 | 必須 | 説明 | 例 |
 |---|---|---|---|---|
-| `{dataType}.sampleTime.physicalTime` | datetime | Conditional | サンプルの測定時刻 | `"2026-06-10T00:15:00Z"` |
+| `{dataType}.sampleTime.physicalTime` | datetime | Conditional | サンプルの測定時刻。欠落時は`{dataType}.instantTime`を使用 | `"2026-06-10T00:15:00Z"` |
 | `{dataType}.interval.startTime` | datetime | Conditional | 区間・セッション開始時刻 | `"2026-06-10T00:00:00Z"` |
 | `{dataType}.interval.endTime` | datetime | Conditional | 区間・セッション終了時刻 | `"2026-06-10T00:05:00Z"` |
 | `{dataType}.date` | date | Conditional | Daily recordの日付 | `"2026-06-10"` |
@@ -182,7 +182,7 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 |---|---|---|---|
 | `connection_id` | VARCHAR | 接続識別子 | SQLite connection |
 | `data_type` | VARCHAR | Google Health data type | API path |
-| `measured_at_utc` | TIMESTAMP | 測定時刻 | `instantTime` |
+| `measured_at_utc` | TIMESTAMP | 測定時刻 | `{dataType}.sampleTime.physicalTime`（欠落時は`{dataType}.instantTime`） |
 | `value` | DOUBLE | 測定値 | data type固有値 |
 | `unit` | VARCHAR | 単位 | data type定義 |
 | `device_family` | VARCHAR | `fitbit_air`または`unknown` | `dataOrigin` |
@@ -296,8 +296,10 @@ data typeごとに個別テーブルを増やさず、Daily / Sample / Interval 
 
 同一期間を再取得した場合は、選択したdata typeの対象期間だけを月partition内で置換する。
 同じ月に保存されている他のdata typeと対象期間外の行は保持する。
+`compact_range`は`connection_id`と`data_type`が一致し、`date_from <= row_date < date_to`となる行だけを置換する。
+sessionの`data_type`が`sleep`の場合、対象日には`started_at_utc`ではなく`ended_at_utc`を使用する。
 取得ごとにeventsへ`{uuid}.parquet`を追加し、compact処理で対象期間を反映したcompactedの`data.parquet`を再生成する。
-events側のUUID Parquetは削除しない。
+events側の`{run_id}.parquet`は削除せず、削除対象になるのは置換後に空となったcompactedファイルだけである。
 Google Health側の遅延同期や後日補完を取り込みながら、重複レコードを残さない。
 
 APIの`from` / `to`は`TIMEZONE`のローカル日付として扱う。
@@ -308,6 +310,7 @@ APIの`from` / `to`は`TIMEZONE`のローカル日付として扱う。
 ### 7.4 同期状態
 
 `google_health_sync_cursors`へdata type単位で次を保存する。
+同期結果は`save_sync_result`がupsertし、compact処理では`last_run_id`を使って対象runの結果だけを読み込む。
 
 | 列 | 内容 |
 |---|---|
@@ -355,7 +358,7 @@ APIの`from` / `to`は`TIMEZONE`のローカル日付として扱う。
 {
   "dataPoints": [
     {
-      "dataPointName": "users/me/dataTypes/heart-rate/dataPoints/example",
+      "name": "users/me/dataTypes/heart-rate/dataPoints/example",
       "heartRate": {
         "sampleTime": {
           "physicalTime": "2026-06-10T00:15:00Z"

@@ -171,9 +171,7 @@ def _execute_google_health_ingest(
         "request": _request_summary(request),
         "data_types": results,
         "saved_keys": saved_keys,
-        "record_count": sum(
-            len(dataset_records) for dataset_records in records.values()
-        ),
+        "record_count": sum(int(result["record_count"]) for result in results),
         "errors": _result_errors(results),
     }
 

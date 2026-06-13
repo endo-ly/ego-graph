@@ -287,14 +287,20 @@ def _payload_for(
 def _daily_date(point: dict[str, Any], payload: dict[str, Any]) -> date | None:
     raw_date = payload.get("date")
     if isinstance(raw_date, str):
-        return date.fromisoformat(raw_date)
+        try:
+            return date.fromisoformat(raw_date)
+        except ValueError:
+            return None
     if isinstance(raw_date, dict):
         return _civil_date(raw_date)
     civil_start = point.get("civilStartTime") or point.get("civilTimeInterval", {}).get(
         "startTime"
     )
     if isinstance(civil_start, str):
-        return date.fromisoformat(civil_start[:10])
+        try:
+            return date.fromisoformat(civil_start[:10])
+        except ValueError:
+            return None
     if isinstance(civil_start, dict):
         return _civil_date(civil_start.get("date", civil_start))
     return None
@@ -323,7 +329,10 @@ def _interval_times(
 def _parse_datetime(value: Any) -> datetime | None:
     if not isinstance(value, str):
         return None
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
     return parsed.astimezone(UTC)
 
 

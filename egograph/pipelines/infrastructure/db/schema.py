@@ -141,15 +141,28 @@ def _migrate_google_health_sync_cursors(conn: sqlite3.Connection) -> None:
         ).fetchall()
     }
     additions = {
-        "status": "TEXT NOT NULL DEFAULT 'success'",
-        "range_start": "TEXT",
-        "range_end": "TEXT",
-        "last_run_id": "TEXT",
-        "record_count": "INTEGER NOT NULL DEFAULT 0",
-        "last_error_message": "TEXT",
+        "status": (
+            "ALTER TABLE google_health_sync_cursors "
+            "ADD COLUMN status TEXT NOT NULL DEFAULT 'success'"
+        ),
+        "range_start": (
+            "ALTER TABLE google_health_sync_cursors ADD COLUMN range_start TEXT"
+        ),
+        "range_end": (
+            "ALTER TABLE google_health_sync_cursors ADD COLUMN range_end TEXT"
+        ),
+        "last_run_id": (
+            "ALTER TABLE google_health_sync_cursors ADD COLUMN last_run_id TEXT"
+        ),
+        "record_count": (
+            "ALTER TABLE google_health_sync_cursors "
+            "ADD COLUMN record_count INTEGER NOT NULL DEFAULT 0"
+        ),
+        "last_error_message": (
+            "ALTER TABLE google_health_sync_cursors "
+            "ADD COLUMN last_error_message TEXT"
+        ),
     }
-    for name, definition in additions.items():
+    for name, statement in additions.items():
         if name not in columns:
-            conn.execute(
-                f"ALTER TABLE google_health_sync_cursors ADD COLUMN {name} {definition}"
-            )
+            conn.execute(statement)

@@ -1,1 +1,1 @@
-"""Google Health integration tests。"""
+"""Google Health統合テスト。"""

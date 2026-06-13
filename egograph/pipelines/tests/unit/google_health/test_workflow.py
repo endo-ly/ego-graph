@@ -68,18 +68,19 @@ class FakeRepository:
     def list_sync_results_for_run(self, connection_id, run_id):
         return [
             GoogleHealthSyncCursor(
-                connection_id=connection_id,
+                connection_id=item["connection_id"],
                 data_type=item["data_type"],
-                cursor=None,
+                cursor=item.get("cursor"),
                 status=item["status"],
                 range_start=item["range_start"],
                 range_end=item["range_end"],
-                last_run_id=run_id,
+                last_run_id=item["run_id"],
                 record_count=item["record_count"],
                 last_error_message=item["error_message"],
                 updated_at=datetime(2026, 6, 4, tzinfo=UTC),
             )
             for item in self.sync_results
+            if item["connection_id"] == connection_id and item["run_id"] == run_id
         ]
 
 
@@ -189,6 +190,25 @@ def test_no_data_is_successful_and_writes_no_event_file(monkeypatch):
     assert result["status"] == "succeeded"
     assert result["data_types"][0]["status"] == "no_data"
     assert writer.event_calls[0]["records"]["intervals"] == []
+
+
+def test_save_failure_reports_zero_saved_records(monkeypatch):
+    """events保存失敗時はメモリ上の正規化件数を返さない。"""
+    repository = FakeRepository()
+
+    class FailingWriter(FakeWriter):
+        def save_events(self, **kwargs):
+            raise RuntimeError("save failed")
+
+    monkeypatch.setattr(
+        "pipelines.sources.google_health.workflow._build_dependencies",
+        lambda: _dependencies(repository, FailingWriter()),
+    )
+
+    result = run_google_health_ingest(_run(["steps"]))
+
+    assert result["status"] == "failed"
+    assert result["record_count"] == 0
 
 
 def test_compact_uses_only_successful_and_no_data_types(monkeypatch):

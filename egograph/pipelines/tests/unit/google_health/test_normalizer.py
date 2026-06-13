@@ -214,3 +214,27 @@ def test_normalizes_categorical_and_duration_only_intervals():
     # Assert
     assert activity_level["intervals"][0]["value"] == 3
     assert sedentary["intervals"][0]["value"] == 600
+
+
+def test_skips_records_with_invalid_date_or_datetime():
+    """不正なAPI日時を含む行だけをスキップする。"""
+    invalid_sample = _normalize(
+        "heart-rate",
+        {
+            "heartRate": {
+                "sampleTime": {"physicalTime": "invalid"},
+                "beatsPerMinute": 72,
+            }
+        },
+    )
+    invalid_daily = _normalize(
+        "steps",
+        {
+            "civilStartTime": "invalid",
+            "steps": {"countSum": "1000"},
+        },
+        rollup=True,
+    )
+
+    assert invalid_sample["samples"] == []
+    assert invalid_daily["daily_metrics"] == []

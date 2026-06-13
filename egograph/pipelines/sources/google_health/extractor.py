@@ -121,6 +121,7 @@ class GoogleHealthExtractor:
     ) -> list[dict[str, Any]]:
         responses: list[dict[str, Any]] = []
         page_token: str | None = None
+        seen_page_tokens: set[str] = set()
         while True:
             response = self._client.reconcile_data_points(
                 connection_id,
@@ -139,9 +140,13 @@ class GoogleHealthExtractor:
                 page_token=page_token,
             )
             responses.append(response)
-            page_token = response.get("nextPageToken")
-            if not isinstance(page_token, str) or not page_token:
+            next_page_token = response.get("nextPageToken")
+            if not isinstance(next_page_token, str) or not next_page_token:
                 return responses
+            if next_page_token in seen_page_tokens:
+                raise RuntimeError("google_health_repeated_page_token")
+            seen_page_tokens.add(next_page_token)
+            page_token = next_page_token
 
     def _fetch_daily_rollups(
         self,
@@ -157,6 +162,7 @@ class GoogleHealthExtractor:
         while chunk_start < date_to:
             chunk_end = min(chunk_start + timedelta(days=max_days), date_to)
             page_token: str | None = None
+            seen_page_tokens: set[str] = set()
             while True:
                 response = self._client.daily_rollup(
                     connection_id,
@@ -166,9 +172,13 @@ class GoogleHealthExtractor:
                     page_token=page_token,
                 )
                 responses.append(response)
-                page_token = response.get("nextPageToken")
-                if not isinstance(page_token, str) or not page_token:
+                next_page_token = response.get("nextPageToken")
+                if not isinstance(next_page_token, str) or not next_page_token:
                     break
+                if next_page_token in seen_page_tokens:
+                    raise RuntimeError("google_health_repeated_page_token")
+                seen_page_tokens.add(next_page_token)
+                page_token = next_page_token
             chunk_start = chunk_end
         return responses
 
@@ -186,6 +196,7 @@ class GoogleHealthExtractor:
         while chunk_start < date_to:
             chunk_end = min(chunk_start + timedelta(days=max_days), date_to)
             page_token: str | None = None
+            seen_page_tokens: set[str] = set()
             while True:
                 response = self._client.rollup(
                     connection_id,
@@ -196,9 +207,13 @@ class GoogleHealthExtractor:
                     page_token=page_token,
                 )
                 responses.append(response)
-                page_token = response.get("nextPageToken")
-                if not isinstance(page_token, str) or not page_token:
+                next_page_token = response.get("nextPageToken")
+                if not isinstance(next_page_token, str) or not next_page_token:
                     break
+                if next_page_token in seen_page_tokens:
+                    raise RuntimeError("google_health_repeated_page_token")
+                seen_page_tokens.add(next_page_token)
+                page_token = next_page_token
             chunk_start = chunk_end
         return responses
 
