@@ -60,7 +60,8 @@ egograph/backend/
 | MCP | `get_google_health_daily_summary` | RESTと同じ日次健康サマリ |
 
 `start_date`と`end_date`は`TIMEZONE`のローカル日付として両端を含む。
-日次指標の日付は変換せず、欠損値は`null`として返す。
+日次指標の`date`はローカル日付として保存済みのため変換せず、欠損値は`null`として返す。
+絶対時刻を提供する場合は、他のデータソースと同様にUTC保存値を`TIMEZONE`へ変換して返す。
 
 ## See Also
 

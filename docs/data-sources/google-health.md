@@ -281,8 +281,10 @@ s3://egograph/
 | REST API | `GET /v1/data/google-health/daily-summary` | `start_date`と`end_date`を含むローカル日付範囲 |
 | MCP | `get_google_health_daily_summary` | REST APIと同じローカル日付範囲 |
 
-`google_health_daily_summary`相当のDuckDBクエリは`daily_metrics.date`をそのまま日付軸として使う。
-絶対時刻のタイムゾーン変換は行わず、欠損した指標は`NULL`として返す。
+`google_health_daily_summary`相当のDuckDBクエリは、ローカル日付として保存された`daily_metrics.date`をそのまま日付軸として使う。
+この日次サマリは時刻列を返さないため、レスポンス生成時のタイムゾーン変換は発生しない。
+絶対時刻をAPIまたはMCPで提供する場合は、他のデータソースと同様にUTC保存値を`TIMEZONE`へ変換して返す。
+欠損した指標は`NULL`として返す。
 
 ---
 
