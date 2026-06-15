@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import time
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import cast
@@ -79,6 +80,7 @@ def _execute_google_health_ingest(
 
     for data_type_name in request.data_types:
         data_type = DATA_TYPE_BY_NAME[data_type_name]
+        started_at = time.monotonic()
         try:
             extracted = dependencies.extractor.extract(
                 connection_id=connection.connection_id,
@@ -115,6 +117,7 @@ def _execute_google_health_ingest(
                     "data_type": data_type.name,
                     "status": status.value,
                     "record_count": normalized_count,
+                    "duration_seconds": time.monotonic() - started_at,
                     "raw_ref": raw_ref,
                 }
             )
@@ -128,6 +131,7 @@ def _execute_google_health_ingest(
                     "data_type": data_type.name,
                     "status": SyncStatus.FAILED.value,
                     "record_count": 0,
+                    "duration_seconds": time.monotonic() - started_at,
                     "error": _short_error(exc),
                 }
             )
@@ -153,6 +157,14 @@ def _execute_google_health_ingest(
 
     for result in results:
         status = SyncStatus(str(result["status"]))
+        logger.info(
+            "Google Health data type ingest completed: "
+            "data_type=%s status=%s record_count=%d duration_seconds=%.3f",
+            result["data_type"],
+            status.value,
+            int(result["record_count"]),
+            float(result["duration_seconds"]),
+        )
         dependencies.repository.save_sync_result(
             connection_id=connection.connection_id,
             data_type=str(result["data_type"]),

@@ -743,7 +743,9 @@ curl -s \
 ```
 
 runの`status`は`succeeded`、`partial_failed`、`failed`のいずれかになる。
-`result_summary.data_types`でdata typeごとの`success`、`no_data`、`failed`、件数、エラーを確認する。
+`result_summary.data_types`でdata typeごとの`success`、`no_data`、`failed`、件数、処理秒数、エラーを確認する。
+同じ情報のうち`data_type`、`status`、`record_count`、`duration_seconds`は運用ログにも出力される。
+token、Raw JSON本文、Raw保存先はログへ出力しない。
 
 #### 14.5.4 SQLiteの同期状態を確認する
 

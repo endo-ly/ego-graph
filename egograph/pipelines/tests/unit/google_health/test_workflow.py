@@ -162,6 +162,25 @@ def test_partial_failure_saves_successful_events_and_sync_results(monkeypatch):
         SyncStatus.FAILED,
     ]
     assert [item["record_count"] for item in repository.sync_results] == [1, 0]
+    assert all("duration_seconds" in item for item in result["data_types"])
+
+
+def test_ingest_logs_final_data_type_observability(caplog, monkeypatch):
+    """data type別のstatus・件数・durationを機密値なしでログ出力する。"""
+    repository = FakeRepository()
+    writer = FakeWriter()
+    monkeypatch.setattr(
+        "pipelines.sources.google_health.workflow._build_dependencies",
+        lambda: _dependencies(repository, writer),
+    )
+
+    with caplog.at_level("INFO"):
+        run_google_health_ingest(_run(["steps"]))
+
+    assert (
+        "data_type=steps status=success record_count=1 duration_seconds=" in caplog.text
+    )
+    assert "raw/steps.json" not in caplog.text
 
 
 def test_no_data_is_successful_and_writes_no_event_file(monkeypatch):
