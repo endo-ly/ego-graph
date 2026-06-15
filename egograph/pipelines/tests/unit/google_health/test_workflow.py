@@ -1,6 +1,7 @@
 """Google Health ingestion workflowのテスト。"""
 
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from pipelines.domain.workflow import (
     QueuedReason,
@@ -17,6 +18,7 @@ from pipelines.sources.google_health.models import (
 )
 from pipelines.sources.google_health.workflow import (
     GoogleHealthWorkflowDependencies,
+    _parse_request,
     _short_error,
     run_google_health_compact,
     run_google_health_ingest,
@@ -287,3 +289,21 @@ def test_short_error_falls_back_to_exception_class_for_empty_message():
 
     # Assert
     assert result == "RuntimeError"
+
+
+def test_parse_repair_request_uses_scheduled_time_in_configured_timezone():
+    """repair期間はscheduled_atをTIMEZONEのローカル日付として解決する。"""
+    run = _run(["steps"])
+    run = WorkflowRun(
+        **{
+            **run.__dict__,
+            "scheduled_at": datetime(2026, 6, 1, 15, 30, tzinfo=UTC),
+            "result_summary": {"request": {"repair_days": 14}},
+        }
+    )
+
+    request = _parse_request(run, ZoneInfo("Asia/Tokyo"))
+
+    assert request.date_from == date(2026, 5, 20)
+    assert request.date_to == date(2026, 6, 3)
+    assert request.data_types

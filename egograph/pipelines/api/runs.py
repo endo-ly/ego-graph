@@ -31,6 +31,7 @@ def get_run(
         return {
             "run": detail["run"].__dict__,
             "steps": [step.__dict__ for step in detail["steps"]],
+            "duration_seconds": detail["duration_seconds"],
         }
     except PipelinesError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

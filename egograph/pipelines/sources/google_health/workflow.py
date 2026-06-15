@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import cast
 from zoneinfo import ZoneInfo
 
@@ -63,7 +63,7 @@ def _execute_google_health_ingest(
     dependencies: GoogleHealthWorkflowDependencies,
 ) -> dict[str, object]:
     """解決済みadapterを使ってGoogle Health取り込みを実行する。"""
-    request = _parse_request(run)
+    request = _parse_request(run, dependencies.timezone)
     connection = dependencies.repository.get_connection()
     if connection is None or connection.status is not ConnectionStatus.ACTIVE:
         raise RuntimeError("google_health_active_connection_not_found")
@@ -191,7 +191,7 @@ def _execute_google_health_compact(
     dependencies: GoogleHealthWorkflowDependencies,
 ) -> dict[str, object]:
     """同期結果を基に成功したdata typeだけをcompactする。"""
-    request = _parse_request(run)
+    request = _parse_request(run, dependencies.timezone)
     connection = dependencies.repository.get_connection()
     if connection is None or connection.status is not ConnectionStatus.ACTIVE:
         raise RuntimeError("google_health_active_connection_not_found")
@@ -306,11 +306,28 @@ def _result_errors(results: list[dict[str, object]]) -> list[str]:
     ]
 
 
-def _parse_request(run: WorkflowRun) -> GoogleHealthIngestRequest:
+def _parse_request(
+    run: WorkflowRun,
+    timezone: ZoneInfo = ZoneInfo("UTC"),
+) -> GoogleHealthIngestRequest:
     summary = run.result_summary or {}
     raw = summary.get("request")
     if not isinstance(raw, dict):
         raise ValueError("invalid_request: Google Health run input is required")
+    repair_days = raw.get("repair_days")
+    if repair_days is not None:
+        if not isinstance(repair_days, int) or isinstance(repair_days, bool):
+            raise ValueError("invalid_repair_days: integer is required")
+        if repair_days <= 0:
+            raise ValueError("invalid_repair_days: must be greater than zero")
+        anchor = run.scheduled_at or run.queued_at
+        date_to = anchor.astimezone(timezone).date() + timedelta(days=1)
+        return GoogleHealthIngestRequest(
+            mode=GoogleHealthRunMode.RANGE,
+            date_from=date_to - timedelta(days=repair_days),
+            date_to=date_to,
+            data_types=tuple(item.name for item in DATA_TYPES),
+        )
     try:
         mode = GoogleHealthRunMode(str(raw["mode"]))
         date_from = date.fromisoformat(str(raw["from"]))

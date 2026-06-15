@@ -35,7 +35,8 @@ class ScheduleTriggerApp:
         self._schedule_state_repository = schedule_state_repository
         self._run_repository = run_repository
         self._workflows = workflows
-        self._scheduler = BackgroundScheduler(timezone=ZoneInfo(timezone))
+        self._timezone = ZoneInfo(timezone)
+        self._scheduler = BackgroundScheduler(timezone=self._timezone)
 
     def start(self) -> None:
         """scheduler を開始する。"""
@@ -61,7 +62,9 @@ class ScheduleTriggerApp:
         now = datetime.now(tz=UTC)
         for workflow in self._workflows.values():
             for index, trigger_spec in enumerate(workflow.triggers):
-                schedule_id = f"{workflow.workflow_id}:{index}"
+                schedule_id = (
+                    trigger_spec.schedule_name or f"{workflow.workflow_id}:{index}"
+                )
                 workflow_state = self._workflow_repository.get_workflow(
                     workflow.workflow_id
                 )
@@ -90,6 +93,7 @@ class ScheduleTriggerApp:
                         queued_reason=QueuedReason.STARTUP_RECONCILE,
                         requested_by="system",
                         scheduled_at=state.next_run_at,
+                        result_summary=trigger_spec.result_summary,
                     )
 
                 next_run_at = trigger.get_next_fire_time(None, now)
@@ -102,7 +106,11 @@ class ScheduleTriggerApp:
                     self._enqueue_schedule_run,
                     id=schedule_id,
                     trigger=trigger,
-                    args=[schedule_id, workflow.workflow_id],
+                    args=[
+                        schedule_id,
+                        workflow.workflow_id,
+                        trigger_spec.result_summary,
+                    ],
                     replace_existing=True,
                     max_instances=1,
                     coalesce=True,
@@ -126,7 +134,12 @@ class ScheduleTriggerApp:
             result_summary=result_summary,
         )
 
-    def _enqueue_schedule_run(self, schedule_id: str, workflow_id: str) -> None:
+    def _enqueue_schedule_run(
+        self,
+        schedule_id: str,
+        workflow_id: str,
+        result_summary: dict | None = None,
+    ) -> None:
         now = datetime.now(tz=UTC)
         try:
             self._run_repository.enqueue_run(
@@ -135,6 +148,7 @@ class ScheduleTriggerApp:
                 queued_reason=QueuedReason.SCHEDULE_TICK,
                 requested_by="system",
                 scheduled_at=now,
+                result_summary=result_summary,
             )
         except WorkflowDisabledError:
             self._schedule_state_repository.update_schedule_state(
@@ -146,13 +160,16 @@ class ScheduleTriggerApp:
         job = self._scheduler.get_job(schedule_id)
         self._schedule_state_repository.update_schedule_state(
             schedule_id=schedule_id,
-            next_run_at=job.next_run_time if job else None,
+            next_run_at=getattr(job, "next_run_time", None),
             last_scheduled_at=now,
         )
 
-    @staticmethod
-    def _build_trigger(trigger_spec: TriggerSpec):
-        timezone = ZoneInfo(trigger_spec.timezone)
+    def _build_trigger(self, trigger_spec: TriggerSpec):
+        timezone = (
+            self._timezone
+            if trigger_spec.use_service_timezone
+            else ZoneInfo(trigger_spec.timezone)
+        )
         if trigger_spec.trigger_type == TriggerSpecType.CRON:
             minute, hour, day, month, day_of_week = trigger_spec.trigger_expr.split()
             return CronTrigger(
