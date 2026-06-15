@@ -21,6 +21,7 @@ uv run uvicorn egograph.backend.main:create_app --factory --reload --host 127.0.
 
 - **API Docs**: http://localhost:8000/docs
 - **Health Check**: http://localhost:8000/health
+- **MCP Endpoint**: http://localhost:8000/mcp
 
 環境変数は `egograph/backend/.env.example` を参照。
 
@@ -37,7 +38,7 @@ uv run uvicorn egograph.backend.main:create_app --factory --reload --host 127.0.
 
 ```text
 egograph/backend/
-├── api/                # FastAPI ルート定義（data, health, browser_history, github）
+├── api/                # FastAPI ルート定義（各データソース, health）
 │   └── schemas/        # リクエスト/レスポンススキーマ
 ├── domain/             # ドメインモデル・ツール定義
 │   ├── models/         # エンティティ・DTO
@@ -50,6 +51,16 @@ egograph/backend/
 ├── tests/              # テスト
 └── main.py             # エントリーポイント
 ```
+
+## Google Health
+
+| Interface | Identifier | Description |
+|---|---|---|
+| REST | `GET /v1/data/google-health/daily-summary` | 指定したローカル日付範囲の日次健康サマリ |
+| MCP | `get_google_health_daily_summary` | RESTと同じ日次健康サマリ |
+
+`start_date`と`end_date`は`TIMEZONE`のローカル日付として両端を含む。
+日次指標の日付は変換せず、欠損値は`null`として返す。
 
 ## See Also
 

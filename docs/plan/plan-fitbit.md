@@ -7,6 +7,8 @@
 実装対象の詳細仕様は、別紙 `Google Health / Fitbit Air Integration Implementation Specification` を正本とする。
 本資料では、各フェーズの目的、スコープ、成果物、Definition of Doneを定義する。
 
+**実装状況**: Phase 1〜3完了。
+
 ---
 
 ## 2. Phase Overview
@@ -366,6 +368,8 @@ Google Health連携をEgoGraphの常駐データソースとして運用可能�
 | Scheduler登録       | same-day / daily / weekly repair jobを登録        |
 | repair window     | 直近期間を繰り返し再取得する                                 |
 | DuckDB view       | `google_health_daily_summary` を追加              |
+| REST API          | 日次健康サマリを期間指定で提供する                         |
+| MCP Tool          | 日次健康サマリをAIエージェントへ提供する                     |
 | run observability | run status、record count、duration、errorを確認可能にする |
 | retry API連携       | 失敗runを再試行できる                                   |
 | smoke test        | 実データで運用確認する                                    |
@@ -389,7 +393,7 @@ Google Health連携をEgoGraphの常駐データソースとして運用可能�
 | ------------------------------- | -------- | ------------ | ------------------------- |
 | `google_health_same_day_repair` | 3時間ごと    | 当日・前日        | 同日中の同期遅延を吸収               |
 | `google_health_daily_repair`    | 毎日 04:30 | 過去14日        | 睡眠・HRV・SpO2・呼吸数などの後日補完を吸収 |
-| `google_health_weekly_repair`   | 週1回      | 過去45日        | アプリ未起動、旅行、同期漏れなど長めの欠損を補修  |
+| `google_health_weekly_repair`   | 毎週日曜 05:30 | 過去45日        | アプリ未起動、旅行、同期漏れなど長めの欠損を補修  |
 
 14日は「完全性を保証する期間」ではなく、日常運用上の短期repair windowである。
 長めの欠損はweekly repairで補う。
@@ -450,6 +454,8 @@ repair window実行後に、過去数日の欠損が埋まったか確認する
 | ----------------- | -------------------------------------- |
 | scheduler job     | same-day / daily / weekly repair       |
 | DuckDB view       | `google_health_daily_summary`          |
+| REST API          | `/v1/data/google-health/daily-summary` |
+| MCP Tool          | `get_google_health_daily_summary`      |
 | run status確認      | run一覧・詳細で状態確認可能                        |
 | retry連携           | 失敗runを再試行可能                            |
 | operational logs  | data type、record count、duration、status |
@@ -496,7 +502,14 @@ Phase 3は、以下を満たしたら完了とする。
 * error messageを確認できる
 * tokenやRaw JSON本文がログに出ていない
 
-### 20.5 Documentation
+### 20.5 API / MCP
+
+* REST APIから期間指定の日次健康サマリを取得できる
+* MCP ToolからREST APIと同じ日次健康サマリを取得できる
+* 日次`date`はGoogle Healthのローカル日付を維持する
+* 欠損指標をNULLとして返す
+
+### 20.6 Documentation
 
 * Google Cloud側のOAuth設定手順が書かれている
 * `GOOGLE_HEALTH_REDIRECT_URI` の設定方法が書かれている
@@ -517,6 +530,8 @@ Phase 3は、以下を満たしたら完了とする。
 | Daily repair    | 過去14日のpartitionが再生成される  |
 | Weekly repair   | 過去45日の補修が実行される          |
 | DuckDB          | daily summary viewが読める  |
+| REST API        | 期間指定の日次サマリが読める       |
+| MCP             | 日次サマリToolを呼び出せる        |
 | Missing data    | 欠損がNULLとして扱われる          |
 | Retry           | 失敗runを再実行できる            |
 | Logs            | tokenやRaw JSON本文が出力されない |
@@ -536,6 +551,7 @@ Phase 3は、以下を満たしたら完了とする。
 | 再取得  | backfill、range、data type指定、repair windowが動く   |
 | 運用   | Schedulerでsame-day / daily / weekly repairが動く |
 | 分析   | DuckDBから日次健康サマリを参照できる                         |
+| 提供   | REST APIとMCPから日次健康サマリを参照できる                    |
 | 安全性  | tokenやRaw健康データ本文がログに出ない                       |
 | 再処理性 | Raw JSONからParquetを再生成できる                      |
 | 欠損耐性 | no_data、partial failure、retryを扱える             |

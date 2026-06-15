@@ -302,6 +302,9 @@ class WorkflowDefinition:
     misfire_policy: MisfirePolicy = COALESCE_LATEST
 ```
 
+`TriggerSpec`は通常の時刻定義に加え、安定した`schedule_name`、schedule runへ渡す`result_summary`、サービスの`TIMEZONE`を使う指定を持てる。
+Google Health repairはこのrun入力で取得日数をworkflowへ渡す。
+
 ### Trigger Types
 
 | Type | 記法 | 例 |
@@ -316,7 +319,7 @@ class WorkflowDefinition:
 | `spotify_ingest_workflow` | 6回/日 (0,4,8,12,16,22 JST) | ingest → compact |
 | `github_ingest_workflow` | 1回/日 (00:00 JST) | ingest → compact |
 | `google_activity_ingest_workflow` | 1回/日 (23:00 JST) | ingest |
-| `google_health_ingest_workflow` | API手動実行 | Raw JSON / events保存 → compacted範囲置換 |
+| `google_health_ingest_workflow` | 3時間ごと / 毎日04:30 / 毎週日曜05:30（`TIMEZONE`基準）+ API手動実行 | repair / Raw JSON・events保存 → compacted範囲置換 |
 | `local_mirror_sync_workflow` | 6時間ごと | sync |
 | `browser_history_compact_workflow` | イベント駆動 | compact |
 | `browser_history_compact_maintenance_workflow` | 6時間ごと | compact maintenance |
@@ -477,7 +480,7 @@ uv run python -m pipelines.main serve
 | POST | `/v1/workflows/{id}/enable` | 有効化 |
 | POST | `/v1/workflows/{id}/disable` | 無効化 |
 | GET | `/v1/runs` | run 一覧 |
-| GET | `/v1/runs/{id}` | run 詳細 |
+| GET | `/v1/runs/{id}` | run詳細（status、data type別件数・error、duration） |
 | POST | `/v1/runs/{id}/retry` | 再実行 |
 | POST | `/v1/runs/{id}/cancel` | キャンセル |
 | POST | `/v1/ingest/browser-history` | Browser History 受信 |

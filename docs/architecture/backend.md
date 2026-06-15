@@ -90,6 +90,7 @@ backend/
 | Browser History | `events/browser_history/page_views/` | ページビュー |
 | GitHub | `events/github/prs/`, `events/github/commits/`, `master/github/repos/` | PR・コミット・リポジトリ |
 | YouTube | `events/youtube/watch_events/`, `master/youtube/videos/data.parquet`, `master/youtube/channels/data.parquet` | 視聴イベント・動画・チャンネル |
+| Google Health | `events/google_health/daily_metrics/` | 活動・睡眠・心拍・回復の日次指標 |
 
 ## REST API
 
@@ -111,6 +112,7 @@ backend/
 | GET | `/v1/data/youtube/stats/watching` | 視聴統計（日/週/月） |
 | GET | `/v1/data/youtube/stats/top-videos` | トップ動画 |
 | GET | `/v1/data/youtube/stats/top-channels` | トップチャンネル |
+| GET | `/v1/data/google-health/daily-summary` | Google Health日次サマリ |
 
 共通パラメータパターン:
 - `start_date` / `end_date`（必須、ISO形式）: 期間フィルタ
@@ -173,7 +175,8 @@ class GetTopTracksTool(ToolBase):
 ```
 R2Config → SpotifyRepository → GetTopTracksTool ─┐
          → BrowserHistoryRepository → ...        ├→ ToolRegistry
-         → GitHubRepository → ...                ┘
+         → GitHubRepository → ...                 ├→ ToolRegistry
+         → GoogleHealthRepository → DailySummary ┘
          → DataQueryTool（直接 R2Config 使用）
 ```
 
@@ -194,6 +197,7 @@ R2Config → SpotifyRepository → GetTopTracksTool ─┐
 | `get_youtube_watching_stats` | 視聴統計（日/週/月） | YouTube |
 | `get_youtube_top_videos` | トップ動画 | YouTube |
 | `get_youtube_top_channels` | トップチャンネル | YouTube |
+| `get_google_health_daily_summary` | 日次健康サマリ | Google Health |
 | `data_query` | DuckDB 生SQL（SELECTのみ） | 全データ |
 
 ## MCP Server

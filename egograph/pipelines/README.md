@@ -133,6 +133,9 @@ Pipelines Service はポート `8001`（デフォルト）で HTTP API を提供
 | `POST` | `/v1/runs/{run_id}/retry` | run リトライ |
 | `POST` | `/v1/runs/{run_id}/cancel` | run キャンセル |
 
+Google Healthは`TIMEZONE`基準で3時間ごとの当日・前日repair、毎日04:30の14日repair、毎週日曜05:30の45日repairを実行する。
+すべて手動APIと同じ`google_health_ingest_workflow`を使用する。
+
 ```bash
 # API ドキュメント（Swagger UI）
 http://localhost:8001/docs
@@ -168,6 +171,7 @@ egograph/pipelines/
 │   ├── github/         # GitHub アクティビティ
 │   ├── browser_history/ # ブラウザ閲覧履歴
 │   ├── google_activity/ # Google アクティビティ
+│   ├── google_health/   # Google Health活動・睡眠・回復指標
 │   └── local_mirror_sync/ # ローカルファイルミラー
 ├── workflows/          # ワークフロー定義レジストリ
 ├── tests/              # テスト（unit / integration / e2e / live）

@@ -274,6 +274,16 @@ s3://egograph/
 | 活動量が多い日と睡眠時間の関係を確認したい | 定量分析 | `SELECT corr(steps, sleep_duration) FROM google_health_daily_summary WHERE steps IS NOT NULL AND sleep_duration IS NOT NULL` |
 | 特定日の心拍推移を確認したい | 事実列挙 | `SELECT measured_at_utc, value FROM google_health_samples WHERE data_type = 'heart-rate' AND CAST(measured_at_utc AS DATE) = DATE '2026-06-10' ORDER BY measured_at_utc` |
 
+日次サマリはBackendから次の2経路で参照できる。
+
+| 経路 | 識別子 | 日付の扱い |
+|---|---|---|
+| REST API | `GET /v1/data/google-health/daily-summary` | `start_date`と`end_date`を含むローカル日付範囲 |
+| MCP | `get_google_health_daily_summary` | REST APIと同じローカル日付範囲 |
+
+`google_health_daily_summary`相当のDuckDBクエリは`daily_metrics.date`をそのまま日付軸として使う。
+絶対時刻のタイムゾーン変換は行わず、欠損した指標は`NULL`として返す。
+
 ---
 
 ## 7. 設計判断・技術選定
@@ -344,9 +354,8 @@ APIの`from` / `to`は`TIMEZONE`のローカル日付として扱う。
 
 ### 11.3 将来拡張
 
-- Schedulerによるsame-day / daily / weekly repair
-- DuckDB viewによる日次サマリ参照
-- 失敗runの運用向け再実行導線
+- 日次サマリ以外のsample / interval / session参照API
+- 健康指標の可視化Dashboard
 
 ---
 
@@ -398,13 +407,16 @@ APIの`from` / `to`は`TIMEZONE`のローカル日付として扱う。
 - [x] events保存とcompactedの月partition範囲置換
 - [x] data type単位の同期状態保存
 - [x] backfill / range / data type指定run API
+- [x] same-day / daily / weekly repair Scheduler
+- [x] DuckDB日次サマリ
+- [x] REST API / MCP提供
+- [x] run観測と入力を保持したretry
 - [x] 単体テスト・統合テスト
-- [ ] DuckDBマウント
+- [x] DuckDBマウント
 
 ### 未実装機能
 
-- [ ] Schedulerによる定期取得とrepair
-- [ ] `google_health_daily_summary` view
+- [ ] sample / interval / sessionの専用参照API
 
 ---
 
@@ -761,7 +773,34 @@ for row in conn.execute("""
 PY
 ```
 
-### 14.6 接続削除
+### 14.6 Scheduler運用
+
+Pipelines Service起動中は、次のrepair jobが`TIMEZONE`基準で同じ`google_health_ingest_workflow`を実行する。
+
+| Job | Schedule | 取得範囲 |
+|---|---|---|
+| `google_health_same_day_repair` | 3時間ごと | 実行日と前日 |
+| `google_health_daily_repair` | 毎日04:30 | 実行日を含む直近14日 |
+| `google_health_weekly_repair` | 毎週日曜05:30 | 実行日を含む直近45日 |
+
+jobは実行時刻を`TIMEZONE`へ変換してclosed-open期間を確定する。
+実行日が2026-06-15の場合、14日repairは`from=2026-06-02`, `to=2026-06-16`となる。
+
+### 14.7 日次サマリ参照
+
+Backend APIでは`start_date`と`end_date`の両日を含む。
+
+```bash
+curl -s \
+  -H "X-API-Key: ${BACKEND_API_KEY}" \
+  "http://${BACKEND_HOST:-127.0.0.1}:${BACKEND_PORT:-8000}/v1/data/google-health/daily-summary?start_date=2026-06-01&end_date=2026-06-30" \
+  | uv run python -m json.tool
+```
+
+MCPでは`get_google_health_daily_summary`へ同じ`start_date`と`end_date`を渡す。
+日次指標はGoogle Healthが返したローカル`date`を維持し、欠損指標は`null`になる。
+
+### 14.8 接続削除
 
 ```bash
 curl -X DELETE \
@@ -771,7 +810,7 @@ curl -X DELETE \
 
 connectionを削除すると、SQLite内のOAuth tokenとsync cursorも削除される。
 
-### 14.7 参照
+### 14.9 参照
 
 - [Google Health API: Set up Google Cloud and OAuth](https://developers.google.com/health/setup)
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server)
