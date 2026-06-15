@@ -15,6 +15,7 @@ from backend.domain.tools.github.worklog import (
     GetRepositoriesTool,
     GetRepoSummaryStatsTool,
 )
+from backend.domain.tools.google_health.summary import GetGoogleHealthDailySummaryTool
 from backend.domain.tools.spotify.stats import GetListeningStatsTool, GetTopTracksTool
 from backend.domain.tools.youtube.stats import (
     GetYouTubeTopChannelsTool,
@@ -25,6 +26,7 @@ from backend.domain.tools.youtube.stats import (
 from backend.infrastructure.repositories import (
     BrowserHistoryRepository,
     GitHubRepository,
+    GoogleHealthRepository,
     SpotifyRepository,
     YouTubeRepository,
 )
@@ -69,5 +71,8 @@ def build_tool_registry(
     tool_registry.register(GetYouTubeWatchingStatsTool(youtube_repository))
     tool_registry.register(GetYouTubeTopVideosTool(youtube_repository))
     tool_registry.register(GetYouTubeTopChannelsTool(youtube_repository))
+
+    google_health_repository = GoogleHealthRepository(r2_config, tz=effective_tz)
+    tool_registry.register(GetGoogleHealthDailySummaryTool(google_health_repository))
 
     return tool_registry

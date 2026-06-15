@@ -14,7 +14,14 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from backend.api import browser_history_data, data, github, health, youtube
+from backend.api import (
+    browser_history_data,
+    data,
+    github,
+    google_health,
+    health,
+    youtube,
+)
 from backend.config import BackendConfig
 from backend.infrastructure.logging.sanitizers import InfraSanitizingFilter
 from backend.mcp_server import create_mcp_server
@@ -149,6 +156,7 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     app.include_router(browser_history_data.router)
     app.include_router(github.router)
     app.include_router(youtube.router)
+    app.include_router(google_health.router)
 
     # MCPサブアプリをマウント
     app.mount("/mcp", mcp_asgi)

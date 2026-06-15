@@ -7,12 +7,16 @@ from backend.infrastructure.repositories.browser_history_repository import (
     BrowserHistoryRepository,
 )
 from backend.infrastructure.repositories.github_repository import GitHubRepository
+from backend.infrastructure.repositories.google_health_repository import (
+    GoogleHealthRepository,
+)
 from backend.infrastructure.repositories.spotify_repository import SpotifyRepository
 from backend.infrastructure.repositories.youtube_repository import YouTubeRepository
 
 __all__ = [
     "BrowserHistoryRepository",
     "GitHubRepository",
+    "GoogleHealthRepository",
     "SpotifyRepository",
     "YouTubeRepository",
 ]

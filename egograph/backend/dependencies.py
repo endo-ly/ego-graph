@@ -16,6 +16,9 @@ from backend.infrastructure.repositories.browser_history_repository import (
     BrowserHistoryRepository,
 )
 from backend.infrastructure.repositories.github_repository import GitHubRepository
+from backend.infrastructure.repositories.google_health_repository import (
+    GoogleHealthRepository,
+)
 from backend.infrastructure.repositories.spotify_repository import SpotifyRepository
 from backend.infrastructure.repositories.youtube_repository import YouTubeRepository
 
@@ -119,3 +122,9 @@ def get_youtube_repository(
     config: BackendConfig = Depends(get_config),
 ) -> YouTubeRepository:
     return YouTubeRepository(_require_r2(config), tz=config.timezone)
+
+
+def get_google_health_repository(
+    config: BackendConfig = Depends(get_config),
+) -> GoogleHealthRepository:
+    return GoogleHealthRepository(_require_r2(config), tz=config.timezone)

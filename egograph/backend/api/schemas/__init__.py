@@ -20,6 +20,7 @@ from backend.api.schemas.github import (
     RepositoryResponse,
     RepoSummaryStatsResponse,
 )
+from backend.api.schemas.google_health import GoogleHealthDailySummaryResponse
 
 __all__ = [
     # Data API スキーマ
@@ -37,4 +38,5 @@ __all__ = [
     "RepositoryResponse",
     "ActivityStatsResponse",
     "RepoSummaryStatsResponse",
+    "GoogleHealthDailySummaryResponse",
 ]
