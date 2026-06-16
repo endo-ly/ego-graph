@@ -6,17 +6,18 @@ from unittest.mock import patch
 
 from mcp.types import CallToolRequest, CallToolRequestParams, ListToolsRequest
 
-from backend.dependencies import get_google_health_repository
+from backend.dependencies import get_google_health_daily_summary_use_case
 from backend.infrastructure.repositories.google_health_repository import (
     GoogleHealthRepository,
 )
 from backend.mcp_server import create_mcp_server
+from backend.usecases.google_health import GetGoogleHealthDailySummaryUseCase
 
 
 class FakeGoogleHealthRepository:
     """APIテスト用Google Health repository。"""
 
-    def get_daily_summary(self, conn, start_date, end_date):
+    def get_daily_summary(self, start_date, end_date):
         return [
             {
                 "date": start_date,
@@ -38,8 +39,8 @@ class FakeGoogleHealthRepository:
 
 def test_daily_summary_api_returns_health_metrics(test_client):
     """REST APIが日次健康サマリを返す。"""
-    test_client.app.dependency_overrides[get_google_health_repository] = (
-        FakeGoogleHealthRepository
+    test_client.app.dependency_overrides[get_google_health_daily_summary_use_case] = (
+        lambda: GetGoogleHealthDailySummaryUseCase(FakeGoogleHealthRepository())
     )
 
     response = test_client.get(
@@ -61,9 +62,7 @@ def test_mcp_registry_includes_google_health_tool(mock_backend_config):
 
     result = asyncio.run(handler(ListToolsRequest(method="tools/list"))).root
 
-    assert "get_google_health_daily_summary" in [
-        tool.name for tool in result.tools
-    ]
+    assert "get_google_health_daily_summary" in [tool.name for tool in result.tools]
 
 
 def test_mcp_google_health_tool_returns_json(mock_backend_config):

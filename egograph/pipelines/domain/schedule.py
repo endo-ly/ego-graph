@@ -33,6 +33,10 @@ class TriggerSpec:
     result_summary: dict[str, Any] | None = None
     use_service_timezone: bool = False
 
+    def schedule_id(self, workflow_id: str, index: int) -> str:
+        """workflow内のtriggerからグローバルに一意なIDを生成する。"""
+        return f"{workflow_id}:{self.schedule_name or index}"
+
 
 @dataclass(frozen=True)
 class WorkflowScheduleState:

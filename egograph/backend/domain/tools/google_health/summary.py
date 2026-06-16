@@ -3,17 +3,14 @@
 from typing import Any
 
 from backend.domain.models.tool import ToolBase
-from backend.infrastructure.database.connection import DuckDBConnection
-from backend.infrastructure.repositories.google_health_repository import (
-    GoogleHealthRepository,
-)
+from backend.domain.repositories.google_health import GoogleHealthRepositoryProtocol
 from backend.validators import validate_date_range
 
 
 class GetGoogleHealthDailySummaryTool(ToolBase):
     """指定期間の日次健康サマリを取得する。"""
 
-    def __init__(self, repository: GoogleHealthRepository) -> None:
+    def __init__(self, repository: GoogleHealthRepositoryProtocol) -> None:
         self.repository = repository
 
     @property
@@ -53,5 +50,4 @@ class GetGoogleHealthDailySummaryTool(ToolBase):
     ) -> list[dict[str, Any]]:
         """指定期間の日次健康サマリを取得する。"""
         start, end = validate_date_range(start_date, end_date)
-        with DuckDBConnection(self.repository.r2_config) as conn:
-            return self.repository.get_daily_summary(conn, start, end)
+        return self.repository.get_daily_summary(start, end)

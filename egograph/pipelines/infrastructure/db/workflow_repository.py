@@ -48,9 +48,7 @@ class WorkflowRepository(SQLiteRepository):
 
                 registered_schedule_ids: set[str] = set()
                 for index, trigger in enumerate(workflow.triggers):
-                    schedule_id = (
-                        trigger.schedule_name or f"{workflow.workflow_id}:{index}"
-                    )
+                    schedule_id = trigger.schedule_id(workflow.workflow_id, index)
                     registered_schedule_ids.add(schedule_id)
                     self._conn.execute(
                         """

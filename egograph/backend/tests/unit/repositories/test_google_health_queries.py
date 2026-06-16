@@ -71,10 +71,12 @@ def test_get_daily_summary_pivots_metrics_and_preserves_missing_values(
 
     result = get_daily_summary(params)
 
+    assert len(result) == 2
     assert result[0]["date"] == date(2026, 6, 1)
     assert result[0]["steps"] == 8000.0
     assert result[0]["sleep_duration"] == 25200.0
     assert result[0]["daily_hrv"] is None
+    assert result[1]["date"] == date(2026, 6, 2)
     assert result[1]["daily_hrv"] == 42.0
 
 

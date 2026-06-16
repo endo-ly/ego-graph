@@ -5,12 +5,13 @@ from pipelines.workflows.registry import get_workflows
 
 def test_google_health_repair_schedules_have_expected_windows():
     """3種類のrepair jobが同じworkflowへ期待期間を渡す。"""
+    # Arrange
     workflow = get_workflows()["google_health_ingest_workflow"]
 
-    schedules = {
-        trigger.schedule_name: trigger for trigger in workflow.triggers
-    }
+    # Act
+    schedules = {trigger.schedule_name: trigger for trigger in workflow.triggers}
 
+    # Assert
     assert set(schedules) == {
         "google_health_same_day_repair",
         "google_health_daily_repair",

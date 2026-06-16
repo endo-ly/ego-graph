@@ -40,6 +40,7 @@ backend/
 │   └── schemas/             #   Request/Response スキーマ
 │
 ├── usecases/                # Application Layer
+│   ├── google_health.py     #   Google Health日次サマリ取得
 │   └── tools/
 │       ├── registry.py      #   ToolRegistry
 │       └── factory.py       #   DI 構築
@@ -62,6 +63,7 @@ backend/
 ### DuckDB + Parquet アーキテクチャ
 
 ステートレス設計。リクエストごとに `:memory:` モードで新規接続を作成し、R2（またはローカル）の Parquet を直接クエリする。
+Google HealthはRepositoryが接続の生成・破棄をカプセル化し、REST APIはUseCase経由で問い合わせる。
 
 ```
 リクエスト → DuckDBConnection(:memory:) → LOAD httpfs → CREATE SECRET (R2認証)
@@ -284,6 +286,7 @@ FastMCP を使用し、ToolRegistry のツールを MCP プロトコルで公開
 
 - `get_config()`: BackendConfig を環境変数からロード（初回のみ、キャッシュ）
 - `get_db_connection()`: DuckDB接続をコンテキストマネージャーとして提供（リクエストごと）
+- `get_google_health_daily_summary_use_case()`: RepositoryとGoogle Health UseCaseを構築
 
 ## エラーハンドリング
 

@@ -167,6 +167,7 @@ def test_partial_failure_saves_successful_events_and_sync_results(monkeypatch):
 
 def test_ingest_logs_final_data_type_observability(caplog, monkeypatch):
     """data type別のstatus・件数・durationを機密値なしでログ出力する。"""
+    # Arrange
     repository = FakeRepository()
     writer = FakeWriter()
     monkeypatch.setattr(
@@ -174,9 +175,11 @@ def test_ingest_logs_final_data_type_observability(caplog, monkeypatch):
         lambda: _dependencies(repository, writer),
     )
 
+    # Act
     with caplog.at_level("INFO"):
         run_google_health_ingest(_run(["steps"]))
 
+    # Assert
     assert (
         "data_type=steps status=success record_count=1 duration_seconds=" in caplog.text
     )
@@ -312,6 +315,7 @@ def test_short_error_falls_back_to_exception_class_for_empty_message():
 
 def test_parse_repair_request_uses_scheduled_time_in_configured_timezone():
     """repair期間はscheduled_atをTIMEZONEのローカル日付として解決する。"""
+    # Arrange
     run = _run(["steps"])
     run = WorkflowRun(
         **{
@@ -321,8 +325,10 @@ def test_parse_repair_request_uses_scheduled_time_in_configured_timezone():
         }
     )
 
+    # Act
     request = _parse_request(run, ZoneInfo("Asia/Tokyo"))
 
+    # Assert
     assert request.date_from == date(2026, 5, 20)
     assert request.date_to == date(2026, 6, 3)
     assert request.data_types

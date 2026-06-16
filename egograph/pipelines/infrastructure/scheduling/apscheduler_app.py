@@ -62,9 +62,7 @@ class ScheduleTriggerApp:
         now = datetime.now(tz=UTC)
         for workflow in self._workflows.values():
             for index, trigger_spec in enumerate(workflow.triggers):
-                schedule_id = (
-                    trigger_spec.schedule_name or f"{workflow.workflow_id}:{index}"
-                )
+                schedule_id = trigger_spec.schedule_id(workflow.workflow_id, index)
                 workflow_state = self._workflow_repository.get_workflow(
                     workflow.workflow_id
                 )
