@@ -51,40 +51,46 @@ def get_daily_summary(params: QueryParams) -> list[dict[str, Any]]:
         WITH google_health_daily_summary AS (
             SELECT
                 date,
-                MAX(CASE WHEN data_type = 'steps' THEN value END) AS steps,
-                MAX(CASE WHEN data_type = 'distance' THEN value END) AS distance,
+                MAX(CASE WHEN metric_name = 'steps' THEN value END) AS steps,
+                MAX(CASE WHEN metric_name = 'distance' THEN value END) AS distance,
                 MAX(CASE
-                    WHEN data_type = 'total-calories' THEN value
+                    WHEN metric_name = 'total_calories' THEN value
                 END) AS total_calories,
                 MAX(CASE
-                    WHEN data_type = 'active-energy-burned' THEN value
+                    WHEN metric_name = 'active_energy_burned' THEN value
                 END) AS active_energy_burned,
                 MAX(CASE
-                    WHEN data_type = 'active-minutes' THEN value
+                    WHEN metric_name = 'active_minutes' THEN value
                 END) AS active_minutes,
                 MAX(CASE
-                    WHEN data_type = 'active-zone-minutes' THEN value
+                    WHEN metric_name = 'active_zone_minutes' THEN value
                 END) AS active_zone_minutes,
                 MAX(CASE
-                    WHEN data_type = 'daily-resting-heart-rate' THEN value
+                    WHEN metric_name IN (
+                        'resting_heart_rate',
+                        'daily_resting_heart_rate'
+                    ) THEN value
                 END) AS resting_heart_rate,
                 MAX(CASE
-                    WHEN data_type = 'daily-heart-rate-variability' THEN value
+                    WHEN metric_name IN (
+                        'daily_hrv',
+                        'daily_heart_rate_variability'
+                    ) THEN value
                 END) AS daily_hrv,
                 MAX(CASE
-                    WHEN data_type = 'daily-oxygen-saturation' THEN value
+                    WHEN metric_name = 'daily_oxygen_saturation' THEN value
                 END) AS daily_oxygen_saturation,
                 MAX(CASE
-                    WHEN data_type IN (
-                        'daily-respiratory-rate',
-                        'respiratory-rate-sleep-summary'
+                    WHEN metric_name IN (
+                        'daily_respiratory_rate',
+                        'respiratory_rate_sleep_summary'
                     ) THEN value
                 END) AS daily_respiratory_rate,
                 MAX(CASE
-                    WHEN data_type = 'sleep' THEN value
+                    WHEN metric_name = 'sleep_duration' THEN value
                 END) AS sleep_duration,
                 MAX(CASE
-                    WHEN data_type = 'daily-vo2-max' THEN value
+                    WHEN metric_name = 'daily_vo2_max' THEN value
                 END) AS daily_vo2_max
             FROM read_parquet(?, union_by_name = true)
             WHERE date >= ? AND date <= ?

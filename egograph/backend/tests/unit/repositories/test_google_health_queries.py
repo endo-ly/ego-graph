@@ -46,7 +46,15 @@ def test_get_daily_summary_pivots_metrics_and_preserves_missing_values(
             },
             {
                 "connection_id": "google-health-primary",
-                "data_type": "daily-heart-rate-variability",
+                "data_type": "sleep",
+                "date": date(2026, 6, 1),
+                "metric_name": "sleep_score",
+                "value": 99999.0,
+                "unit": "point",
+            },
+            {
+                "connection_id": "google-health-primary",
+                "data_type": "future-hrv-source",
                 "date": date(2026, 6, 2),
                 "metric_name": "daily_heart_rate_variability",
                 "value": 42.0,
