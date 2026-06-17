@@ -113,6 +113,7 @@ def main() -> None:
             {
                 "run": detail["run"].__dict__,
                 "steps": [step.__dict__ for step in detail["steps"]],
+                "duration_seconds": detail["duration_seconds"],
             },
             args.json,
         )

@@ -78,6 +78,19 @@ def test_get_run_404(tmp_path):
         assert response.status_code == 404
 
 
+def test_get_run_includes_duration_seconds(tmp_path):
+    """run詳細は観測用duration_secondsを返す。"""
+    with _build_client(tmp_path) as client:
+        run_response = client.post("/v1/workflows/spotify_ingest_workflow/runs")
+        run_id = run_response.json()["run_id"]
+
+        response = client.get(f"/v1/runs/{run_id}")
+
+        assert response.status_code == 200
+        assert "duration_seconds" in response.json()
+        assert response.json()["duration_seconds"] is None
+
+
 def test_get_step_log_404(tmp_path):
     """存在しない run/step のログで 404 を返す。"""
     with _build_client(tmp_path) as client:
@@ -160,13 +173,17 @@ def test_browser_history_ingest_returns_202_with_compact_run(tmp_path):
         compaction_targets=((2026, 4),),
     )
 
-    with patch(
-        "pipelines.api.browser_history.BrowserHistoryPayload.model_validate",
-        return_value=object(),
-    ), patch(
-        "pipelines.api.browser_history.run_browser_history_ingest",
-        return_value=result,
-    ), TestClient(app) as client:
+    with (
+        patch(
+            "pipelines.api.browser_history.BrowserHistoryPayload.model_validate",
+            return_value=object(),
+        ),
+        patch(
+            "pipelines.api.browser_history.run_browser_history_ingest",
+            return_value=result,
+        ),
+        TestClient(app) as client,
+    ):
         response = client.post("/v1/ingest/browser-history", json={"dummy": "payload"})
 
     assert response.status_code == 202

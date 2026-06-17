@@ -7,7 +7,7 @@ import logging
 from collections.abc import Generator
 
 import duckdb
-from fastapi import Depends, Security
+from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
 from backend.config import BackendConfig, R2Config
@@ -16,8 +16,12 @@ from backend.infrastructure.repositories.browser_history_repository import (
     BrowserHistoryRepository,
 )
 from backend.infrastructure.repositories.github_repository import GitHubRepository
+from backend.infrastructure.repositories.google_health_repository import (
+    GoogleHealthRepository,
+)
 from backend.infrastructure.repositories.spotify_repository import SpotifyRepository
 from backend.infrastructure.repositories.youtube_repository import YouTubeRepository
+from backend.usecases.google_health import GetGoogleHealthDailySummaryUseCase
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +78,7 @@ def get_db_connection(
         ValueError: R2設定が不足している場合
     """
     if not config.r2:
-        raise ValueError("R2 configuration is required")
+        raise ValueError("invalid_r2_config: R2 configuration is required")
 
     with DuckDBConnection(config.r2) as conn:
         yield conn
@@ -93,7 +97,7 @@ def _require_r2(config: BackendConfig) -> R2Config:
         ValueError: R2設定が不足している場合
     """
     if not config.r2:
-        raise ValueError("R2 configuration is required")
+        raise ValueError("invalid_r2_config: R2 configuration is required")
     return config.r2
 
 
@@ -119,3 +123,20 @@ def get_youtube_repository(
     config: BackendConfig = Depends(get_config),
 ) -> YouTubeRepository:
     return YouTubeRepository(_require_r2(config), tz=config.timezone)
+
+
+def get_google_health_repository(
+    config: BackendConfig = Depends(get_config),
+) -> GoogleHealthRepository:
+    try:
+        r2_config = _require_r2(config)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return GoogleHealthRepository(r2_config, tz=config.timezone)
+
+
+def get_google_health_daily_summary_use_case(
+    repository: GoogleHealthRepository = Depends(get_google_health_repository),
+) -> GetGoogleHealthDailySummaryUseCase:
+    """Google Health日次サマリ取得UseCaseを構築する。"""
+    return GetGoogleHealthDailySummaryUseCase(repository)

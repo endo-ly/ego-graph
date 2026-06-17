@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 
 class TriggerSpecType(StrEnum):
@@ -28,6 +29,13 @@ class TriggerSpec:
     trigger_type: TriggerSpecType
     trigger_expr: str
     timezone: str = "UTC"
+    schedule_name: str | None = None
+    result_summary: dict[str, Any] | None = None
+    use_service_timezone: bool = False
+
+    def schedule_id(self, workflow_id: str, index: int) -> str:
+        """workflow内のtriggerからグローバルに一意なIDを生成する。"""
+        return f"{workflow_id}:{self.schedule_name or index}"
 
 
 @dataclass(frozen=True)

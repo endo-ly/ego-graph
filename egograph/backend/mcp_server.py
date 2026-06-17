@@ -27,8 +27,9 @@ def create_mcp_server(config: BackendConfig) -> FastMCP:
     mcp = FastMCP(
         "EgoGraph",
         instructions=(
-            "Personal data warehouse. Access Spotify, GitHub, browser history "
-            "data via tools. Use data_query for raw SQL queries (SELECT only)."
+            "Personal data warehouse. Access Spotify, GitHub, browser history, "
+            "YouTube, and Google Health data via tools. Use data_query for raw "
+            "SQL queries (SELECT only)."
         ),
         streamable_http_path="/",
         transport_security=config.mcp_transport_security,

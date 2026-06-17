@@ -1,6 +1,7 @@
 """Google Health ingestion workflowのテスト。"""
 
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from pipelines.domain.workflow import (
     QueuedReason,
@@ -17,6 +18,7 @@ from pipelines.sources.google_health.models import (
 )
 from pipelines.sources.google_health.workflow import (
     GoogleHealthWorkflowDependencies,
+    _parse_request,
     _short_error,
     run_google_health_compact,
     run_google_health_ingest,
@@ -160,6 +162,28 @@ def test_partial_failure_saves_successful_events_and_sync_results(monkeypatch):
         SyncStatus.FAILED,
     ]
     assert [item["record_count"] for item in repository.sync_results] == [1, 0]
+    assert all("duration_seconds" in item for item in result["data_types"])
+
+
+def test_ingest_logs_final_data_type_observability(caplog, monkeypatch):
+    """data type別のstatus・件数・durationを機密値なしでログ出力する。"""
+    # Arrange
+    repository = FakeRepository()
+    writer = FakeWriter()
+    monkeypatch.setattr(
+        "pipelines.sources.google_health.workflow._build_dependencies",
+        lambda: _dependencies(repository, writer),
+    )
+
+    # Act
+    with caplog.at_level("INFO"):
+        run_google_health_ingest(_run(["steps"]))
+
+    # Assert
+    assert (
+        "data_type=steps status=success record_count=1 duration_seconds=" in caplog.text
+    )
+    assert "raw/steps.json" not in caplog.text
 
 
 def test_no_data_is_successful_and_writes_no_event_file(monkeypatch):
@@ -287,3 +311,24 @@ def test_short_error_falls_back_to_exception_class_for_empty_message():
 
     # Assert
     assert result == "RuntimeError"
+
+
+def test_parse_repair_request_uses_scheduled_time_in_configured_timezone():
+    """repair期間はscheduled_atをTIMEZONEのローカル日付として解決する。"""
+    # Arrange
+    run = _run(["steps"])
+    run = WorkflowRun(
+        **{
+            **run.__dict__,
+            "scheduled_at": datetime(2026, 6, 1, 15, 30, tzinfo=UTC),
+            "result_summary": {"request": {"repair_days": 14}},
+        }
+    )
+
+    # Act
+    request = _parse_request(run, ZoneInfo("Asia/Tokyo"))
+
+    # Assert
+    assert request.date_from == date(2026, 5, 20)
+    assert request.date_to == date(2026, 6, 3)
+    assert request.data_types

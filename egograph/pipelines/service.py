@@ -167,9 +167,15 @@ class PipelineService:
         """run 詳細と step 一覧を返す。"""
         run = self.run_repository.get_run(run_id)
         steps = self.step_run_repository.list_step_runs(run_id)
+        duration_seconds = (
+            (run.finished_at - run.started_at).total_seconds()
+            if run.started_at is not None and run.finished_at is not None
+            else None
+        )
         return {
             "run": run,
             "steps": steps,
+            "duration_seconds": duration_seconds,
         }
 
     def trigger_workflow(
@@ -216,6 +222,7 @@ class PipelineService:
             queued_reason=QueuedReason.RETRY_REQUEST,
             requested_by=requested_by,
             parent_run_id=source_run.run_id,
+            result_summary=source_run.result_summary,
         )
 
     def cancel_run(self, run_id: str) -> WorkflowRun:

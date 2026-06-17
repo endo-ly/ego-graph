@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import time
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import cast
 from zoneinfo import ZoneInfo
 
@@ -63,7 +64,7 @@ def _execute_google_health_ingest(
     dependencies: GoogleHealthWorkflowDependencies,
 ) -> dict[str, object]:
     """解決済みadapterを使ってGoogle Health取り込みを実行する。"""
-    request = _parse_request(run)
+    request = _parse_request(run, dependencies.timezone)
     connection = dependencies.repository.get_connection()
     if connection is None or connection.status is not ConnectionStatus.ACTIVE:
         raise RuntimeError("google_health_active_connection_not_found")
@@ -79,6 +80,7 @@ def _execute_google_health_ingest(
 
     for data_type_name in request.data_types:
         data_type = DATA_TYPE_BY_NAME[data_type_name]
+        started_at = time.monotonic()
         try:
             extracted = dependencies.extractor.extract(
                 connection_id=connection.connection_id,
@@ -115,6 +117,7 @@ def _execute_google_health_ingest(
                     "data_type": data_type.name,
                     "status": status.value,
                     "record_count": normalized_count,
+                    "duration_seconds": time.monotonic() - started_at,
                     "raw_ref": raw_ref,
                 }
             )
@@ -128,6 +131,7 @@ def _execute_google_health_ingest(
                     "data_type": data_type.name,
                     "status": SyncStatus.FAILED.value,
                     "record_count": 0,
+                    "duration_seconds": time.monotonic() - started_at,
                     "error": _short_error(exc),
                 }
             )
@@ -153,6 +157,14 @@ def _execute_google_health_ingest(
 
     for result in results:
         status = SyncStatus(str(result["status"]))
+        logger.info(
+            "Google Health data type ingest completed: "
+            "data_type=%s status=%s record_count=%d duration_seconds=%.3f",
+            result["data_type"],
+            status.value,
+            int(result["record_count"]),
+            float(result["duration_seconds"]),
+        )
         dependencies.repository.save_sync_result(
             connection_id=connection.connection_id,
             data_type=str(result["data_type"]),
@@ -191,7 +203,7 @@ def _execute_google_health_compact(
     dependencies: GoogleHealthWorkflowDependencies,
 ) -> dict[str, object]:
     """同期結果を基に成功したdata typeだけをcompactする。"""
-    request = _parse_request(run)
+    request = _parse_request(run, dependencies.timezone)
     connection = dependencies.repository.get_connection()
     if connection is None or connection.status is not ConnectionStatus.ACTIVE:
         raise RuntimeError("google_health_active_connection_not_found")
@@ -306,11 +318,28 @@ def _result_errors(results: list[dict[str, object]]) -> list[str]:
     ]
 
 
-def _parse_request(run: WorkflowRun) -> GoogleHealthIngestRequest:
+def _parse_request(
+    run: WorkflowRun,
+    timezone: ZoneInfo = ZoneInfo("UTC"),
+) -> GoogleHealthIngestRequest:
     summary = run.result_summary or {}
     raw = summary.get("request")
     if not isinstance(raw, dict):
         raise ValueError("invalid_request: Google Health run input is required")
+    repair_days = raw.get("repair_days")
+    if repair_days is not None:
+        if not isinstance(repair_days, int) or isinstance(repair_days, bool):
+            raise ValueError("invalid_repair_days: integer is required")
+        if repair_days <= 0:
+            raise ValueError("invalid_repair_days: must be greater than zero")
+        anchor = run.scheduled_at or run.queued_at
+        date_to = anchor.astimezone(timezone).date() + timedelta(days=1)
+        return GoogleHealthIngestRequest(
+            mode=GoogleHealthRunMode.RANGE,
+            date_from=date_to - timedelta(days=repair_days),
+            date_to=date_to,
+            data_types=tuple(item.name for item in DATA_TYPES),
+        )
     try:
         mode = GoogleHealthRunMode(str(raw["mode"]))
         date_from = date.fromisoformat(str(raw["from"]))

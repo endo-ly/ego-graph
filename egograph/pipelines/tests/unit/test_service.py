@@ -35,6 +35,23 @@ def test_retry_run_creates_new_queued_run(tmp_path):
     assert retry_run.parent_run_id == original_run.run_id
 
 
+def test_retry_run_preserves_original_input(tmp_path):
+    """入力付きrunのretryは元のresult_summaryを引き継ぐ。"""
+    service = _make_service(tmp_path)
+    original_run = service.trigger_google_health_ingest(
+        {
+            "mode": "range",
+            "from": "2026-06-01",
+            "to": "2026-06-03",
+            "data_types": [],
+        }
+    )
+
+    retry_run = service.retry_run(original_run.run_id)
+
+    assert retry_run.result_summary == original_run.result_summary
+
+
 def test_retry_run_404_for_unknown_run(tmp_path):
     """存在しない run_id のリトライは例外を送出する。"""
     service = _make_service(tmp_path)
