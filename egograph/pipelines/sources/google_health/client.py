@@ -47,6 +47,125 @@ class GoogleHealthClientError(GoogleHealthAPIError):
     """retry 不能な 4xx error。"""
 
 
+_OAUTH_ERROR_SUMMARY_MAX_LENGTH = 500
+
+# OAuth refresh 失敗時に診断情報として使ってよい JSON field の許可リスト。
+# 意図的に限定することで token / code / secret 等の秘密情報混入を防ぐ。
+# error_description は OAuth 仕様上は許容 field だが、provider が自由に文章を
+# 制御できるため token / code / client identifier 等が混入するリスクがある。
+# そのため provider 由来の自由文は保存せず、構造化された固定値だけを記録する。
+
+# OAuth 診断 field 値の永続化許可リスト。
+# provider 由来の任意の文字列を無条件で信頼せず、field ごとに定義した明示的な
+# 固定値集合に完全一致した場合だけ保存する。短い token や authorization code は
+# OAuth 仕様の identifier 形状 (ASCII letter/digit と記号) を満たし得るため、
+# 形状 check ではなく許可リストで制限する。ここに含まれない値はすべて保存
+# 対象から除外する。keys がそのまま利用対象 field 名になる。
+_OAUTH_ERROR_ALLOWED_VALUES: dict[str, frozenset[str]] = {
+    "error": frozenset(
+        {
+            "invalid_request",
+            "invalid_client",
+            "invalid_grant",
+            "unauthorized_client",
+            "unsupported_grant_type",
+            "invalid_scope",
+        }
+    ),
+    "error_subtype": frozenset({"invalid_rapt"}),
+}
+
+# error 値と connection status の対応。一時障害(429/5xx)は含まない。
+# 許可リスト内だがここに含まれない error (invalid_request 等) は未分類扱いで
+# :attr:`ConnectionStatus.ERROR` になる。
+_OAUTH_ERROR_CONNECTION_STATUS: dict[str, ConnectionStatus] = {
+    "invalid_grant": ConnectionStatus.REVOKED,
+    "invalid_client": ConnectionStatus.ERROR,
+    "unauthorized_client": ConnectionStatus.ERROR,
+}
+
+
+def _safe_oauth_error_field(field: str, value: Any) -> str | None:
+    """OAuth 診断 field 値が明示的許可リストに含まれる場合のみ返す。
+
+    ``error`` / ``error_subtype`` は OAuth 仕様では短い identifier として
+    定義されるが、短い token や authorization code も同じ identifier 形状に
+    なり得る。そのため provider 由来の文字列を形状だけで受け入れず、
+    :data:`_OAUTH_ERROR_ALLOWED_VALUES` の field ごとの許可リストと完全一致
+    した場合だけ保存対象とする。許可リスト外の値は ``None`` を返し、
+    保存対象から除外する。
+    """
+    allowed = _OAUTH_ERROR_ALLOWED_VALUES.get(field)
+    if allowed is None or not isinstance(value, str):
+        return None
+    return value if value in allowed else None
+
+
+def _oauth_error_summary(response: Response) -> str:
+    """OAuth refresh 失敗時の安全な1行要約を返す。
+
+    - JSON body の場合は ``error`` / ``error_subtype`` だけを使う
+    - ただし値が field ごとの明示的許可リスト
+      (:data:`_OAUTH_ERROR_ALLOWED_VALUES`) に完全一致しない場合はその
+      field を要約から除外する。短い token や authorization code は
+      identifier 形状になり得るため、形状ではなく許可リストで制限する
+    - JSONでない場合は body を保存しない
+    - access token / refresh token / authorization code / client secret /
+      Authorization header / body 全体、および provider 由来の自由文
+      (``error_description``) は絶対に含めない
+    - この関数自体が例外を投げないよう、parse 失敗時は status のみ返す
+    """
+    status_code = response.status_code
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if not isinstance(payload, dict):
+        return f"oauth_refresh_failed: status={status_code}"[
+            :_OAUTH_ERROR_SUMMARY_MAX_LENGTH
+        ]
+    parts: list[str] = [f"oauth_refresh_failed: status={status_code}"]
+    for field in _OAUTH_ERROR_ALLOWED_VALUES:
+        safe_value = _safe_oauth_error_field(field, payload.get(field))
+        if safe_value is not None:
+            parts.append(f"{field}={safe_value}")
+    return " ".join(parts)[:_OAUTH_ERROR_SUMMARY_MAX_LENGTH]
+
+
+def _refresh_failure_connection_status(
+    response: Response,
+) -> ConnectionStatus | None:
+    """OAuth refresh 失敗時の connection status 遷移を返す。
+
+    - ``invalid_grant`` -> :attr:`ConnectionStatus.REVOKED`
+    - ``invalid_client`` / ``unauthorized_client`` -> :attr:`ConnectionStatus.ERROR`
+    - 429 / 5xx -> ``None`` (一時障害なので connection status を更新しない)
+    - JSONでない・未分類の 4xx -> :attr:`ConnectionStatus.ERROR`
+
+    分類は ``error`` 値が ``error`` field の明示的許可リスト
+    (:data:`_OAUTH_ERROR_ALLOWED_VALUES`) に完全一致し、かつ
+    :data:`_OAUTH_ERROR_CONNECTION_STATUS` に含まれる場合のみ行う。
+    許可リスト外の値、および許可リスト内だが status map にない値
+    (``invalid_request`` 等) は未分類扱いとなり、4xx なら
+    :attr:`ConnectionStatus.ERROR` になる。
+
+    一時障害で誤って connection を inactive にすると、手動再認証ではなく
+    DB状態修復が必要になるため ``None`` で更新を抑止する。
+    """
+    status_code = response.status_code
+    if status_code == 429 or status_code >= 500:
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        return ConnectionStatus.ERROR
+    if isinstance(payload, dict):
+        error = _safe_oauth_error_field("error", payload.get("error"))
+        if error is not None:
+            return _OAUTH_ERROR_CONNECTION_STATUS.get(error, ConnectionStatus.ERROR)
+    return ConnectionStatus.ERROR
+
+
 class GoogleHealthAPIClient:
     """token refresh と retry を備えた Google Health API client。"""
 
@@ -210,17 +329,15 @@ class GoogleHealthAPIClient:
             )
         response = self._request_token_refresh(current_token.refresh_token)
         if response.status_code >= 400:
-            status = (
-                ConnectionStatus.REVOKED
-                if response.status_code in (400, 401)
-                else ConnectionStatus.ERROR
-            )
-            self._repository.update_connection_status(
-                connection_id,
-                status,
-                "access token refresh failed",
-            )
-            raise GoogleHealthAuthenticationError("google_health_token_refresh_failed")
+            error_summary = _oauth_error_summary(response)
+            status = _refresh_failure_connection_status(response)
+            if status is not None:
+                self._repository.update_connection_status(
+                    connection_id,
+                    status,
+                    error_summary,
+                )
+            raise GoogleHealthAuthenticationError(error_summary)
         payload = response.json()
         access_token = payload.get("access_token")
         expires_in = payload.get("expires_in")

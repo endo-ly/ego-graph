@@ -66,8 +66,13 @@ def _execute_google_health_ingest(
     """解決済みadapterを使ってGoogle Health取り込みを実行する。"""
     request = _parse_request(run, dependencies.timezone)
     connection = dependencies.repository.get_connection()
-    if connection is None or connection.status is not ConnectionStatus.ACTIVE:
+    if connection is None:
         raise RuntimeError("google_health_active_connection_not_found")
+    if connection.status is not ConnectionStatus.ACTIVE:
+        raise RuntimeError(
+            "google_health_active_connection_not_found: "
+            f"status={connection.status.value}"
+        )
 
     records: dict[str, list[dict]] = {
         "daily_metrics": [],
@@ -205,8 +210,13 @@ def _execute_google_health_compact(
     """同期結果を基に成功したdata typeだけをcompactする。"""
     request = _parse_request(run, dependencies.timezone)
     connection = dependencies.repository.get_connection()
-    if connection is None or connection.status is not ConnectionStatus.ACTIVE:
+    if connection is None:
         raise RuntimeError("google_health_active_connection_not_found")
+    if connection.status is not ConnectionStatus.ACTIVE:
+        raise RuntimeError(
+            "google_health_active_connection_not_found: "
+            f"status={connection.status.value}"
+        )
 
     cursors = dependencies.repository.list_sync_results_for_run(
         connection.connection_id,

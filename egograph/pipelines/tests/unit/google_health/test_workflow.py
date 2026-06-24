@@ -3,6 +3,7 @@
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
+import pytest
 from pipelines.domain.workflow import (
     QueuedReason,
     TriggerType,
@@ -51,13 +52,14 @@ def _run(data_types):
 
 
 class FakeRepository:
-    def __init__(self):
+    def __init__(self, connection_status=ConnectionStatus.ACTIVE):
         self.sync_results = []
+        self.connection_status = connection_status
 
     def get_connection(self):
         return GoogleHealthConnection(
             connection_id="google-health-primary",
-            status=ConnectionStatus.ACTIVE,
+            status=self.connection_status,
             scopes=(),
             created_at=datetime(2026, 6, 1, tzinfo=UTC),
             updated_at=datetime(2026, 6, 1, tzinfo=UTC),
@@ -332,3 +334,22 @@ def test_parse_repair_request_uses_scheduled_time_in_configured_timezone():
     assert request.date_from == date(2026, 5, 20)
     assert request.date_to == date(2026, 6, 3)
     assert request.data_types
+
+
+def test_inactive_connection_workflow_error_includes_status(monkeypatch):
+    """inactive connection の ingest workflow error に status が含まれる。"""
+    # Arrange
+    repository = FakeRepository(connection_status=ConnectionStatus.REVOKED)
+    writer = FakeWriter()
+    monkeypatch.setattr(
+        "pipelines.sources.google_health.workflow._build_dependencies",
+        lambda: _dependencies(repository, writer),
+    )
+
+    # Act & Assert
+    with pytest.raises(RuntimeError) as exc_info:
+        run_google_health_ingest(_run(["steps"]))
+
+    message = str(exc_info.value)
+    assert "google_health_active_connection_not_found" in message
+    assert "status=revoked" in message

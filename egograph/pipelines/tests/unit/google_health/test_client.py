@@ -13,7 +13,7 @@ from pipelines.sources.google_health.client import (
     GoogleHealthAuthenticationError,
     GoogleHealthRateLimitError,
 )
-from pipelines.sources.google_health.models import OAuthToken
+from pipelines.sources.google_health.models import ConnectionStatus, OAuthToken
 from pipelines.sources.google_health.repository import GoogleHealthRepository
 from pipelines.sources.google_health.token_cipher import TokenCipher
 
@@ -351,7 +351,14 @@ def test_refresh_rejection_marks_connection_revoked(tmp_path):
         tmp_path,
         expired=True,
     )
-    session = FakeSession([FakeResponse({}, status_code=400)])
+    session = FakeSession(
+        [
+            FakeResponse(
+                {"error": "invalid_grant"},
+                status_code=400,
+            )
+        ]
+    )
     client = GoogleHealthAPIClient(
         repository,
         cipher,
@@ -367,3 +374,292 @@ def test_refresh_rejection_marks_connection_revoked(tmp_path):
     updated = repository.get_connection()
     assert updated is not None
     assert updated.status.value == "revoked"
+
+
+def test_refresh_invalid_grant_persists_safe_diagnostics(tmp_path):
+    """refresh 400 invalid_grant は安全な診断を保存し connection を revoked にする。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path, expired=True)
+    session = FakeSession(
+        [
+            FakeResponse(
+                {
+                    "error": "invalid_grant",
+                    "error_description": "Token has been expired or revoked.",
+                },
+                status_code=400,
+            )
+        ]
+    )
+    client = GoogleHealthAPIClient(
+        repository,
+        cipher,
+        client_id="client-id",
+        client_secret="client-secret",
+        session=session,
+    )
+
+    # Act & Assert
+    with pytest.raises(GoogleHealthAuthenticationError) as exc_info:
+        client.list_data_points(connection.connection_id, "steps")
+
+    summary = str(exc_info.value)
+    assert "oauth_refresh_failed" in summary
+    assert "status=400" in summary
+    assert "error=invalid_grant" in summary
+    # provider 由来の error_description は例外メッセージに保存しない
+    assert "Token has been expired or revoked" not in summary
+    # 秘密情報が例外メッセージに混入しない
+    assert "refresh-token" not in summary
+    assert "client-secret" not in summary
+
+    updated = repository.get_connection()
+    assert updated is not None
+    assert updated.status == ConnectionStatus.REVOKED
+    assert updated.last_error_message is not None
+    assert "oauth_refresh_failed" in updated.last_error_message
+    assert "error=invalid_grant" in updated.last_error_message
+    # provider 由来の error_description は DB の last_error_message にも保存しない
+    assert "Token has been expired or revoked" not in updated.last_error_message
+    # 秘密情報が DB の last_error_message に混入しない
+    assert "refresh-token" not in updated.last_error_message
+
+
+def test_refresh_error_description_with_token_like_text_is_not_persisted(tmp_path):
+    """error_description に token 的文字列が含まれていても保存・伝播しない。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path, expired=True)
+    sensitive_description = "refresh_token=refresh-token; code=authz-code-123"
+    session = FakeSession(
+        [
+            FakeResponse(
+                {
+                    "error": "invalid_grant",
+                    "error_description": sensitive_description,
+                },
+                status_code=400,
+            )
+        ]
+    )
+    client = GoogleHealthAPIClient(
+        repository,
+        cipher,
+        client_id="client-id",
+        client_secret="client-secret",
+        session=session,
+    )
+
+    # Act & Assert
+    with pytest.raises(GoogleHealthAuthenticationError) as exc_info:
+        client.list_data_points(connection.connection_id, "steps")
+
+    summary = str(exc_info.value)
+    assert "error=invalid_grant" in summary
+    # error_description に含まれる token 的文字列は例外メッセージに漏れない
+    assert "refresh-token" not in summary
+    assert "authz-code-123" not in summary
+    assert sensitive_description not in summary
+
+    updated = repository.get_connection()
+    assert updated is not None
+    assert updated.last_error_message is not None
+    # DB の last_error_message にも token 的文字列は漏れない
+    assert "refresh-token" not in updated.last_error_message
+    assert "authz-code-123" not in updated.last_error_message
+    assert sensitive_description not in updated.last_error_message
+
+
+def test_refresh_token_like_error_value_is_not_persisted(tmp_path):
+    """許可リスト外の error / error_subtype 値は保存・伝播しない。
+
+    provider が ``error`` / ``error_subtype`` に許可リスト外の文字列
+    (token / code / 自由文など) を送ってきた場合、それを例外メッセージや
+    ``last_error_message`` に保存しないことを保証する。
+    """
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path, expired=True)
+    # "=" / ";" / 空白を含む自由文 (許可リスト外)
+    malicious_error = "refresh_token=secret-refresh-token; code=authz-code-123"
+    # 許可リスト外の長い token 的文字列
+    malicious_error_subtype = "ya29." + "a" * 200
+    session = FakeSession(
+        [
+            FakeResponse(
+                {
+                    "error": malicious_error,
+                    "error_subtype": malicious_error_subtype,
+                },
+                status_code=400,
+            )
+        ]
+    )
+    client = GoogleHealthAPIClient(
+        repository,
+        cipher,
+        client_id="client-id",
+        client_secret="client-secret",
+        session=session,
+    )
+
+    # Act & Assert
+    with pytest.raises(GoogleHealthAuthenticationError) as exc_info:
+        client.list_data_points(connection.connection_id, "steps")
+
+    summary = str(exc_info.value)
+    assert "oauth_refresh_failed" in summary
+    assert "status=400" in summary
+    # 許可リスト外の値は要約から除外されるため field 名自体登場しない
+    assert "error=" not in summary
+    assert "error_subtype=" not in summary
+    # token 的文字列は例外メッセージに漏れない
+    assert malicious_error not in summary
+    assert malicious_error_subtype not in summary
+    assert "secret-refresh-token" not in summary
+    assert "authz-code-123" not in summary
+
+    updated = repository.get_connection()
+    assert updated is not None
+    # 分類不能なので 4xx 扱いで ERROR になる
+    assert updated.status == ConnectionStatus.ERROR
+    assert updated.last_error_message is not None
+    assert "oauth_refresh_failed" in updated.last_error_message
+    assert "status=400" in updated.last_error_message
+    # token 的文字列は DB の last_error_message にも漏れない
+    assert "error=" not in updated.last_error_message
+    assert "error_subtype=" not in updated.last_error_message
+    assert malicious_error not in updated.last_error_message
+    assert malicious_error_subtype not in updated.last_error_message
+    assert "secret-refresh-token" not in updated.last_error_message
+    assert "authz-code-123" not in updated.last_error_message
+
+
+def test_refresh_identifier_shaped_non_allowlisted_value_is_not_persisted(tmp_path):
+    """許可リスト外の identifier 形状値 (token/code 類似) は保存・伝播しない。
+
+    ``error`` / ``error_subtype`` が OAuth 仕様の identifier 形状
+    (ASCII letter/digit と記号のみの短い文字列) を満たしていても、明示的
+    許可リストに含まれなければ保存対象から除外する。短い authorization
+    code や token の断片は identifier 形状になり得るため、形状ではなく
+    許可リストで制限する。
+    """
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path, expired=True)
+    # identifier 形状だが許可リスト外の token/code 的文字列
+    token_like_error = "authz-code-123"
+    token_like_subtype = "ya29-short-token"
+    session = FakeSession(
+        [
+            FakeResponse(
+                {
+                    "error": token_like_error,
+                    "error_subtype": token_like_subtype,
+                },
+                status_code=400,
+            )
+        ]
+    )
+    client = GoogleHealthAPIClient(
+        repository,
+        cipher,
+        client_id="client-id",
+        client_secret="client-secret",
+        session=session,
+    )
+
+    # Act & Assert
+    with pytest.raises(GoogleHealthAuthenticationError) as exc_info:
+        client.list_data_points(connection.connection_id, "steps")
+
+    summary = str(exc_info.value)
+    assert "oauth_refresh_failed" in summary
+    assert "status=400" in summary
+    # 許可リスト外の値は要約から除外されるため field 名自体登場しない
+    assert "error=" not in summary
+    assert "error_subtype=" not in summary
+    # token/code 的文字列は例外メッセージに漏れない
+    assert token_like_error not in summary
+    assert token_like_subtype not in summary
+
+    updated = repository.get_connection()
+    assert updated is not None
+    # 許可リスト外なので未分類 4xx 扱いで ERROR になる
+    assert updated.status == ConnectionStatus.ERROR
+    assert updated.last_error_message is not None
+    assert "oauth_refresh_failed" in updated.last_error_message
+    assert "status=400" in updated.last_error_message
+    # token/code 的文字列は DB の last_error_message にも漏れない
+    assert "error=" not in updated.last_error_message
+    assert "error_subtype=" not in updated.last_error_message
+    assert token_like_error not in updated.last_error_message
+    assert token_like_subtype not in updated.last_error_message
+
+
+def test_refresh_invalid_client_marks_error(tmp_path):
+    """refresh 401 invalid_client は connection を error にする。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path, expired=True)
+    session = FakeSession([FakeResponse({"error": "invalid_client"}, status_code=401)])
+    client = GoogleHealthAPIClient(
+        repository,
+        cipher,
+        client_id="client-id",
+        client_secret="client-secret",
+        session=session,
+    )
+
+    # Act & Assert
+    with pytest.raises(GoogleHealthAuthenticationError) as exc_info:
+        client.list_data_points(connection.connection_id, "steps")
+
+    assert "error=invalid_client" in str(exc_info.value)
+    updated = repository.get_connection()
+    assert updated is not None
+    assert updated.status == ConnectionStatus.ERROR
+
+
+def test_refresh_server_error_keeps_connection_active(tmp_path):
+    """refresh 5xx は connection status を更新せず安全な診断で例外を投げる。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path, expired=True)
+    session = FakeSession([FakeResponse({}, status_code=500)] * 3)
+    client = GoogleHealthAPIClient(
+        repository,
+        cipher,
+        client_id="client-id",
+        client_secret="client-secret",
+        session=session,
+        sleep=lambda _: None,
+    )
+
+    # Act & Assert
+    with pytest.raises(GoogleHealthAuthenticationError) as exc_info:
+        client.list_data_points(connection.connection_id, "steps")
+
+    assert "oauth_refresh_failed: status=500" in str(exc_info.value)
+    updated = repository.get_connection()
+    assert updated is not None
+    assert updated.status == ConnectionStatus.ACTIVE
+
+
+def test_refresh_rate_limit_keeps_connection_active(tmp_path):
+    """refresh 429 は connection status を更新せず安全な診断で例外を投げる。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path, expired=True)
+    session = FakeSession([FakeResponse({}, status_code=429)] * 3)
+    client = GoogleHealthAPIClient(
+        repository,
+        cipher,
+        client_id="client-id",
+        client_secret="client-secret",
+        session=session,
+        sleep=lambda _: None,
+    )
+
+    # Act & Assert
+    with pytest.raises(GoogleHealthAuthenticationError) as exc_info:
+        client.list_data_points(connection.connection_id, "steps")
+
+    assert "oauth_refresh_failed: status=429" in str(exc_info.value)
+    updated = repository.get_connection()
+    assert updated is not None
+    assert updated.status == ConnectionStatus.ACTIVE
