@@ -15,6 +15,8 @@ DEFAULT_WATCH_EVENTS_LIMIT = 100_000
 
 YOUTUBE_VIDEOS_PATH = "s3://{bucket}/{master_path}youtube/videos/data.parquet"
 YOUTUBE_CHANNELS_PATH = "s3://{bucket}/{master_path}youtube/channels/data.parquet"
+WATCHED_AT_UTC_EXPR = "make_timestamp(epoch_us(watched_at_utc))"
+WATCHED_AT_UTC_W_EXPR = "make_timestamp(epoch_us(w.watched_at_utc))"
 
 
 def get_videos_parquet_path(bucket: str, master_path: str) -> str:
@@ -102,7 +104,7 @@ def _build_enriched_cte(
     ctes.append(
         "filtered_watch_events AS ("
         "SELECT * FROM read_parquet(?) "
-        "WHERE watched_at_utc::TIMESTAMP >= ? AND watched_at_utc::TIMESTAMP < ?)"
+        f"WHERE {WATCHED_AT_UTC_EXPR} >= ? AND {WATCHED_AT_UTC_EXPR} < ?)"
     )
     sql_params.extend(
         [
@@ -116,7 +118,7 @@ def _build_enriched_cte(
         f"enriched_watch_events AS ("
         "SELECT "
         "w.watch_event_id, "
-        "w.watched_at_utc::TIMESTAMP AT TIME ZONE 'UTC' "
+        f"{WATCHED_AT_UTC_W_EXPR} AT TIME ZONE 'UTC' "
         f"AT TIME ZONE '{params.tz_name}' AS watched_at, "
         "w.video_id, "
         "w.video_url, "

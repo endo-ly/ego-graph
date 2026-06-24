@@ -266,6 +266,63 @@ class TestGetWatchEvents:
         # Assert: 2024-01-01には2件のレコードがある
         assert len(result) == 2
 
+    def test_filters_timestamptz_as_utc_when_duckdb_session_timezone_differs(
+        self, duckdb_conn, tmp_path
+    ):
+        """TIMESTAMPTZ列でもUTC境界でフィルタリングする。"""
+        # Arrange
+        watch_events_path = tmp_path / "watch_events.parquet"
+        missing_videos_path = tmp_path / "missing_videos.parquet"
+        missing_channels_path = tmp_path / "missing_channels.parquet"
+        pd.DataFrame(
+            {
+                "watch_event_id": ["we_1", "we_2"],
+                "watched_at_utc": pd.to_datetime(
+                    ["2026-06-23T00:30:00Z", "2026-06-23T01:00:00Z"],
+                    utc=True,
+                ),
+                "video_id": ["video_1", "video_2"],
+                "video_url": [
+                    "https://youtube.com/watch?v=video_1",
+                    "https://youtube.com/watch?v=video_2",
+                ],
+                "video_title": ["Video A", "Video B"],
+                "channel_id": ["channel_1", "channel_2"],
+                "channel_name": ["Channel X", "Channel Y"],
+                "content_type": ["video", "video"],
+            }
+        ).to_parquet(watch_events_path)
+        duckdb_conn.execute("SET TimeZone='America/Los_Angeles'")
+
+        with (
+            patch(
+                "backend.infrastructure.database.youtube_queries.build_partition_paths",
+                return_value=[str(watch_events_path)],
+            ),
+            patch(
+                "backend.infrastructure.database.youtube_queries.get_videos_parquet_path",
+                return_value=str(missing_videos_path),
+            ),
+            patch(
+                "backend.infrastructure.database.youtube_queries.get_channels_parquet_path",
+                return_value=str(missing_channels_path),
+            ),
+        ):
+            params = _yqp(
+                conn=duckdb_conn,
+                bucket="test-bucket",
+                events_path="events/",
+                master_path="master/",
+                start_date=date(2026, 6, 23),
+                end_date=date(2026, 6, 23),
+            )
+
+            # Act
+            result = get_watch_events(params)
+
+        # Assert
+        assert {row["watch_event_id"] for row in result} == {"we_1", "we_2"}
+
     def test_respects_limit_parameter(self, youtube_with_sample_data):
         """limitパラメータを尊重。"""
         # Arrange
