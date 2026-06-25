@@ -77,12 +77,15 @@ Google HealthはRepositoryが接続の生成・破棄をカプセル化し、RES
 
 ### Parquet パス解決
 
-データは月次パーティション（`year=YYYY/month=MM/data.parquet`）で格納されている。
+データセットの物理配置は `dataset_catalog.DatasetDefinition.partition_policy` に従う。イベント系の多くは月次パーティション（`year=YYYY/month=MM/data.parquet`）だが、snapshot dataset は固定ファイル、recursive dataset は配下の Parquet を再帰 glob で読む。
 
-- `build_partition_paths()`: 指定期間の月次パーティションパスを構築
-- `build_dataset_glob()`: データセット全体の glob パターンを構築
+- `dataset_catalog.DatasetDefinition`: dataset id、domain、path、partition、時刻列、compaction 方針を定義
+- `build_partition_paths(config, dataset, utc_start, utc_end)`: 月次 dataset の指定期間に対応する compacted partition path を構築
+- `build_dataset_glob(config, dataset)`: dataset 全体の glob パターンを構築。GitHub repositories のような recursive dataset や、YouTube master のような snapshot dataset も catalog の path を基準に解決する
 
-ローカル優先ロジック: `local_parquet_root` が設定されており、該当パスにファイルが存在すればローカルパスを使用。なければ R2 (s3://) パスを使用。
+ローカル優先ロジック: `local_parquet_root` が設定されており、catalog から導出した該当 local path に Parquet が存在すればローカルパスを使用。なければ同じ catalog 定義から導出した R2 (s3://) パスを使用する。
+
+Dataset Catalog の詳細は [dataset-catalog.md](./dataset-catalog.md) を参照。
 
 ### データソース
 

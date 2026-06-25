@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "egograph-dataset-catalog"
+version = "0.1.0"
+description = "Shared Parquet dataset catalog for EgoGraph"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["dataset_catalog"]

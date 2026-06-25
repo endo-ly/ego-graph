@@ -5,10 +5,12 @@ on:
   push:
     branches: [main]
     paths:
+      - "egograph/dataset_catalog/**"
       - "egograph/backend/**"
   pull_request:
     branches: [main]
     paths:
+      - "egograph/dataset_catalog/**"
       - "egograph/backend/**"
 
 jobs:

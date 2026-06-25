@@ -11,6 +11,7 @@ from urllib.parse import quote
 import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
+from dataset_catalog import datasets
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -99,7 +100,7 @@ class BrowserHistoryStorage:
         *,
         year: int,
         month: int,
-        prefix: str = "browser_history/page_views",
+        prefix: str = datasets.BROWSER_HISTORY_PAGE_VIEWS.path,
     ) -> str | None:
         """events parquet を保存する。"""
         if not rows:
@@ -166,13 +167,13 @@ class BrowserHistoryStorage:
         *,
         year: int,
         month: int,
-        dataset_path: str = "browser_history/page_views",
-        dedupe_key: str = "page_view_id",
-        sort_by: str | None = "ingested_at_utc",
     ) -> str | None:
         """指定月の browser history events を compact する。"""
-        source_prefix = (
-            f"{self.events_path}{dataset_path}/year={year}/month={month:02d}/"
+        dataset = datasets.BROWSER_HISTORY_PAGE_VIEWS
+        source_prefix = dataset.source_partition_prefix(
+            self.events_path,
+            year=year,
+            month=month,
         )
         records = read_parquet_records_from_prefix(
             self.s3,
@@ -185,13 +186,12 @@ class BrowserHistoryStorage:
 
         compacted_df = compact_records(
             records,
-            dedupe_key=dedupe_key,
-            sort_by=sort_by,
+            dedupe_key=dataset.dedupe_key or "",
+            sort_by=dataset.sort_key,
         )
         key = build_compacted_key(
             self.compacted_path,
-            data_domain="events",
-            dataset_path=dataset_path,
+            dataset,
             year=year,
             month=month,
         )
@@ -206,7 +206,7 @@ class BrowserHistoryStorage:
             logger.exception(
                 "Failed to save compacted browser history parquet: "
                 "dataset=%s year=%d month=%02d key=%s",
-                dataset_path,
+                dataset.path,
                 year,
                 month,
                 key,

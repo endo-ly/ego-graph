@@ -2,10 +2,10 @@
 
 import argparse
 import logging
-from dataclasses import dataclass
 from typing import Any
 
 import boto3
+from dataset_catalog import DatasetDefinition, datasets, monthly_compaction_datasets
 
 from pipelines.sources.browser_history.storage import BrowserHistoryStorage
 from pipelines.sources.common.compaction import discover_available_months
@@ -15,16 +15,6 @@ from pipelines.sources.spotify.storage import SpotifyStorage
 from pipelines.sources.youtube.storage import YouTubeStorage
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class DatasetSpec:
-    """Dataset compaction settings."""
-
-    data_domain: str
-    dataset_path: str
-    dedupe_key: str
-    sort_by: str | None = None
 
 
 def _parse_args() -> argparse.Namespace:
@@ -56,9 +46,9 @@ def _discover_dataset_months(
     s3_client: Any,
     bucket_name: str,
     root_prefix: str,
-    dataset: DatasetSpec,
+    dataset: DatasetDefinition,
 ) -> list[tuple[int, int]]:
-    source_prefix = f"{root_prefix}{dataset.dataset_path}/"
+    source_prefix = dataset.source_prefix(root_prefix)
     return discover_available_months(s3_client, bucket_name, source_prefix)
 
 
@@ -70,14 +60,9 @@ def _compact_spotify(
     storage: SpotifyStorage,
 ) -> list[str]:
     failures: list[str] = []
-    datasets = (
-        DatasetSpec("events", "spotify/plays", "play_id", "played_at_utc"),
-        DatasetSpec("master", "spotify/tracks", "track_id", "updated_at"),
-        DatasetSpec("master", "spotify/artists", "artist_id", "updated_at"),
-    )
 
-    for dataset in datasets:
-        root_prefix = events_path if dataset.data_domain == "events" else master_path
+    for dataset in monthly_compaction_datasets("spotify"):
+        root_prefix = events_path if dataset.domain.value == "events" else master_path
         months = _discover_dataset_months(
             s3_client,
             bucket_name,
@@ -87,29 +72,26 @@ def _compact_spotify(
         logger.info(
             "Bootstrap compact target months discovered: "
             "provider=spotify dataset=%s months=%s",
-            dataset.dataset_path,
+            dataset.path,
             months,
         )
         for year, month in months:
             try:
                 storage.compact_month(
-                    data_domain=dataset.data_domain,
-                    dataset_path=dataset.dataset_path,
+                    dataset=dataset,
                     year=year,
                     month=month,
-                    dedupe_key=dataset.dedupe_key,
-                    sort_by=dataset.sort_by,
                 )
             except Exception as exc:
                 logger.exception(
                     "Bootstrap Spotify compaction failed: "
                     "dataset=%s year=%d month=%02d error=%s",
-                    dataset.dataset_path,
+                    dataset.path,
                     year,
                     month,
                     exc,
                 )
-                failures.append(f"spotify:{dataset.dataset_path}:{year}-{month:02d}")
+                failures.append(f"spotify:{dataset.path}:{year}-{month:02d}")
 
     return failures
 
@@ -121,12 +103,8 @@ def _compact_github(
     storage: GitHubWorklogStorage,
 ) -> list[str]:
     failures: list[str] = []
-    datasets = (
-        DatasetSpec("events", "github/commits", "commit_event_id", "committed_at_utc"),
-        DatasetSpec("events", "github/pull_requests", "pr_event_id", "updated_at_utc"),
-    )
 
-    for dataset in datasets:
+    for dataset in monthly_compaction_datasets("github"):
         months = _discover_dataset_months(
             s3_client,
             bucket_name,
@@ -136,28 +114,26 @@ def _compact_github(
         logger.info(
             "Bootstrap compact target months discovered: "
             "provider=github dataset=%s months=%s",
-            dataset.dataset_path,
+            dataset.path,
             months,
         )
         for year, month in months:
             try:
                 storage.compact_month(
-                    dataset_path=dataset.dataset_path,
+                    dataset=dataset,
                     year=year,
                     month=month,
-                    dedupe_key=dataset.dedupe_key,
-                    sort_by=dataset.sort_by,
                 )
             except Exception as exc:
                 logger.exception(
                     "Bootstrap GitHub compaction failed: "
                     "dataset=%s year=%d month=%02d error=%s",
-                    dataset.dataset_path,
+                    dataset.path,
                     year,
                     month,
                     exc,
                 )
-                failures.append(f"github:{dataset.dataset_path}:{year}-{month:02d}")
+                failures.append(f"github:{dataset.path}:{year}-{month:02d}")
 
     return failures
 
@@ -169,12 +145,7 @@ def _compact_browser_history(
     storage: BrowserHistoryStorage,
 ) -> list[str]:
     failures: list[str] = []
-    dataset = DatasetSpec(
-        "events",
-        "browser_history/page_views",
-        "page_view_id",
-        "ingested_at_utc",
-    )
+    dataset = datasets.BROWSER_HISTORY_PAGE_VIEWS
 
     months = _discover_dataset_months(
         s3_client,
@@ -185,30 +156,25 @@ def _compact_browser_history(
     logger.info(
         "Bootstrap compact target months discovered: "
         "provider=browser_history dataset=%s months=%s",
-        dataset.dataset_path,
+        dataset.path,
         months,
     )
     for year, month in months:
         try:
             storage.compact_month(
-                dataset_path=dataset.dataset_path,
                 year=year,
                 month=month,
-                dedupe_key=dataset.dedupe_key,
-                sort_by=dataset.sort_by,
             )
         except Exception as exc:
             logger.exception(
                 "Bootstrap browser_history compaction failed: "
                 "dataset=%s year=%d month=%02d error=%s",
-                dataset.dataset_path,
+                dataset.path,
                 year,
                 month,
                 exc,
             )
-            failures.append(
-                f"browser_history:{dataset.dataset_path}:{year}-{month:02d}"
-            )
+            failures.append(f"browser_history:{dataset.path}:{year}-{month:02d}")
 
     return failures
 
@@ -220,12 +186,7 @@ def _compact_youtube(
     storage: YouTubeStorage,
 ) -> list[str]:
     failures: list[str] = []
-    dataset = DatasetSpec(
-        "events",
-        "youtube/watch_events",
-        "watch_event_id",
-        "watched_at_utc",
-    )
+    dataset = datasets.YOUTUBE_WATCH_EVENTS
 
     months = _discover_dataset_months(
         s3_client,
@@ -236,7 +197,7 @@ def _compact_youtube(
     logger.info(
         "Bootstrap compact target months discovered: "
         "provider=youtube dataset=%s months=%s",
-        dataset.dataset_path,
+        dataset.path,
         months,
     )
     for year, month in months:
@@ -253,12 +214,12 @@ def _compact_youtube(
             logger.exception(
                 "Bootstrap YouTube compaction failed: "
                 "dataset=%s year=%d month=%02d error=%s",
-                dataset.dataset_path,
+                dataset.path,
                 year,
                 month,
                 exc,
             )
-            failures.append(f"youtube:{dataset.dataset_path}:{year}-{month:02d}")
+            failures.append(f"youtube:{dataset.path}:{year}-{month:02d}")
 
     return failures
 

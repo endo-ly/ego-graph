@@ -11,6 +11,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock /app/
+COPY egograph/dataset_catalog /app/egograph/dataset_catalog
 COPY egograph/backend /app/egograph/backend
 COPY egograph/pipelines /app/egograph/pipelines
 

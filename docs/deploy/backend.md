@@ -194,6 +194,17 @@ sudo systemctl status egograph-backend
 main への push をトリガーに本番へデプロイする。
 ワークフローは `.github/workflows/deploy-backend.yml` を使用。
 
+### 6.0 トリガー条件
+
+以下のパスに変更があった場合、main への push で自動デプロイされる:
+
+- `egograph/backend/**`
+- `egograph/dataset_catalog/**`
+- `pyproject.toml`
+- `uv.lock`
+- `Dockerfile`
+- `.github/workflows/deploy-backend.yml`
+
 ### 6.1 事前準備
 
 - LXC に SSH 鍵を配置

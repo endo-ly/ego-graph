@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 import pandas as pd
+from dataset_catalog import datasets
 from pipelines.sources.common.compaction import (
     _unify_datetime_columns,
     build_compacted_key,
@@ -18,8 +19,7 @@ class TestBuildCompactedKey:
     def test_builds_events_key(self):
         key = build_compacted_key(
             compacted_path="compacted/",
-            data_domain="events",
-            dataset_path="spotify/plays",
+            dataset=datasets.SPOTIFY_PLAYS,
             year=2024,
             month=1,
         )
@@ -29,8 +29,7 @@ class TestBuildCompactedKey:
     def test_builds_master_key(self):
         key = build_compacted_key(
             compacted_path="compacted/",
-            data_domain="master",
-            dataset_path="spotify/tracks",
+            dataset=datasets.SPOTIFY_TRACKS,
             year=2024,
             month=2,
         )

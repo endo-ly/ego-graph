@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from dataset_catalog import datasets
+
 from backend.constants import (
     DEFAULT_TOP_TRACKS_LIMIT,
     MS_TO_MINUTES_FACTOR,
@@ -15,10 +17,6 @@ from backend.infrastructure.database.query_params import QueryParams, execute_qu
 logger = logging.getLogger(__name__)
 
 
-# Parquetパスパターン
-SPOTIFY_PLAYS_PATH = "s3://{bucket}/{events_path}spotify/plays/**/*.parquet"
-
-
 def get_parquet_path(bucket: str, events_path: str) -> str:
     """Spotify再生履歴のS3パスパターンを生成します。
 
@@ -29,14 +27,13 @@ def get_parquet_path(bucket: str, events_path: str) -> str:
     Returns:
         S3パスパターン（例: s3://egograph/events/spotify/plays/**/*.parquet）
     """
-    return SPOTIFY_PLAYS_PATH.format(bucket=bucket, events_path=events_path)
+    return f"s3://{bucket}/{datasets.SPOTIFY_PLAYS.source_glob(events_path)}"
 
 
 def _resolve_partition_paths(params: QueryParams) -> list[str]:
     return build_partition_paths(
         params.r2_config,
-        data_domain="events",
-        dataset_path="spotify/plays",
+        datasets.SPOTIFY_PLAYS,
         utc_start=params.utc_start,
         utc_end=params.utc_end,
     )

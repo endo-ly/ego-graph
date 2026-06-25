@@ -103,6 +103,7 @@ main への push をトリガーに本番へデプロイする。
 以下のパスに変更があった場合、main への push で自動デプロイされる：
 
 - `egograph/pipelines/**`
+- `egograph/dataset_catalog/**`
 - `pyproject.toml`
 - `uv.lock`
 - `.github/workflows/deploy-pipelines.yml`

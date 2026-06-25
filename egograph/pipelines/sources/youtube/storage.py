@@ -12,6 +12,7 @@ import boto3
 import pandas as pd
 import pyarrow.parquet as pq
 from botocore.exceptions import ClientError
+from dataset_catalog import datasets
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -60,8 +61,11 @@ class YouTubeStorage:
 
     def compact_month(self, year: int, month: int) -> str | None:
         """指定月のYouTube watch events Parquetをcompact版として保存する。"""
-        source_prefix = (
-            f"{self.events_path}youtube/watch_events/year={year}/month={month:02d}/"
+        dataset = datasets.YOUTUBE_WATCH_EVENTS
+        source_prefix = dataset.source_partition_prefix(
+            self.events_path,
+            year=year,
+            month=month,
         )
         records = read_parquet_records_from_prefix(
             self.s3, self.bucket_name, source_prefix
@@ -71,12 +75,13 @@ class YouTubeStorage:
             return None
 
         compacted_df = compact_records(
-            records, dedupe_key="watch_event_id", sort_by="watched_at_utc"
+            records,
+            dedupe_key=dataset.dedupe_key or "",
+            sort_by=dataset.sort_key,
         )
         key = build_compacted_key(
             self.compacted_path,
-            data_domain="events",
-            dataset_path="youtube/watch_events",
+            dataset,
             year=year,
             month=month,
         )
@@ -159,8 +164,11 @@ class YouTubeStorage:
         rows: list[dict[str, Any]] = []
         for year, month in target_months:
             key = (
-                f"compacted/events/browser_history/page_views/"
-                f"year={year}/month={month:02d}/data.parquet"
+                datasets.BROWSER_HISTORY_PAGE_VIEWS.compacted_partition_key(
+                    self.compacted_path,
+                    year=year,
+                    month=month,
+                )
             )
             try:
                 response = self.s3.get_object(Bucket=self.bucket_name, Key=key)
@@ -191,19 +199,21 @@ class YouTubeStorage:
         """watch events parquet を sync_id 単位の安定キーで保存する。"""
         if not rows:
             return None
-        key = (
-            f"{self.events_path}youtube/watch_events/year={year}/month={month:02d}/"
-            f"sync_id={sync_id}.parquet"
+        prefix = datasets.YOUTUBE_WATCH_EVENTS.source_partition_prefix(
+            self.events_path,
+            year=year,
+            month=month,
         )
+        key = f"{prefix}sync_id={sync_id}.parquet"
         return self._save_dataframe_key(rows, key)
 
     def build_video_master_key(self) -> str:
         """video master の固定保存キーを返す。"""
-        return f"{self.master_path}youtube/videos/data.parquet"
+        return datasets.YOUTUBE_VIDEOS.source_snapshot_key(self.master_path)
 
     def build_channel_master_key(self) -> str:
         """channel master の固定保存キーを返す。"""
-        return f"{self.master_path}youtube/channels/data.parquet"
+        return datasets.YOUTUBE_CHANNELS.source_snapshot_key(self.master_path)
 
     def load_video_master(self) -> list[dict[str, Any]]:
         """既存 video master snapshot を読み込む。"""

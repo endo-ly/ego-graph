@@ -10,6 +10,7 @@ resolution-markers = [
 [manifest]
 members = [
     "egograph-backend",
+    "egograph-dataset-catalog",
     "egograph-pipelines",
 ]
 
@@ -460,6 +461,11 @@ dev = [
     { name = "pytest-mock", specifier = ">=3.12.0" },
     { name = "rich", specifier = ">=13.7.0" },
 ]
+
+[[package]]
+name = "egograph-dataset-catalog"
+version = "0.1.0"
+source = { editable = "egograph/dataset_catalog" }
 
 [[package]]
 name = "egograph-pipelines"

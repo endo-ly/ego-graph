@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
+from dataset_catalog import DatasetDefinition
+
 from backend.config import R2Config
 
 COMPACTED_ROOT = "compacted/"
@@ -39,15 +41,12 @@ def _iter_months(utc_start: datetime, utc_end: datetime) -> list[PartitionRef]:
 
 def _build_local_compacted_file(
     local_root: str,
-    data_domain: str,
-    dataset_path: str,
+    dataset: DatasetDefinition,
     partition: PartitionRef,
 ) -> Path:
     return (
         Path(local_root)
-        / "compacted"
-        / data_domain
-        / dataset_path
+        / dataset.compacted_prefix(COMPACTED_ROOT)
         / f"year={partition.year}"
         / f"month={partition.month:02d}"
         / "data.parquet"
@@ -56,20 +55,20 @@ def _build_local_compacted_file(
 
 def _build_r2_compacted_file(
     config: R2Config,
-    data_domain: str,
-    dataset_path: str,
+    dataset: DatasetDefinition,
     partition: PartitionRef,
 ) -> str:
-    return (
-        f"s3://{config.bucket_name}/{COMPACTED_ROOT}{data_domain}/{dataset_path}/"
-        f"year={partition.year}/month={partition.month:02d}/data.parquet"
+    key = dataset.compacted_partition_key(
+        COMPACTED_ROOT,
+        year=partition.year,
+        month=partition.month,
     )
+    return f"s3://{config.bucket_name}/{key}"
 
 
 def build_partition_paths(
     config: R2Config,
-    data_domain: str,
-    dataset_path: str,
+    dataset: DatasetDefinition,
     utc_start: datetime,
     utc_end: datetime,
 ) -> list[str]:
@@ -78,7 +77,9 @@ def build_partition_paths(
     for partition in _iter_months(utc_start, utc_end):
         local_path = (
             _build_local_compacted_file(
-                config.local_parquet_root, data_domain, dataset_path, partition
+                config.local_parquet_root,
+                dataset,
+                partition,
             )
             if config.local_parquet_root
             else None
@@ -87,27 +88,24 @@ def build_partition_paths(
             paths.append(str(local_path))
             continue
 
-        paths.append(
-            _build_r2_compacted_file(config, data_domain, dataset_path, partition)
-        )
+        paths.append(_build_r2_compacted_file(config, dataset, partition))
 
     return paths
 
 
 def build_dataset_glob(
     config: R2Config,
-    data_domain: str,
-    dataset_path: str,
+    dataset: DatasetDefinition,
 ) -> str:
     """Build all-data glob for compacted datasets."""
     if config.local_parquet_root:
-        local_root = (
-            Path(config.local_parquet_root) / "compacted" / data_domain / dataset_path
+        local_root = Path(config.local_parquet_root) / dataset.compacted_prefix(
+            COMPACTED_ROOT
         )
         if any(local_root.rglob("*.parquet")):
             return str(local_root / "**" / "*.parquet")
 
     return (
-        f"s3://{config.bucket_name}/{COMPACTED_ROOT}{data_domain}/"
-        f"{dataset_path}/**/*.parquet"
+        f"s3://{config.bucket_name}/"
+        f"{dataset.compacted_prefix(COMPACTED_ROOT)}**/*.parquet"
     )

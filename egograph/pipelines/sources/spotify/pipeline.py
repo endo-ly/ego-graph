@@ -2,6 +2,8 @@
 
 import logging
 
+from dataset_catalog import monthly_compaction_datasets
+
 from pipelines.sources.common.compaction import resolve_target_months
 from pipelines.sources.common.config import Config
 from pipelines.sources.common.settings import PipelinesSettings
@@ -47,33 +49,24 @@ def run_spotify_compact(
     skipped_targets: list[str] = []
     failures: list[str] = []
     for target_year, target_month in target_months:
-        for data_domain, dataset_path, dedupe_key, sort_by in (
-            ("events", "spotify/plays", "play_id", "played_at_utc"),
-            ("master", "spotify/tracks", "track_id", "updated_at"),
-            ("master", "spotify/artists", "artist_id", "updated_at"),
-        ):
+        for dataset in monthly_compaction_datasets("spotify"):
             try:
                 key = storage.compact_month(
-                    data_domain=data_domain,
-                    dataset_path=dataset_path,
+                    dataset=dataset,
                     year=target_year,
                     month=target_month,
-                    dedupe_key=dedupe_key,
-                    sort_by=sort_by,
                 )
             except Exception:
                 logger.exception(
                     "Spotify compaction failed: dataset=%s year=%d month=%02d",
-                    dataset_path,
+                    dataset.path,
                     target_year,
                     target_month,
                 )
-                failures.append(f"{dataset_path}:{target_year}-{target_month:02d}")
+                failures.append(f"{dataset.path}:{target_year}-{target_month:02d}")
                 continue
             if key is None:
-                skipped_targets.append(
-                    f"{dataset_path}:{target_year}-{target_month:02d}"
-                )
+                skipped_targets.append(f"{dataset.path}:{target_year}-{target_month:02d}")
             else:
                 compacted_keys.append(key)
 

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from botocore.exceptions import ClientError
+from dataset_catalog import datasets
 from pipelines.sources.github.storage import (
     GitHubWorklogStorage,
     StorageConsistencyError,
@@ -535,10 +536,9 @@ class TestGitHubWorklogStorage(unittest.TestCase):
                 return_value=b"x",
             ):
                 key = self.storage.compact_month(
-                    dataset_path="github/commits",
+                    dataset=datasets.GITHUB_COMMITS,
                     year=2024,
                     month=1,
-                    dedupe_key="commit_event_id",
                 )
 
         call_args = self.mock_s3.put_object.call_args[1]

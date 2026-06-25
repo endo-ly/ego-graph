@@ -3,14 +3,12 @@
 import logging
 from typing import Any
 
+from dataset_catalog import datasets
+
 from backend.infrastructure.database.parquet_paths import build_partition_paths
 from backend.infrastructure.database.query_params import QueryParams, execute_query
 
 logger = logging.getLogger(__name__)
-
-
-# Parquetパスパターン
-GITHUB_REPOS_PATH = "s3://{bucket}/{master_path}github/repositories/**/*.parquet"
 
 
 def get_repos_parquet_path(bucket: str, master_path: str) -> str:
@@ -23,14 +21,13 @@ def get_repos_parquet_path(bucket: str, master_path: str) -> str:
     Returns:
         S3パスパターン（例: s3://egograph/master/github/repositories/**/*.parquet）
     """
-    return GITHUB_REPOS_PATH.format(bucket=bucket, master_path=master_path)
+    return f"s3://{bucket}/{datasets.GITHUB_REPOSITORIES.source_glob(master_path)}"
 
 
 def _resolve_pr_partition_paths(params: QueryParams) -> list[str]:
     return build_partition_paths(
         params.r2_config,
-        data_domain="events",
-        dataset_path="github/pull_requests",
+        datasets.GITHUB_PULL_REQUESTS,
         utc_start=params.utc_start,
         utc_end=params.utc_end,
     )
@@ -39,8 +36,7 @@ def _resolve_pr_partition_paths(params: QueryParams) -> list[str]:
 def _resolve_commit_partition_paths(params: QueryParams) -> list[str]:
     return build_partition_paths(
         params.r2_config,
-        data_domain="events",
-        dataset_path="github/commits",
+        datasets.GITHUB_COMMITS,
         utc_start=params.utc_start,
         utc_end=params.utc_end,
     )

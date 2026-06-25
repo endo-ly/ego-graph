@@ -10,6 +10,7 @@ from typing import Any
 import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
+from dataset_catalog import DatasetDefinition
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -487,15 +488,15 @@ class GitHubWorklogStorage:
 
     def compact_month(
         self,
-        dataset_path: str,
+        dataset: DatasetDefinition,
         year: int,
         month: int,
-        dedupe_key: str,
-        sort_by: str | None = None,
     ) -> str | None:
         """指定月のGitHubイベントParquetをcompact版として保存する。"""
-        source_prefix = (
-            f"{self.events_path}{dataset_path}/year={year}/month={month:02d}/"
+        source_prefix = dataset.source_partition_prefix(
+            self.events_path,
+            year=year,
+            month=month,
         )
         records = read_parquet_records_from_prefix(
             self.s3, self.bucket_name, source_prefix
@@ -504,11 +505,16 @@ class GitHubWorklogStorage:
             logger.info("No parquet records found for compaction: %s", source_prefix)
             return None
 
-        compacted_df = compact_records(records, dedupe_key=dedupe_key, sort_by=sort_by)
+        if dataset.dedupe_key is None:
+            raise ValueError(f"dedupe_key_required: {dataset.dataset_id}")
+        compacted_df = compact_records(
+            records,
+            dedupe_key=dataset.dedupe_key,
+            sort_by=dataset.sort_key,
+        )
         key = build_compacted_key(
             self.compacted_path,
-            data_domain="events",
-            dataset_path=dataset_path,
+            dataset,
             year=year,
             month=month,
         )

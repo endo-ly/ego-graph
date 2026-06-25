@@ -7,6 +7,7 @@ from io import BytesIO
 from typing import Any
 
 import pandas as pd
+from dataset_catalog import DatasetDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -39,17 +40,12 @@ def _unify_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_compacted_key(
     compacted_path: str,
-    data_domain: str,
-    dataset_path: str,
+    dataset: DatasetDefinition,
     year: int,
     month: int,
 ) -> str:
     """月次 compacted parquet の key を組み立てる。"""
-    compacted_path = _normalize_path(compacted_path)
-    return (
-        f"{compacted_path}{data_domain}/{dataset_path}/"
-        f"year={year}/month={month:02d}/data.parquet"
-    )
+    return dataset.compacted_partition_key(compacted_path, year=year, month=month)
 
 
 def compact_records(

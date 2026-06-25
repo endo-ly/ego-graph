@@ -115,9 +115,10 @@ def test_run_spotify_compact_returns_compacted_and_skipped_targets(monkeypatch):
 
         def compact_month(self, **kwargs):
             calls.append(kwargs)
-            if kwargs["dataset_path"] == "spotify/artists":
+            dataset_path = kwargs["dataset"].path
+            if dataset_path == "spotify/artists":
                 return None
-            return f"compacted/{kwargs['dataset_path']}/data.parquet"
+            return f"compacted/{dataset_path}/data.parquet"
 
     monkeypatch.setattr(
         "pipelines.sources.spotify.pipeline.SpotifyStorage",
@@ -147,7 +148,7 @@ def test_run_github_compact_raises_after_collecting_failures(monkeypatch):
             pass
 
         def compact_month(self, **kwargs):
-            if kwargs["dataset_path"] == "github/pull_requests":
+            if kwargs["dataset"].path == "github/pull_requests":
                 raise RuntimeError("boom")
             return "compacted/events/github/commits/year=2026/month=04/data.parquet"
 
