@@ -46,8 +46,8 @@ def sanitize_exception(exc: Exception) -> str:
 class InfraSanitizingFilter(logging.Filter):
     """ログレコードからインフラ情報を自動的にマスクする logging.Filter。
 
-    - record.msg をサニタイズする
-    - record.args をクリアし、未サニタイズ値での再フォーマットを防止する
+    - record.msg を args 展開済みの完全メッセージにしてからサニタイズする
+    - record.args をクリアし、再フォーマットを防止する
     - record.exc_info がある場合、トレースバックをフォーマットしてサニタイズする
     - record.exc_text（トレースバック）が存在すればサニタイズする
     - すべてのレコードを通過させる（ドロップしない）
@@ -56,6 +56,10 @@ class InfraSanitizingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         """ログレコードをサニタイズして通過させる。
 
+        msg と args を先にフォーマット展開し、完全なメッセージをサニタイズする。
+        これにより args に含まれる秘密もマスク対象になり、args クリア後も
+        プレースホルダが未展開で残らない。フォーマット失敗時は生 msg を扱う。
+
         Args:
             record: フィルタ対象のログレコード。
 
@@ -63,7 +67,11 @@ class InfraSanitizingFilter(logging.Filter):
             常に True（レコードをドロップしない）。
         """
         if isinstance(record.msg, str):
-            record.msg = sanitize_infra_message(record.msg)
+            try:
+                message = record.getMessage()
+            except (TypeError, ValueError):
+                message = record.msg
+            record.msg = sanitize_infra_message(message)
 
         record.args = None
 
