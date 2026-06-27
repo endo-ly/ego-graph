@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from dataset_catalog import datasets
 from pydantic import SecretStr
 
 from backend.config import R2Config
@@ -46,8 +47,7 @@ class TestBuildPartitionPaths:
 
         paths = build_partition_paths(
             config,
-            data_domain="events",
-            dataset_path="spotify/plays",
+            datasets.SPOTIFY_PLAYS,
             utc_start=datetime(2024, 1, 1),
             utc_end=datetime(2024, 2, 1),
         )
@@ -60,8 +60,7 @@ class TestBuildPartitionPaths:
 
         paths = build_partition_paths(
             config,
-            data_domain="events",
-            dataset_path="spotify/plays",
+            datasets.SPOTIFY_PLAYS,
             utc_start=datetime(2024, 1, 1),
             utc_end=datetime(2024, 2, 1),
         )
@@ -92,8 +91,7 @@ class TestBuildDatasetGlob:
 
         path = build_dataset_glob(
             config,
-            data_domain="master",
-            dataset_path="spotify/tracks",
+            datasets.SPOTIFY_TRACKS,
         )
 
         assert path == str(
@@ -111,8 +109,7 @@ class TestBuildDatasetGlob:
 
         path = build_dataset_glob(
             config,
-            data_domain="master",
-            dataset_path="spotify/tracks",
+            datasets.SPOTIFY_TRACKS,
         )
 
         assert path == "s3://test-bucket/compacted/master/spotify/tracks/**/*.parquet"

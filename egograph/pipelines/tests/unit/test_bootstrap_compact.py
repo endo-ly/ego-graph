@@ -48,7 +48,7 @@ class TestCompactSpotify:
             assert s3 is s3_client
             assert bucket_name == "egograph"
             return discovered_months[
-                (root_prefix, dataset.data_domain, dataset.dataset_path)
+                (root_prefix, dataset.domain.value, dataset.path)
             ]
 
         monkeypatch.setattr(
@@ -85,7 +85,7 @@ class TestCompactGitHub:
             assert s3 is s3_client
             assert bucket_name == "egograph"
             return discovered_months[
-                (root_prefix, dataset.data_domain, dataset.dataset_path)
+                (root_prefix, dataset.domain.value, dataset.path)
             ]
 
         monkeypatch.setattr(
@@ -120,7 +120,7 @@ class TestCompactBrowserHistory:
             assert s3 is s3_client
             assert bucket_name == "egograph"
             return discovered_months[
-                (root_prefix, dataset.data_domain, dataset.dataset_path)
+                (root_prefix, dataset.domain.value, dataset.path)
             ]
 
         monkeypatch.setattr(

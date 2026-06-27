@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
+from dataset_catalog import DatasetDefinition, datasets
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -21,12 +22,12 @@ from pipelines.sources.google_health.timezone import (
     local_date_start_utc,
 )
 
-DATASET_DATE_COLUMNS = {
-    "daily_metrics": "date",
-    "samples": "measured_at_utc",
-    "intervals": "started_at_utc",
-    "sessions": "started_at_utc",
-}
+GOOGLE_HEALTH_DATASETS = (
+    datasets.GOOGLE_HEALTH_DAILY_METRICS,
+    datasets.GOOGLE_HEALTH_SAMPLES,
+    datasets.GOOGLE_HEALTH_INTERVALS,
+    datasets.GOOGLE_HEALTH_SESSIONS,
+)
 
 
 class GoogleHealthWriter:
@@ -94,16 +95,20 @@ class GoogleHealthWriter:
     ) -> list[str]:
         """今回runの正規化行をUUID名のevents Parquetへ保存する。"""
         saved_keys: list[str] = []
-        for dataset, date_column in DATASET_DATE_COLUMNS.items():
+        for dataset in GOOGLE_HEALTH_DATASETS:
+            dataset_name = _dataset_name(dataset)
+            date_column = _date_column(dataset)
             rows_by_month: dict[tuple[int, int], list[dict[str, Any]]] = {}
-            for row in records.get(dataset, []):
+            for row in records.get(dataset_name, []):
                 month = _row_month(row, date_column)
                 rows_by_month.setdefault(month, []).append(row)
             for (year, month), rows in sorted(rows_by_month.items()):
-                key = (
-                    f"{self.events_path}google_health/{dataset}/"
-                    f"year={year}/month={month:02d}/{run_id}.parquet"
+                prefix = dataset.source_partition_prefix(
+                    self.events_path,
+                    year=year,
+                    month=month,
                 )
+                key = f"{prefix}{run_id}.parquet"
                 self.s3.put_object(
                     Bucket=self.bucket_name,
                     Key=key,
@@ -124,16 +129,21 @@ class GoogleHealthWriter:
     ) -> list[str]:
         """既存compactedの対象範囲を今回runのeventsで置換する。"""
         compacted_keys: list[str] = []
-        for dataset, date_column in DATASET_DATE_COLUMNS.items():
+        for dataset in GOOGLE_HEALTH_DATASETS:
+            dataset_name = _dataset_name(dataset)
+            date_column = _date_column(dataset)
             months = set(
                 _target_months(
-                    dataset,
+                    dataset_name,
                     date_from=date_from,
                     date_to=date_to,
                     timezone=self.timezone,
                 )
             )
-            if dataset == "sessions" and "sleep" in selected_data_types:
+            if (
+                dataset is datasets.GOOGLE_HEALTH_SESSIONS
+                and "sleep" in selected_data_types
+            ):
                 sleep_start = local_date_start_utc(
                     date_from - timedelta(days=1),
                     self.timezone,
@@ -168,20 +178,23 @@ class GoogleHealthWriter:
 
     def _event_key(
         self,
-        dataset: str,
+        dataset: DatasetDefinition,
         year: int,
         month: int,
         run_id: str,
     ) -> str:
-        return (
-            f"{self.events_path}google_health/{dataset}/"
-            f"year={year}/month={month:02d}/{run_id}.parquet"
+        prefix = dataset.source_partition_prefix(
+            self.events_path,
+            year=year,
+            month=month,
         )
+        return f"{prefix}{run_id}.parquet"
 
-    def _compacted_key(self, dataset: str, year: int, month: int) -> str:
-        return (
-            f"{self.compacted_path}events/google_health/{dataset}/"
-            f"year={year}/month={month:02d}/data.parquet"
+    def _compacted_key(self, dataset: DatasetDefinition, year: int, month: int) -> str:
+        return dataset.compacted_partition_key(
+            self.compacted_path,
+            year=year,
+            month=month,
         )
 
     def _load_parquet(self, key: str) -> list[dict[str, Any]]:
@@ -232,6 +245,16 @@ def _retain_outside_target(
         if not is_target:
             retained.append(row)
     return retained
+
+
+def _dataset_name(dataset: DatasetDefinition) -> str:
+    return dataset.dataset_id.split(".", 1)[1]
+
+
+def _date_column(dataset: DatasetDefinition) -> str:
+    if dataset.time_column is None:
+        raise ValueError(f"time_column_required: {dataset.dataset_id}")
+    return dataset.time_column
 
 
 def _row_month(row: dict[str, Any], date_column: str) -> tuple[int, int]:

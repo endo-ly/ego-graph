@@ -202,6 +202,20 @@ s3://{bucket}/
 
 ## 5. 運用ルール
 
+### 5.0 Dataset Catalog
+
+Pipelines が生成し Backend が読む Parquet dataset の物理契約は `dataset_catalog` を正とする。
+
+対象:
+
+- events / master の canonical path
+- monthly / snapshot / recursive の partition 方針
+- dedupe key / sort key
+- event time column
+- compaction strategy
+
+詳細は [dataset-catalog.md](./dataset-catalog.md) を参照。
+
 ### 5.1 判断フローチャート
 
 新しいデータを追加する際は、以下の順で判定する。

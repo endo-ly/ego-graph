@@ -2,6 +2,8 @@
 
 import logging
 
+from dataset_catalog import monthly_compaction_datasets
+
 from pipelines.sources.common.compaction import resolve_target_months
 from pipelines.sources.common.config import Config
 from pipelines.sources.common.settings import PipelinesSettings
@@ -47,31 +49,24 @@ def run_github_compact(
     skipped_targets: list[str] = []
     failures: list[str] = []
     for target_year, target_month in target_months:
-        for dataset_path, dedupe_key, sort_by in (
-            ("github/commits", "commit_event_id", "committed_at_utc"),
-            ("github/pull_requests", "pr_event_id", "updated_at_utc"),
-        ):
+        for dataset in monthly_compaction_datasets("github"):
             try:
                 key = storage.compact_month(
-                    dataset_path=dataset_path,
+                    dataset=dataset,
                     year=target_year,
                     month=target_month,
-                    dedupe_key=dedupe_key,
-                    sort_by=sort_by,
                 )
             except Exception:
                 logger.exception(
                     "GitHub compaction failed: dataset=%s year=%d month=%02d",
-                    dataset_path,
+                    dataset.path,
                     target_year,
                     target_month,
                 )
-                failures.append(f"{dataset_path}:{target_year}-{target_month:02d}")
+                failures.append(f"{dataset.path}:{target_year}-{target_month:02d}")
                 continue
             if key is None:
-                skipped_targets.append(
-                    f"{dataset_path}:{target_year}-{target_month:02d}"
-                )
+                skipped_targets.append(f"{dataset.path}:{target_year}-{target_month:02d}")
             else:
                 compacted_keys.append(key)
 

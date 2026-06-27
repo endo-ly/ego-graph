@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "egograph/dataset_catalog/**"
       - "egograph/pipelines/**"
       - "pyproject.toml"
       - "uv.lock"

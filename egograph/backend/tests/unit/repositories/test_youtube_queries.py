@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 import pytest
+from dataset_catalog import datasets
 
 from backend.config import R2Config
 from backend.infrastructure.database.parquet_paths import build_partition_paths
@@ -113,7 +114,10 @@ class TestBuildPartitionPaths:
         end = datetime(2024, 2, 1)
 
         paths = build_partition_paths(
-            mock_r2_config, "events", "youtube/watch_events", start, end
+            mock_r2_config,
+            datasets.YOUTUBE_WATCH_EVENTS,
+            start,
+            end,
         )
 
         assert len(paths) == 2  # Jan + Feb
@@ -125,7 +129,10 @@ class TestBuildPartitionPaths:
         end = datetime(2025, 2, 1)
 
         paths = build_partition_paths(
-            mock_r2_config, "events", "youtube/watch_events", start, end
+            mock_r2_config,
+            datasets.YOUTUBE_WATCH_EVENTS,
+            start,
+            end,
         )
 
         assert len(paths) == 4
@@ -136,7 +143,10 @@ class TestBuildPartitionPaths:
         end = datetime(2024, 2, 1)
 
         paths = build_partition_paths(
-            mock_r2_config, "events", "youtube/watch_events", start, end
+            mock_r2_config,
+            datasets.YOUTUBE_WATCH_EVENTS,
+            start,
+            end,
         )
 
         assert len(paths) == 3
@@ -167,8 +177,7 @@ class TestResolveWatchEventPaths:
         assert paths == expected
         mock_func.assert_called_once_with(
             mock_r2_config,
-            data_domain="events",
-            dataset_path="youtube/watch_events",
+            datasets.YOUTUBE_WATCH_EVENTS,
             utc_start=params.utc_start,
             utc_end=params.utc_end,
         )

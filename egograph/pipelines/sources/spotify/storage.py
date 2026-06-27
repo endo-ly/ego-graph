@@ -10,6 +10,7 @@ from typing import Any
 import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
+from dataset_catalog import DatasetDefinition
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -249,16 +250,16 @@ class SpotifyStorage:
 
     def compact_month(
         self,
-        data_domain: str,
-        dataset_path: str,
+        dataset: DatasetDefinition,
         year: int,
         month: int,
-        dedupe_key: str,
-        sort_by: str | None = None,
     ) -> str | None:
         """指定月のParquetをcompact版として保存する。"""
-        source_root = self.events_path if data_domain == "events" else self.master_path
-        source_prefix = f"{source_root}{dataset_path}/year={year}/month={month:02d}/"
+        source_prefix = dataset.source_partition_prefix(
+            dataset.source_root(self.events_path, self.master_path),
+            year=year,
+            month=month,
+        )
         records = read_parquet_records_from_prefix(
             self.s3, self.bucket_name, source_prefix
         )
@@ -266,11 +267,14 @@ class SpotifyStorage:
             logger.info("No parquet records found for compaction: %s", source_prefix)
             return None
 
-        compacted_df = compact_records(records, dedupe_key=dedupe_key, sort_by=sort_by)
+        compacted_df = compact_records(
+            records,
+            dedupe_key=dataset.required_dedupe_key(),
+            sort_by=dataset.sort_key,
+        )
         key = build_compacted_key(
             self.compacted_path,
-            data_domain=data_domain,
-            dataset_path=dataset_path,
+            dataset,
             year=year,
             month=month,
         )

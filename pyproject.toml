@@ -1,5 +1,9 @@
 [tool.uv.workspace]
-members = ["egograph/backend", "egograph/pipelines"]
+members = [
+    "egograph/backend",
+    "egograph/dataset_catalog",
+    "egograph/pipelines",
+]
 
 [tool.ruff]
 line-length = 88

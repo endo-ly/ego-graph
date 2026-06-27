@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 import duckdb
+from dataset_catalog import datasets
 
 from backend.constants import DEFAULT_TOP_TRACKS_LIMIT
 from backend.infrastructure.database.parquet_paths import build_partition_paths
@@ -13,27 +14,24 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_WATCH_EVENTS_LIMIT = 100_000
 
-YOUTUBE_VIDEOS_PATH = "s3://{bucket}/{master_path}youtube/videos/data.parquet"
-YOUTUBE_CHANNELS_PATH = "s3://{bucket}/{master_path}youtube/channels/data.parquet"
 WATCHED_AT_UTC_EXPR = "make_timestamp(epoch_us(watched_at_utc))"
 WATCHED_AT_UTC_W_EXPR = "make_timestamp(epoch_us(w.watched_at_utc))"
 
 
 def get_videos_parquet_path(bucket: str, master_path: str) -> str:
     """YouTube動画マスターのS3パスパターンを生成します。"""
-    return YOUTUBE_VIDEOS_PATH.format(bucket=bucket, master_path=master_path)
+    return f"s3://{bucket}/{datasets.YOUTUBE_VIDEOS.source_snapshot_key(master_path)}"
 
 
 def get_channels_parquet_path(bucket: str, master_path: str) -> str:
     """YouTubeチャンネルマスターのS3パスパターンを生成します。"""
-    return YOUTUBE_CHANNELS_PATH.format(bucket=bucket, master_path=master_path)
+    return f"s3://{bucket}/{datasets.YOUTUBE_CHANNELS.source_snapshot_key(master_path)}"
 
 
 def _resolve_watch_event_paths(params: QueryParams) -> list[str]:
     return build_partition_paths(
         params.r2_config,
-        data_domain="events",
-        dataset_path="youtube/watch_events",
+        datasets.YOUTUBE_WATCH_EVENTS,
         utc_start=params.utc_start,
         utc_end=params.utc_end,
     )

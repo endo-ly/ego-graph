@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from dataset_catalog import datasets
+
 from backend.constants import DEFAULT_PAGE_VIEWS_LIMIT, DEFAULT_TOP_DOMAINS_LIMIT
 from backend.infrastructure.database.parquet_paths import build_partition_paths
 from backend.infrastructure.database.query_params import QueryParams, execute_query
@@ -12,8 +14,7 @@ _RELOAD_FILTER_CLAUSE = " AND (? OR transition IS DISTINCT FROM 'reload')"
 def _resolve_partition_paths(params: QueryParams) -> list[str]:
     return build_partition_paths(
         params.r2_config,
-        data_domain="events",
-        dataset_path="browser_history/page_views",
+        datasets.BROWSER_HISTORY_PAGE_VIEWS,
         utc_start=params.utc_start,
         utc_end=params.utc_end,
     )

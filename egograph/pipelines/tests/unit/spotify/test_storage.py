@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from botocore.exceptions import ClientError
+from dataset_catalog import datasets
 from pipelines.sources.spotify.storage import SpotifyStorage, StorageConsistencyError
 
 
@@ -153,11 +154,9 @@ class TestSpotifyStorage(unittest.TestCase):
                 return_value=b"x",
             ):
                 key = self.storage.compact_month(
-                    data_domain="events",
-                    dataset_path="spotify/plays",
+                    dataset=datasets.SPOTIFY_PLAYS,
                     year=2024,
                     month=1,
-                    dedupe_key="play_id",
                 )
 
         call_args = self.mock_s3.put_object.call_args[1]

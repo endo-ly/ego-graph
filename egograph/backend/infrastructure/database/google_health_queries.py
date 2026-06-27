@@ -3,6 +3,8 @@
 from datetime import date
 from typing import Any
 
+from dataset_catalog import datasets
+
 from backend.infrastructure.database.parquet_paths import build_dataset_glob
 from backend.infrastructure.database.query_params import QueryParams
 
@@ -11,8 +13,7 @@ def _resolve_daily_metric_paths(params: QueryParams) -> list[str]:
     """存在するdaily_metricsから対象月のParquetだけを解決する。"""
     dataset_glob = build_dataset_glob(
         params.r2_config,
-        data_domain="events",
-        dataset_path="google_health/daily_metrics",
+        datasets.GOOGLE_HEALTH_DAILY_METRICS,
     )
     rows = params.conn.execute(
         "SELECT file FROM glob(?) ORDER BY file",

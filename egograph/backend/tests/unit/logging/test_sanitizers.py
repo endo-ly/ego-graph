@@ -187,6 +187,30 @@ class TestInfraSanitizingFilter:
         # Assert
         assert record.args is None
 
+    def test_infra_sanitizing_filter_interpolates_then_masks_args(self):
+        """args を先に展開してサニタイズする（%s 未展開・秘密漏洩を防ぐ）。"""
+        # Arrange
+        filt = InfraSanitizingFilter()
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="Connecting to %s",
+            args=("s3://secret-bucket/path",),
+            exc_info=None,
+        )
+
+        # Act
+        filt.filter(record)
+
+        # Assert: %s は展開済みで、args 内の秘密はマスクされる
+        message = record.getMessage()
+        assert "%s" not in message
+        assert "secret-bucket" not in message
+        assert "s3://" not in message
+        assert "***" in message
+
 
 class TestFilterRegistration:
     """アプリケーション起動時のフィルター登録テスト。"""

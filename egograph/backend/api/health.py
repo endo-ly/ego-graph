@@ -3,6 +3,7 @@
 import logging
 
 import duckdb
+from dataset_catalog import datasets
 from fastapi import APIRouter, Depends
 
 from backend.config import BackendConfig
@@ -59,8 +60,7 @@ async def health_check(
         # DuckDB + R2接続のテスト（軽量なクエリで確認）
         parquet_path = build_dataset_glob(
             config.r2,
-            data_domain="events",
-            dataset_path="spotify/plays",
+            datasets.SPOTIFY_PLAYS,
         )
 
         with db_connection as conn:
