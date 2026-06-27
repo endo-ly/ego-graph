@@ -28,17 +28,6 @@ GOOGLE_HEALTH_DATASETS = (
     datasets.GOOGLE_HEALTH_INTERVALS,
     datasets.GOOGLE_HEALTH_SESSIONS,
 )
-GOOGLE_HEALTH_RECORD_KEYS = {
-    datasets.GOOGLE_HEALTH_DAILY_METRICS: "daily_metrics",
-    datasets.GOOGLE_HEALTH_SAMPLES: "samples",
-    datasets.GOOGLE_HEALTH_INTERVALS: "intervals",
-    datasets.GOOGLE_HEALTH_SESSIONS: "sessions",
-}
-DATASET_DATE_COLUMNS = {
-    GOOGLE_HEALTH_RECORD_KEYS[dataset]: dataset.event_time_column
-    for dataset in GOOGLE_HEALTH_DATASETS
-    if dataset.event_time_column is not None
-}
 
 
 class GoogleHealthWriter:
@@ -259,16 +248,13 @@ def _retain_outside_target(
 
 
 def _dataset_name(dataset: DatasetDefinition) -> str:
-    try:
-        return GOOGLE_HEALTH_RECORD_KEYS[dataset]
-    except KeyError as exc:
-        raise KeyError(f"unknown_google_health_dataset: {dataset.dataset_id}") from exc
+    return dataset.dataset_id.split(".", 1)[1]
 
 
 def _date_column(dataset: DatasetDefinition) -> str:
-    if dataset.event_time_column is None:
-        raise ValueError(f"event_time_column_required: {dataset.dataset_id}")
-    return dataset.event_time_column
+    if dataset.time_column is None:
+        raise ValueError(f"time_column_required: {dataset.dataset_id}")
+    return dataset.time_column
 
 
 def _row_month(row: dict[str, Any], date_column: str) -> tuple[int, int]:

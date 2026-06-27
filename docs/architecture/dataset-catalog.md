@@ -6,7 +6,7 @@ Dataset Catalog は、Pipelines が書き込む Parquet dataset と Backend が�
 
 ## 目的
 
-EgoGraph の中核境界は「Pipelines が R2 に Parquet を生成し、Backend が DuckDB で読む」ことである。この境界に必要な path、partition、dedupe key、event time column、compaction strategy を `dataset_catalog` に集約する。
+EgoGraph の中核境界は「Pipelines が R2 に Parquet を生成し、Backend が DuckDB で読む」ことである。この境界に必要な path、partition、dedupe key、time column、compaction strategy を `dataset_catalog` に集約する。
 
 これにより、データソース追加時に write path と read path のどちらか片方だけを更新して壊れる状態を避ける。
 
@@ -30,10 +30,21 @@ Python workspace では `backend` と `pipelines` の両方から `dataset_catal
 | `path` | domain 配下の canonical path |
 | `partition_policy` | `monthly` / `snapshot` / `recursive` |
 | `compaction_strategy` | `append_dedupe` / `range_replace` / `snapshot_upsert` / `none` |
-| `event_time_column` | 期間抽出・partition 判定の基準列 |
+| `time_column` | 期間抽出・partition 判定の基準列（events なら event time、master なら updated_at） |
 | `dedupe_key` | append-dedupe compaction の一意キー |
-| `sort_key` | 重複時に残す行を決める順序列 |
+| `sort_key` | 重複時に残す行を決める順序列。dedupe_key と従属関係にある値は決定性を失うため注意 |
 | `snapshot_file_name` | snapshot dataset の固定ファイル名 |
+
+## source と compacted の path 非対称性
+
+`DatasetDefinition` の path 系メソッドは source / compacted で domain 扱いが異なる。
+
+- `source_prefix(root)` / `source_partition_prefix(root, ...)` / `source_glob(root)`
+  - source 側は events / master で root が分かれている（`events_path` / `master_path`）。
+  - よって戻り値に domain は含まない。root の選択は `source_root(events_path, master_path)` で行う。
+- `compacted_prefix(compacted_root)` / `compacted_partition_key(compacted_root, ...)`
+  - compacted 側は単一 root 配下に domain ごとの階層を持つ。
+  - よって戻り値に `{domain}/` を含む。
 
 ## 使用箇所
 

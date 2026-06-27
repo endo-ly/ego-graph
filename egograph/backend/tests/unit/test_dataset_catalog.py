@@ -2,6 +2,7 @@
 
 import pytest
 from dataset_catalog import (
+    ALL_DATASETS,
     CompactionStrategy,
     DataDomain,
     DatasetDefinition,
@@ -24,11 +25,11 @@ def test_catalog_resolves_dataset_by_id():
     assert dataset.compaction_strategy is CompactionStrategy.APPEND_DEDUPE
     assert dataset.dedupe_key == "play_id"
     assert dataset.sort_key == "played_at_utc"
-    assert dataset.event_time_column == "played_at_utc"
+    assert dataset.time_column == "played_at_utc"
 
 
-def test_monthly_compaction_datasets_are_explicitly_ordered():
-    """monthly compaction 対象が provider ごとに明示順で取得できる。"""
+def test_monthly_compaction_datasets_covers_only_append_dedupe_providers():
+    """monthly compaction 対象が append_dedupe provider 全てを定義順で返す。"""
     assert monthly_compaction_datasets("spotify") == (
         datasets.SPOTIFY_PLAYS,
         datasets.SPOTIFY_TRACKS,
@@ -38,6 +39,60 @@ def test_monthly_compaction_datasets_are_explicitly_ordered():
         datasets.GITHUB_COMMITS,
         datasets.GITHUB_PULL_REQUESTS,
     )
+    assert monthly_compaction_datasets("browser_history") == (
+        datasets.BROWSER_HISTORY_PAGE_VIEWS,
+    )
+    assert monthly_compaction_datasets("youtube") == (
+        datasets.YOUTUBE_WATCH_EVENTS,
+    )
+
+
+def test_monthly_compaction_datasets_excludes_non_append_dedupe_provider():
+    """range_replace の provider (google_health) は対象外で KeyError。"""
+    with pytest.raises(KeyError, match="unknown_provider: google_health"):
+        monthly_compaction_datasets("google_health")
+
+
+def test_monthly_compaction_datasets_derived_in_definition_order():
+    """導出結果が ALL_DATASETS の定義順に一致する（drift 検出の regression guard）。"""
+    expected_spotify = tuple(
+        d
+        for d in ALL_DATASETS
+        if d.provider == "spotify"
+        and d.partition_policy is PartitionPolicy.MONTHLY
+        and d.compaction_strategy is CompactionStrategy.APPEND_DEDUPE
+    )
+    assert monthly_compaction_datasets("spotify") == expected_spotify
+
+
+def test_browser_history_sort_key_uses_ingestion_time():
+    """browser_history の sort_key は ingested_at_utc（run をまたいだ決定的勝者）。"""
+    assert datasets.BROWSER_HISTORY_PAGE_VIEWS.sort_key == "ingested_at_utc"
+
+
+def test_source_root_selects_by_domain():
+    """source_root は domain に応じて events / master の root を選ぶ。"""
+    events = "events/"
+    master = "master/"
+
+    assert datasets.SPOTIFY_PLAYS.source_root(events, master) == events
+    assert datasets.SPOTIFY_TRACKS.source_root(events, master) == master
+
+
+def test_required_dedupe_key_returns_key_or_raises():
+    """required_dedupe_key は設定済みなら返し、未設定ならエラー。"""
+    assert datasets.SPOTIFY_PLAYS.required_dedupe_key() == "play_id"
+
+    no_dedupe = DatasetDefinition(
+        dataset_id="test.none",
+        provider="test",
+        domain=DataDomain.EVENTS,
+        path="test/none",
+        partition_policy=PartitionPolicy.MONTHLY,
+        compaction_strategy=CompactionStrategy.NONE,
+    )
+    with pytest.raises(ValueError, match="dedupe_key_required: test.none"):
+        no_dedupe.required_dedupe_key()
 
 
 def test_dataset_builds_storage_paths():

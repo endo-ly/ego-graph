@@ -505,11 +505,9 @@ class GitHubWorklogStorage:
             logger.info("No parquet records found for compaction: %s", source_prefix)
             return None
 
-        if dataset.dedupe_key is None:
-            raise ValueError(f"dedupe_key_required: {dataset.dataset_id}")
         compacted_df = compact_records(
             records,
-            dedupe_key=dataset.dedupe_key,
+            dedupe_key=dataset.required_dedupe_key(),
             sort_by=dataset.sort_key,
         )
         key = build_compacted_key(

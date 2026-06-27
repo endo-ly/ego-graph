@@ -76,7 +76,7 @@ class YouTubeStorage:
 
         compacted_df = compact_records(
             records,
-            dedupe_key=dataset.dedupe_key or "",
+            dedupe_key=dataset.required_dedupe_key(),
             sort_by=dataset.sort_key,
         )
         key = build_compacted_key(

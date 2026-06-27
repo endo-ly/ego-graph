@@ -62,7 +62,7 @@ def _compact_spotify(
     failures: list[str] = []
 
     for dataset in monthly_compaction_datasets("spotify"):
-        root_prefix = events_path if dataset.domain.value == "events" else master_path
+        root_prefix = dataset.source_root(events_path, master_path)
         months = _discover_dataset_months(
             s3_client,
             bucket_name,
