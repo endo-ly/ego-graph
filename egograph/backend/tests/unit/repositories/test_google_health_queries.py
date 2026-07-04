@@ -88,6 +88,69 @@ def test_get_daily_summary_pivots_metrics_and_preserves_missing_values(
     assert result[1]["daily_hrv"] == 42.0
 
 
+def test_get_daily_summary_maps_compacted_metric_names(
+    duckdb_conn,
+    mock_r2_config,
+    tmp_path,
+):
+    """compacted parquetの実際のmetric_nameをdaily_hrv/daily_oxygen_saturationへ射影する。"""
+    local_root = tmp_path / "mirror"
+    daily_dir = (
+        local_root
+        / "compacted"
+        / "events"
+        / "google_health"
+        / "daily_metrics"
+        / "year=2026"
+        / "month=06"
+    )
+    daily_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "connection_id": "google-health-primary",
+                "data_type": "heart_rate_variability",
+                "date": date(2026, 6, 1),
+                "metric_name": (
+                    "daily_heart_rate_variability_average_"
+                    "heart_rate_variability_milliseconds"
+                ),
+                "value": 48.0,
+                "unit": "millisecond",
+            },
+            {
+                "connection_id": "google-health-primary",
+                "data_type": "oxygen_saturation",
+                "date": date(2026, 6, 1),
+                "metric_name": "daily_oxygen_saturation_average_percentage",
+                "value": 97.0,
+                "unit": "percentage",
+            },
+        ]
+    ).to_parquet(daily_dir / "data.parquet")
+    mock_r2_config.local_parquet_root = str(local_root)
+    utc_start, utc_end = to_utc_range(
+        date(2026, 6, 1),
+        date(2026, 6, 1),
+        timezone.utc,
+    )
+    params = QueryParams(
+        conn=duckdb_conn,
+        r2_config=mock_r2_config,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 1),
+        utc_start=utc_start,
+        utc_end=utc_end,
+    )
+
+    result = get_daily_summary(params)
+
+    assert len(result) == 1
+    assert result[0]["date"] == date(2026, 6, 1)
+    assert result[0]["daily_hrv"] == 48.0
+    assert result[0]["daily_oxygen_saturation"] == 97.0
+
+
 def test_get_daily_summary_returns_empty_when_partition_is_missing(
     duckdb_conn,
     mock_r2_config,

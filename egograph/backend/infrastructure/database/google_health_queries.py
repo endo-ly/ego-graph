@@ -75,11 +75,15 @@ def get_daily_summary(params: QueryParams) -> list[dict[str, Any]]:
                 MAX(CASE
                     WHEN metric_name IN (
                         'daily_hrv',
-                        'daily_heart_rate_variability'
+                        'daily_heart_rate_variability',
+                        'daily_heart_rate_variability_average_heart_rate_variability_milliseconds'
                     ) THEN value
                 END) AS daily_hrv,
                 MAX(CASE
-                    WHEN metric_name = 'daily_oxygen_saturation' THEN value
+                    WHEN metric_name IN (
+                        'daily_oxygen_saturation',
+                        'daily_oxygen_saturation_average_percentage'
+                    ) THEN value
                 END) AS daily_oxygen_saturation,
                 MAX(CASE
                     WHEN metric_name IN (
