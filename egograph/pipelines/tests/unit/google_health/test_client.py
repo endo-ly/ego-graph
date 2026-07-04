@@ -107,7 +107,7 @@ def test_reconcile_data_points_sends_filter_and_page_token(tmp_path):
     assert params["filter"] == 'steps.interval.start_time >= "2026-06-01T00:00:00Z"'
     assert params["pageToken"] == "next-token"
     assert params["pageSize"] == 10000
-    assert params["dataSourceFamily"].endswith("/google-wearables")
+    assert "dataSourceFamily" not in params
 
 
 def test_daily_rollup_sends_closed_open_civil_range(tmp_path):
@@ -133,6 +133,7 @@ def test_daily_rollup_sends_closed_open_civil_range(tmp_path):
         "day": 1,
     }
     assert body["range"]["end"]["date"]["day"] == 3
+    assert "dataSourceFamily" not in body
 
 
 def test_rollup_sends_physical_range_and_window(tmp_path):
@@ -158,6 +159,7 @@ def test_rollup_sends_physical_range_and_window(tmp_path):
         "endTime": "2026-06-03T00:00:00Z",
     }
     assert body["windowSize"] == "300s"
+    assert "dataSourceFamily" not in body
 
 
 def test_rollup_uses_configured_timezone_boundary(tmp_path):

@@ -223,7 +223,6 @@ class GoogleHealthAPIClient:
         params: dict[str, Any] = {
             "filter": filter_expression,
             "pageSize": page_size,
-            "dataSourceFamily": "users/me/dataSourceFamilies/google-wearables",
         }
         if page_token:
             params["pageToken"] = page_token
@@ -254,7 +253,6 @@ class GoogleHealthAPIClient:
             },
             "windowSizeDays": 1,
             "pageSize": 10_000,
-            "dataSourceFamily": "users/me/dataSourceFamilies/google-wearables",
         }
         if page_token:
             body["pageToken"] = page_token
@@ -286,7 +284,6 @@ class GoogleHealthAPIClient:
             },
             "windowSize": f"{window_size_seconds}s",
             "pageSize": 10_000,
-            "dataSourceFamily": "users/me/dataSourceFamilies/google-wearables",
         }
         if page_token:
             body["pageToken"] = page_token
