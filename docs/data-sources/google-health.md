@@ -631,10 +631,7 @@ http://127.0.0.1:18001/v1/sources/google-health/auth/callback
 手元PCで次を実行し、認証完了まで開いたままにする。
 
 ```bash
-ssh -N \
-  -o ExitOnForwardFailure=yes \
-  -L 127.0.0.1:18001:127.0.0.1:8001 \
-  <user>@<server>
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:18001:127.0.0.1:8001 <user>@<server>
 ```
 
 サーバー側のPipelines Serviceが`8001`以外で待ち受ける場合は、コマンド末尾のポートを合わせる。
@@ -647,6 +644,7 @@ callbackは手元PCの`127.0.0.1:18001`からSSHトンネルを通ってサー�
 別のターミナルを開き、リポジトリルートで次を実行する。
 
 ```bash
+cd /opt/egograph/repo
 set -a
 source egograph/pipelines/.env
 set +a

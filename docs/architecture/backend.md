@@ -86,6 +86,7 @@ Google HealthはRepositoryが接続の生成・破棄をカプセル化し、RES
 ローカル優先ロジック: `local_parquet_root` が設定されており、catalog から導出した該当 local path に Parquet が存在すればローカルパスを使用。なければ同じ catalog 定義から導出した R2 (s3://) パスを使用する。
 
 Dataset Catalog の詳細は [dataset-catalog.md](./dataset-catalog.md) を参照。
+Daily Timeline の詳細は [daily-timeline.md](./daily-timeline.md) を参照。
 
 ### データソース
 
@@ -118,6 +119,7 @@ Dataset Catalog の詳細は [dataset-catalog.md](./dataset-catalog.md) を参�
 | GET | `/v1/data/youtube/stats/top-videos` | トップ動画 |
 | GET | `/v1/data/youtube/stats/top-channels` | トップチャンネル |
 | GET | `/v1/data/google-health/daily-summary` | Google Health日次サマリ |
+| GET | `/v1/data/timeline/daily` | 日次統合タイムライン |
 
 共通パラメータパターン:
 - `start_date` / `end_date`（必須、ISO形式）: 期間フィルタ
@@ -203,6 +205,7 @@ R2Config → SpotifyRepository → GetTopTracksTool ─┐
 | `get_youtube_top_videos` | トップ動画 | YouTube |
 | `get_youtube_top_channels` | トップチャンネル | YouTube |
 | `get_google_health_daily_summary` | 日次健康サマリ | Google Health |
+| `get_daily_timeline` | 日次統合タイムライン | Cross-source |
 | `data_query` | DuckDB 生SQL（SELECTのみ） | 全データ |
 
 ## MCP Server
