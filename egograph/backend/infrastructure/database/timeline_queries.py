@@ -242,7 +242,7 @@ def fetch_google_health_sleep_sessions(params: QueryParams) -> list[dict[str, An
         FROM read_parquet(?)
         WHERE data_type = 'sleep'
           AND (({_TS.format(col="ended_at_utc")} AT TIME ZONE 'UTC')
-                AT TIME ZONE '{params.tz_name}')::DATE = ?
+                AT TIME ZONE ?)::DATE = ?
         ORDER BY started_at_utc ASC
     """
     paths = build_partition_paths(
@@ -251,4 +251,4 @@ def fetch_google_health_sleep_sessions(params: QueryParams) -> list[dict[str, An
         params.utc_start,
         params.utc_end,
     )
-    return execute_query(params.conn, sql, [paths, params.start_date])
+    return execute_query(params.conn, sql, [paths, params.tz_name, params.start_date])

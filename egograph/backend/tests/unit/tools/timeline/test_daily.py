@@ -59,12 +59,12 @@ class TestExecuteValidation:
 
 
 class TestDateValidation:
-    @pytest.mark.parametrize("value", ["2026-06-28", "2026-06-28"])
+    @pytest.mark.parametrize("value", ["2026-06-28", "2024-02-29"])
     def test_accepts_valid_date(self, value):
         tool = _tool()
         tool.execute(date=value)
         kwargs = tool.repository.build_daily_timeline.call_args.kwargs
-        assert kwargs["date_local"] == date(2026, 6, 28)
+        assert kwargs["date_local"] == date.fromisoformat(value)
 
     @pytest.mark.parametrize("value", ["2026/06/28", "not-a-date", "2026-13-01"])
     def test_rejects_invalid_date(self, value):
@@ -188,10 +188,13 @@ class TestBooleanValidation:
 
 class TestDefaultTimezoneResolution:
     def test_unconfigured_timezone_defaults_to_jst(self):
-        assert resolve_default_timezone(
-            ZoneInfo("UTC"),
-            timezone_configured=False,
-        ) == JST
+        assert (
+            resolve_default_timezone(
+                ZoneInfo("UTC"),
+                timezone_configured=False,
+            )
+            == JST
+        )
 
     def test_explicit_utc_is_respected(self):
         assert resolve_default_timezone(

@@ -184,7 +184,7 @@ def _resolve_timezone(value: str | None, default: ZoneInfo) -> ZoneInfo:
         return default
     try:
         return ZoneInfo(value)
-    except ZoneInfoNotFoundError as exc:
+    except (ZoneInfoNotFoundError, ValueError) as exc:
         raise ValueError("invalid_timezone: unknown timezone") from exc
 
 

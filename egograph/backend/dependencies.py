@@ -152,7 +152,14 @@ def get_google_health_daily_summary_use_case(
 def get_timeline_repository(
     config: BackendConfig = Depends(get_config),
 ) -> TimelineRepository:
-    return TimelineRepository(_require_r2(config))
+    try:
+        r2 = _require_r2(config)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid_r2_config: {exc}",
+        ) from exc
+    return TimelineRepository(r2)
 
 
 def get_daily_timeline_tool(
