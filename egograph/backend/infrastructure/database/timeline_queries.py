@@ -24,6 +24,10 @@ from backend.infrastructure.database.query_params import QueryParams, execute_qu
 # TIMESTAMP / TIMESTAMPTZ を UTC naive に正規化する式。
 _TS = "make_timestamp(epoch_us({col}))"
 
+# GitHub compacted Parquet は timestamp 列が VARCHAR として保存されることがある。
+# 既存の GitHub 個別クエリと同じく明示的に TIMESTAMP へ cast して扱う。
+_GITHUB_TS = "{col}::TIMESTAMP"
+
 
 def dataset_has_parquet(params: QueryParams, dataset) -> bool:
     """dataset の compacted Parquet が1件でも存在するか。
@@ -143,13 +147,13 @@ def fetch_github_commits(params: QueryParams) -> list[dict[str, Any]]:
             repo_full_name,
             sha,
             message,
-            {_TS.format(col="committed_at_utc")} AS committed_at_utc,
+            {_GITHUB_TS.format(col="committed_at_utc")} AS committed_at_utc,
             changed_files_count,
             additions,
             deletions
         FROM read_parquet(?)
-        WHERE {_TS.format(col="committed_at_utc")} >= ?
-          AND {_TS.format(col="committed_at_utc")} < ?
+        WHERE {_GITHUB_TS.format(col="committed_at_utc")} >= ?
+          AND {_GITHUB_TS.format(col="committed_at_utc")} < ?
         ORDER BY committed_at_utc ASC
     """
     return execute_query(params.conn, sql, [paths, params.utc_start, params.utc_end])
@@ -175,13 +179,13 @@ def fetch_github_pull_requests(params: QueryParams) -> list[dict[str, Any]]:
             is_merged,
             title,
             labels,
-            {_TS.format(col="updated_at_utc")} AS updated_at_utc,
+            {_GITHUB_TS.format(col="updated_at_utc")} AS updated_at_utc,
             additions,
             deletions,
             changed_files_count
         FROM read_parquet(?)
-        WHERE {_TS.format(col="updated_at_utc")} >= ?
-          AND {_TS.format(col="updated_at_utc")} < ?
+        WHERE {_GITHUB_TS.format(col="updated_at_utc")} >= ?
+          AND {_GITHUB_TS.format(col="updated_at_utc")} < ?
         ORDER BY updated_at_utc ASC
     """
     return execute_query(params.conn, sql, [paths, params.utc_start, params.utc_end])
