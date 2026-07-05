@@ -25,3 +25,32 @@ MS_TO_MINUTES_FACTOR = 60000.0
 
 # Tool Execution
 MAX_TOOL_ITERATIONS = 5
+
+# Daily Timeline
+DEFAULT_TIMELINE_LIMIT = 500
+MAX_TIMELINE_LIMIT = 2000
+DEFAULT_GAP_MINUTES = 120
+MAX_GAP_MINUTES = 1440  # 24時間分
+
+# Daily Timeline が扱う source 一覧。items に混ぜる source と、
+# daily_summaries / coverage にのみ現れる source を含む。
+TIMELINE_SOURCES = (
+    "spotify",
+    "youtube",
+    "browser_history",
+    "github",
+    "google_health",
+)
+
+# 同一時刻の item 整列で使う source 優先度（小さいほど先）。
+# Browser History → YouTube → Spotify → GitHub の順で、ページ遷移から
+# 視聴イベントが続く流れを読みやすくする。
+TIMELINE_SOURCE_PRIORITY = {
+    "browser_history": 0,
+    "youtube": 1,
+    "spotify": 2,
+    "github": 3,
+}
+
+# Browser History と YouTube 視聴イベントの関連候補判定窓（秒）。
+CORRELATION_YOUTUBE_WINDOW_SECONDS = 120

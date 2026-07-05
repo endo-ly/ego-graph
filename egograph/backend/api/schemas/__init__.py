@@ -21,6 +21,7 @@ from backend.api.schemas.github import (
     RepoSummaryStatsResponse,
 )
 from backend.api.schemas.google_health import GoogleHealthDailySummaryResponse
+from backend.api.schemas.timeline import DailyTimelineResponse, TimelineRange
 
 __all__ = [
     # Data API スキーマ
@@ -39,4 +40,7 @@ __all__ = [
     "ActivityStatsResponse",
     "RepoSummaryStatsResponse",
     "GoogleHealthDailySummaryResponse",
+    # Timeline API スキーマ
+    "DailyTimelineResponse",
+    "TimelineRange",
 ]

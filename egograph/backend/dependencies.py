@@ -11,6 +11,10 @@ from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
 from backend.config import BackendConfig, R2Config
+from backend.domain.tools.timeline.daily import (
+    GetDailyTimelineTool,
+    resolve_default_timezone,
+)
 from backend.infrastructure.database import DuckDBConnection
 from backend.infrastructure.repositories.browser_history_repository import (
     BrowserHistoryRepository,
@@ -20,6 +24,9 @@ from backend.infrastructure.repositories.google_health_repository import (
     GoogleHealthRepository,
 )
 from backend.infrastructure.repositories.spotify_repository import SpotifyRepository
+from backend.infrastructure.repositories.timeline_repository import (
+    TimelineRepository,
+)
 from backend.infrastructure.repositories.youtube_repository import YouTubeRepository
 from backend.usecases.google_health import GetGoogleHealthDailySummaryUseCase
 
@@ -140,3 +147,23 @@ def get_google_health_daily_summary_use_case(
 ) -> GetGoogleHealthDailySummaryUseCase:
     """Google Health日次サマリ取得UseCaseを構築する。"""
     return GetGoogleHealthDailySummaryUseCase(repository)
+
+
+def get_timeline_repository(
+    config: BackendConfig = Depends(get_config),
+) -> TimelineRepository:
+    return TimelineRepository(_require_r2(config))
+
+
+def get_daily_timeline_tool(
+    config: BackendConfig = Depends(get_config),
+    repository: TimelineRepository = Depends(get_timeline_repository),
+) -> GetDailyTimelineTool:
+    """Daily Timeline MCP ツールを構築する。"""
+    return GetDailyTimelineTool(
+        repository,
+        default_timezone=resolve_default_timezone(
+            config.timezone,
+            timezone_configured=config.timezone_configured,
+        ),
+    )

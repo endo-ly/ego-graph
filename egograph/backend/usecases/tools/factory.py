@@ -17,6 +17,10 @@ from backend.domain.tools.github.worklog import (
 )
 from backend.domain.tools.google_health.summary import GetGoogleHealthDailySummaryTool
 from backend.domain.tools.spotify.stats import GetListeningStatsTool, GetTopTracksTool
+from backend.domain.tools.timeline.daily import (
+    GetDailyTimelineTool,
+    resolve_default_timezone,
+)
 from backend.domain.tools.youtube.stats import (
     GetYouTubeTopChannelsTool,
     GetYouTubeTopVideosTool,
@@ -28,6 +32,7 @@ from backend.infrastructure.repositories import (
     GitHubRepository,
     GoogleHealthRepository,
     SpotifyRepository,
+    TimelineRepository,
     YouTubeRepository,
 )
 from backend.usecases.tools.registry import ToolRegistry
@@ -36,6 +41,7 @@ from backend.usecases.tools.registry import ToolRegistry
 def build_tool_registry(
     r2_config: R2Config | None,
     tz: ZoneInfo | None = None,
+    timezone_configured: bool = False,
 ) -> ToolRegistry:
     """R2設定に応じたツールレジストリを構築する。"""
     tool_registry = ToolRegistry()
@@ -74,5 +80,17 @@ def build_tool_registry(
 
     google_health_repository = GoogleHealthRepository(r2_config, tz=effective_tz)
     tool_registry.register(GetGoogleHealthDailySummaryTool(google_health_repository))
+
+    # Daily Timeline（複数 source 統合）
+    timeline_repository = TimelineRepository(r2_config)
+    tool_registry.register(
+        GetDailyTimelineTool(
+            timeline_repository,
+            default_timezone=resolve_default_timezone(
+                effective_tz,
+                timezone_configured=timezone_configured,
+            ),
+        )
+    )
 
     return tool_registry
