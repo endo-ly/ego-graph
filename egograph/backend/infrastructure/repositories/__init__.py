@@ -11,6 +11,9 @@ from backend.infrastructure.repositories.google_health_repository import (
     GoogleHealthRepository,
 )
 from backend.infrastructure.repositories.spotify_repository import SpotifyRepository
+from backend.infrastructure.repositories.timeline_repository import (
+    TimelineRepository,
+)
 from backend.infrastructure.repositories.youtube_repository import YouTubeRepository
 
 __all__ = [
@@ -18,5 +21,6 @@ __all__ = [
     "GitHubRepository",
     "GoogleHealthRepository",
     "SpotifyRepository",
+    "TimelineRepository",
     "YouTubeRepository",
 ]

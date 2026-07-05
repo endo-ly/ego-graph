@@ -20,6 +20,7 @@ from backend.api import (
     github,
     google_health,
     health,
+    timeline,
     youtube,
 )
 from backend.config import BackendConfig
@@ -157,6 +158,7 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     app.include_router(github.router)
     app.include_router(youtube.router)
     app.include_router(google_health.router)
+    app.include_router(timeline.router)
 
     # MCPサブアプリをマウント
     app.mount("/mcp", mcp_asgi)

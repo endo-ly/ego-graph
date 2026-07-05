@@ -5,6 +5,7 @@ import os
 from zoneinfo import ZoneInfo
 
 from egograph_paths import PARQUET_DATA_DIR
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -63,6 +64,11 @@ class BackendConfig(BaseSettings):
     # サブ設定
     r2: R2Config | None = None
 
+    @property
+    def timezone_configured(self) -> bool:
+        """TIMEZONE が明示設定されているかを返す。"""
+        return "timezone" in self.model_fields_set or "TIMEZONE" in os.environ
+
     # MCP transport security: テスト環境向けにHost許可リストを設定可能
     mcp_allowed_hosts: list[str] = Field([], alias="MCP_ALLOWED_HOSTS")
 
@@ -116,8 +122,6 @@ class BackendConfig(BaseSettings):
         本番環境ではDNS rebinding保護を無効化する（Tailscaleネットワーク内で
         WireGuard暗号化・認証済みのため、追加の保護は不要）。
         """
-        from mcp.server.transport_security import TransportSecuritySettings
-
         if self.mcp_allowed_hosts:
             return TransportSecuritySettings(
                 enable_dns_rebinding_protection=True,
