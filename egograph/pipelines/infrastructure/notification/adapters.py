@@ -24,19 +24,28 @@ class WebhookAdapter(ABC):
     """Webhook 送信の抽象基底クラス。"""
 
     @abstractmethod
-    def send(self, url: str, event: NotificationEvent) -> None:
+    def send(
+        self, url: str, event: NotificationEvent, token: str | None = None
+    ) -> None:
         """HTTP 送信する。HTTP 4xx/5xx 時は例外を送出すること。"""
 
     @staticmethod
-    def _post_json(url: str, payload: dict) -> None:
-        response = requests.post(url, json=payload, timeout=DEFAULT_TIMEOUT_SECONDS)
+    def _post_json(url: str, payload: dict, token: str | None = None) -> None:
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        response = requests.post(
+            url, json=payload, headers=headers, timeout=DEFAULT_TIMEOUT_SECONDS
+        )
         response.raise_for_status()
 
 
 class GenericAdapter(WebhookAdapter):
     """CloudEvents-inspired JSON をそのまま POST する汎用 adapter。"""
 
-    def send(self, url: str, event: NotificationEvent) -> None:
+    def send(
+        self, url: str, event: NotificationEvent, token: str | None = None
+    ) -> None:
         payload = {
             "source": event.source,
             "type": event.type,
@@ -48,7 +57,7 @@ class GenericAdapter(WebhookAdapter):
                 "custom_message": event.data.custom_message,
             },
         }
-        self._post_json(url, payload)
+        self._post_json(url, payload, token=token)
 
 
 class DiscordAdapter(WebhookAdapter):
@@ -57,7 +66,9 @@ class DiscordAdapter(WebhookAdapter):
     _RED_COLOR = 16711680
     _USERNAME = "EgoGraph Pipelines"
 
-    def send(self, url: str, event: NotificationEvent) -> None:
+    def send(
+        self, url: str, event: NotificationEvent, token: str | None = None
+    ) -> None:
         payload = {
             "username": self._USERNAME,
             "embeds": [
@@ -81,4 +92,4 @@ class DiscordAdapter(WebhookAdapter):
                 }
             ],
         }
-        self._post_json(url, payload)
+        self._post_json(url, payload, token=token)

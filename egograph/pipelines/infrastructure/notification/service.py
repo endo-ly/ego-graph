@@ -45,9 +45,11 @@ class NotificationService:
         *,
         webhook_url: str | None,
         webhook_type: str = "generic",
+        webhook_token: str | None = None,
     ) -> None:
         """``webhook_url`` が ``None`` のとき通知は無効化される。"""
         self._webhook_url = webhook_url
+        self._webhook_token = webhook_token
         self._adapter: WebhookAdapter = self._create_adapter(webhook_type)
 
     @property
@@ -61,7 +63,7 @@ class NotificationService:
             return
         enriched = self._enrich_with_custom_message(event, exc)
         try:
-            self._adapter.send(self._webhook_url, enriched)
+            self._adapter.send(self._webhook_url, enriched, token=self._webhook_token)
         except Exception:
             logger.exception(
                 "Failed to send webhook notification: type=%s, run_id=%s",

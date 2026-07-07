@@ -35,6 +35,7 @@ class PipelinesConfig(BaseSettings):
     lock_heartbeat_seconds: int = 30
     webhook_url: str | None = None
     webhook_type: str = "generic"
+    webhook_token: SecretStr | None = None
     google_health_client_id: SecretStr | None = Field(
         None,
         validation_alias="GOOGLE_HEALTH_CLIENT_ID",

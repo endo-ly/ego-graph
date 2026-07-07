@@ -78,6 +78,11 @@ class PipelineService:
         notification_service = NotificationService(
             webhook_url=config.webhook_url,
             webhook_type=config.webhook_type,
+            webhook_token=(
+                config.webhook_token.get_secret_value()
+                if config.webhook_token
+                else None
+            ),
         )
         google_health_repository = GoogleHealthRepository(conn, mutex=db_mutex)
         google_health_auth = None

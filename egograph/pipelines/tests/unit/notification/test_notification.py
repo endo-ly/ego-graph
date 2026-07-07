@@ -104,6 +104,36 @@ def test_generic_adapter_raises_on_http_error():
             adapter.send("https://example.com/webhook", event)
 
 
+def test_generic_adapter_omits_auth_header_without_token():
+    """token 未設定時は Authorization ヘッダーを送らない。"""
+    adapter = GenericAdapter()
+    event = _make_event()
+
+    with patch(
+        "pipelines.infrastructure.notification.adapters.requests.post"
+    ) as mock_post:
+        mock_post.return_value.status_code = 200
+        adapter.send("https://example.com/webhook", event)
+
+    headers = mock_post.call_args.kwargs.get("headers", {})
+    assert "Authorization" not in headers
+
+
+def test_generic_adapter_sends_bearer_token_when_configured():
+    """token 設定時は Authorization: Bearer <token> を付与する。"""
+    adapter = GenericAdapter()
+    event = _make_event()
+
+    with patch(
+        "pipelines.infrastructure.notification.adapters.requests.post"
+    ) as mock_post:
+        mock_post.return_value.status_code = 200
+        adapter.send("https://example.com/webhook", event, token="secret-token")
+
+    headers = mock_post.call_args.kwargs["headers"]
+    assert headers["Authorization"] == "Bearer secret-token"
+
+
 # ===== DiscordAdapter =====
 
 
