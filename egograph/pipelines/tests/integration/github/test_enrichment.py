@@ -3,6 +3,8 @@
 PR review 件数補完と commit detail 補完のフローを検証する。
 """
 
+from datetime import datetime, timezone
+
 import responses
 from pipelines.sources.common.config import (
     Config,
@@ -35,7 +37,8 @@ def _build_config(memory_s3, **kwargs) -> Config:
         "token": SecretStr("test-github-token"),
         "github_login": "test-user",
         "target_repos": ["test-user/test-repo"],
-        "backfill_days": 30,
+        # 固定fixtureの日付を現在日時の境界で取りこぼさない。
+        "backfill_days": 3650,
         "fetch_commit_details": True,
         "max_commit_detail_requests_per_repo": 10,
     }
@@ -48,8 +51,6 @@ def _build_config(memory_s3, **kwargs) -> Config:
 
 def _current_month_pr():
     """現在月の日付で PR モックデータを生成する。"""
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
     return {
         **MOCK_PULL_REQUEST_RESPONSE,
@@ -67,8 +68,6 @@ def _current_month_pr():
 
 def _current_month_commit():
     """現在月の日付でコミットモックデータを生成する。"""
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
     return {
         "sha": "abc123def456",

@@ -4,6 +4,8 @@ MemoryS3 + responses モックを使用し、Collector → Transform → S3 Stor
 全データフローを検証する。
 """
 
+from datetime import datetime, timezone
+
 import responses
 from pipelines.sources.common.config import (
     Config,
@@ -40,7 +42,8 @@ def _build_config(memory_s3) -> Config:
             token=SecretStr("test-github-token"),
             github_login="test-user",
             target_repos=["test-user/test-repo"],
-            backfill_days=30,
+            # 固定fixtureの日付を現在日時の境界で取りこぼさない。
+            backfill_days=3650,
             fetch_commit_details=True,
             max_commit_detail_requests_per_repo=10,
         ),
@@ -112,8 +115,6 @@ def _mock_github_api(
 @responses.activate
 def test_ingest_saves_raw_events_and_state():
     """Ingest が raw JSON, events Parquet, ingest state を S3 に保存する。"""
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
     current_month = f"{now.year}-{now.month:02d}"
     pr = {

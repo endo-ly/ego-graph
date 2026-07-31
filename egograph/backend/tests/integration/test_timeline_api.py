@@ -12,6 +12,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import pytest
 from dataset_catalog import DATASETS_BY_ID, datasets
 from mcp.types import (
     CallToolRequest,
@@ -32,6 +33,27 @@ JST = ZoneInfo("Asia/Tokyo")
 
 # テスト対象日: 2026-06-28 (JST) = UTC [2026-06-27T15:00, 2026-06-28T15:00)
 TARGET_DATE = date(2026, 6, 28)
+
+
+@pytest.fixture(autouse=True)
+def patch_dataset_availability_for_local_fixture(monkeypatch):
+    """Local-only integration fixtureのavailability判定を差し替える。
+
+    本番のdataset_has_parquetはR2の完全なdatasetを判定するため、Local-only
+    のテストデータでは、fixtureに存在するファイルだけを返す判定を使う。
+    """
+
+    def has_local_parquet(params, dataset):
+        local_root = params.r2_config.local_parquet_root
+        if not local_root:
+            return False
+        dataset_root = Path(local_root) / dataset.compacted_prefix("compacted/")
+        return any(dataset_root.rglob("*.parquet"))
+
+    monkeypatch.setattr(
+        "backend.infrastructure.database.timeline_queries.dataset_has_parquet",
+        has_local_parquet,
+    )
 
 
 def _utc(value: str) -> datetime:
@@ -514,8 +536,7 @@ class TestRestAndMcpContract:
         test_client.app.dependency_overrides[get_daily_timeline_tool] = lambda: tool
 
         response = test_client.get(
-            "/v1/data/timeline/daily"
-            "?date=2026-06-28&include_correlations=maybe",
+            "/v1/data/timeline/daily?date=2026-06-28&include_correlations=maybe",
             headers={"X-API-Key": "test-backend-key"},
         )
         assert response.status_code == 400

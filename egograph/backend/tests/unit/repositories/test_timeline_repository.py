@@ -426,9 +426,20 @@ class TestBuildRange:
 
 
 class TestDatasetHasParquet:
-    def test_falls_back_to_r2_when_local_dataset_missing(self, tmp_path):
+    def test_uses_r2_glob_even_when_local_dataset_exists(self, tmp_path):
         conn = MagicMock()
         conn.execute.return_value.fetchone.return_value = (1,)
+        local_dataset = (
+            tmp_path
+            / "compacted"
+            / "events"
+            / "spotify"
+            / "plays"
+            / "year=2026"
+            / "month=06"
+        )
+        local_dataset.mkdir(parents=True)
+        (local_dataset / "data.parquet").write_bytes(b"local-only")
         config = R2Config.model_construct(
             endpoint_url="https://test.r2.cloudflarestorage.com",
             access_key_id="test_key",
@@ -450,7 +461,10 @@ class TestDatasetHasParquet:
         )
 
         assert dataset_has_parquet(params, datasets.SPOTIFY_PLAYS) is True
-        conn.execute.assert_called_once()
+        conn.execute.assert_called_once_with(
+            "SELECT COUNT(*) FROM glob(?)",
+            ("s3://test-bucket/compacted/events/spotify/plays/**/*.parquet",),
+        )
 
 
 class TestComposeGoogleHealthSummary:

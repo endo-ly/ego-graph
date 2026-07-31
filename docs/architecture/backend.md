@@ -73,7 +73,8 @@ Google HealthはRepositoryが接続の生成・破棄をカプセル化し、RES
 特徴:
 - サーバー側に状態を保持しない（DB永続化なし）
 - DuckDB の httpfs 拡張で R2 に直接アクセス
-- ローカル Parquet が存在すればそちらを優先（`local_parquet_root` 設定時）
+- 期間指定クエリでLocal mirrorが完全な場合だけLocalを使用
+- 全件検索とdataset存在判定はR2を使用し、Local mirrorの部分状態で結果を隠さない
 
 ### Parquet パス解決
 
@@ -83,7 +84,9 @@ Google HealthはRepositoryが接続の生成・破棄をカプセル化し、RES
 - `build_partition_paths(config, dataset, utc_start, utc_end)`: 月次 dataset の指定期間に対応する compacted partition path を構築
 - `build_dataset_glob(config, dataset)`: dataset 全体の glob パターンを構築。GitHub repositories のような recursive dataset や、YouTube master のような snapshot dataset も catalog の path を基準に解決する
 
-ローカル優先ロジック: `local_parquet_root` が設定されており、catalog から導出した該当 local path に Parquet が存在すればローカルパスを使用。なければ同じ catalog 定義から導出した R2 (s3://) パスを使用する。
+データソース選択: `build_partition_paths` は対象期間のLocal partitionをすべて確認し、全て存在する場合だけLocal pathのリストを返す。1つでも欠けている場合は、クエリ内の全partitionをR2 (`s3://`) pathへ切り替える。これにより、同じクエリでLocalとR2を混在させない。
+
+`build_dataset_glob` と `dataset_has_parquet` はLocal mirrorの完全性を判定できないため、常にR2のglobを使用する。Local mirrorは期間指定クエリの利用補助であり、全件検索の完全な分析正本ではない。manifestやgenerationによる完全性情報を導入するまでは、このルールを適用する。
 
 Dataset Catalog の詳細は [dataset-catalog.md](./dataset-catalog.md) を参照。
 Daily Timeline の詳細は [daily-timeline.md](./daily-timeline.md) を参照。

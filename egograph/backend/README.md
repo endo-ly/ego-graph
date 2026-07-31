@@ -63,6 +63,12 @@ egograph/backend/
 日次指標の`date`はローカル日付として保存済みのため変換せず、欠損値は`null`として返す。
 絶対時刻を提供する場合は、他のデータソースと同様にUTC保存値を`TIMEZONE`へ変換して返す。
 
+## Parquet データソースの選択
+
+期間指定のクエリでは、対象期間のcompact ParquetがLocal mirrorにすべて存在する場合だけLocalを使用する。1つでも欠けている場合は、クエリ内の全partitionをR2から読み込み、LocalとR2を混在させない。
+
+期間を持たない全件検索とdataset存在判定はR2のglobを使用する。Local mirrorは期間指定クエリの読み取りを補助するものであり、全件検索の完全な分析正本ではない。manifestやgenerationによる完全性管理は別途導入する。
+
 ## See Also
 
 > 詳細な設計・仕様は docs/ を参照。
