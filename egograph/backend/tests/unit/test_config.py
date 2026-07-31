@@ -7,6 +7,7 @@ from egograph_paths import PARQUET_DATA_DIR
 from pydantic import SecretStr, ValidationError
 
 from backend.config import BackendConfig, R2Settings
+from backend.main import create_app
 
 
 class TestBackendConfig:
@@ -19,6 +20,7 @@ class TestBackendConfig:
         assert config.host == "127.0.0.1"
         assert config.port == 8000
         assert config.reload is True
+        assert config.environment == "development"
         assert config.log_level == "INFO"
         assert config.api_key is None
         assert config.r2 is None
@@ -29,6 +31,7 @@ class TestBackendConfig:
             host="0.0.0.0",
             port=9000,
             reload=False,
+            environment="production",
             api_key=SecretStr("custom-key"),
             log_level="DEBUG",
         )
@@ -36,6 +39,7 @@ class TestBackendConfig:
         assert config.host == "0.0.0.0"
         assert config.port == 9000
         assert config.reload is False
+        assert config.environment == "production"
         assert config.api_key.get_secret_value() == "custom-key"
         assert config.log_level == "DEBUG"
         assert config.r2 is None
@@ -60,6 +64,7 @@ class TestBackendConfig:
 
     def test_from_env_with_r2_only(self, monkeypatch):
         """R2設定のみでロード可能。"""
+        monkeypatch.delenv("BACKEND_ENV", raising=False)
         monkeypatch.setenv("R2_ENDPOINT_URL", "https://test.r2.cloudflarestorage.com")
         monkeypatch.setenv("R2_ACCESS_KEY_ID", "test_key")
         monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "test_secret")
@@ -70,6 +75,19 @@ class TestBackendConfig:
         assert config.r2 is not None
         assert config.r2.bucket_name == "test-bucket"
         assert config.r2.local_parquet_root == str(PARQUET_DATA_DIR)
+
+    def test_from_env_reads_backend_environment(self, monkeypatch):
+        """BACKEND_ENVを環境変数からロードする。"""
+        monkeypatch.setenv("BACKEND_ENV", "production")
+        monkeypatch.setenv("BACKEND_API_KEY", "production-key")
+        monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com")
+        monkeypatch.setenv("R2_ENDPOINT_URL", "https://test.r2.cloudflarestorage.com")
+        monkeypatch.setenv("R2_ACCESS_KEY_ID", "test_key")
+        monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "test_secret")
+
+        config = BackendConfig.from_env()
+
+        assert config.environment == "production"
 
     def test_validate_for_production_with_api_key(self, mock_backend_config):
         """API Keyがあれば本番環境検証成功。"""
@@ -91,6 +109,21 @@ class TestBackendConfig:
             match="CORS_ORIGINS must be explicitly configured",
         ):
             mock_backend_config.validate_for_production()
+
+    def test_validate_for_production_requires_r2(self, mock_backend_config):
+        """R2設定がなければ本番環境検証に失敗する。"""
+        mock_backend_config.r2 = None
+
+        with pytest.raises(ValueError, match="R2 configuration is required"):
+            mock_backend_config.validate_for_production()
+
+    def test_create_app_rejects_invalid_production_config(self, mock_backend_config):
+        """不正な本番設定ではFastAPIアプリを生成しない。"""
+        mock_backend_config.environment = "production"
+        mock_backend_config.api_key = None
+
+        with pytest.raises(ValueError, match="BACKEND_API_KEY is required"):
+            create_app(config=mock_backend_config)
 
 
 class TestR2Settings:

@@ -40,6 +40,7 @@ class BackendConfig(BaseSettings):
     host: str = Field("127.0.0.1", alias="BACKEND_HOST")
     port: int = Field(8000, alias="BACKEND_PORT")
     reload: bool = Field(True, alias="BACKEND_RELOAD")
+    environment: str = Field("development", alias="BACKEND_ENV")
 
     # オプショナル認証
     api_key: SecretStr | None = Field(None, alias="BACKEND_API_KEY")
@@ -107,12 +108,15 @@ class BackendConfig(BaseSettings):
         Raises:
             ValueError: 本番環境で必須の設定が不足している場合
         """
-        if not self.api_key:
+        if self.api_key is None or not self.api_key.get_secret_value():
             raise ValueError("BACKEND_API_KEY is required for production")
-        if self.cors_origins == "*":
+        origins = [origin.strip() for origin in self.cors_origins.split(",")]
+        if not origins or any(origin == "*" for origin in origins):
             raise ValueError(
                 "CORS_ORIGINS must be explicitly configured for production (not '*')"
             )
+        if self.r2 is None:
+            raise ValueError("R2 configuration is required for production")
 
     @property
     def mcp_transport_security(self):

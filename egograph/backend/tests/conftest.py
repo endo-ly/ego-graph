@@ -61,6 +61,7 @@ def mock_backend_config(mock_r2_config):
         host="127.0.0.1",
         port=8000,
         reload=False,
+        environment="development",
         api_key=SecretStr("test-backend-key"),  # SecretStrでラップ
         cors_origins="http://localhost:3000",  # ワイルドカードを避ける
         log_level="DEBUG",
