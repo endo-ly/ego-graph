@@ -1,10 +1,14 @@
 """Google Health DuckDBクエリのテスト。"""
 
-from datetime import date, timezone
+from datetime import date, datetime, timezone
+from unittest.mock import MagicMock
 
 import pandas as pd
 
-from backend.infrastructure.database.google_health_queries import get_daily_summary
+from backend.infrastructure.database.google_health_queries import (
+    _resolve_daily_metric_paths,
+    get_daily_summary,
+)
 from backend.infrastructure.database.query_params import QueryParams
 from backend.validators import to_utc_range
 
@@ -88,12 +92,59 @@ def test_get_daily_summary_pivots_metrics_and_preserves_missing_values(
     assert result[1]["daily_hrv"] == 42.0
 
 
+def test_daily_metric_paths_use_r2_for_all_partitions_when_local_is_partial(
+    mock_r2_config,
+    tmp_path,
+):
+    """Local partitionが欠ける場合は全partitionをR2から解決する。"""
+    local_root = tmp_path / "mirror"
+    local_partition = (
+        local_root
+        / "compacted"
+        / "events"
+        / "google_health"
+        / "daily_metrics"
+        / "year=2026"
+        / "month=06"
+    )
+    local_partition.mkdir(parents=True)
+    (local_partition / "data.parquet").write_bytes(b"local")
+    mock_r2_config.local_parquet_root = str(local_root)
+
+    conn = MagicMock()
+    conn.execute.return_value.fetchall.side_effect = [
+        [
+            (
+                "s3://test-bucket/compacted/events/google_health/"
+                "daily_metrics/year=2026/month=06/data.parquet",
+            )
+        ],
+        [],
+    ]
+    params = QueryParams(
+        conn=conn,
+        r2_config=mock_r2_config,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 30),
+        utc_start=datetime(2026, 6, 1),
+        utc_end=datetime(2026, 7, 1),
+    )
+
+    result = _resolve_daily_metric_paths(params)
+
+    assert result == [
+        "s3://test-bucket/compacted/events/google_health/"
+        "daily_metrics/year=2026/month=06/data.parquet"
+    ]
+    assert conn.execute.call_count == 2
+
+
 def test_get_daily_summary_maps_compacted_metric_names(
     duckdb_conn,
     mock_r2_config,
     tmp_path,
 ):
-    """compacted parquetの実際のmetric_nameをdaily_hrv/daily_oxygen_saturationへ射影する。"""
+    """実際のmetric_nameをdaily_hrv/daily_oxygen_saturationへ射影する。"""
     local_root = tmp_path / "mirror"
     daily_dir = (
         local_root
@@ -152,7 +203,6 @@ def test_get_daily_summary_maps_compacted_metric_names(
 
 
 def test_get_daily_summary_returns_empty_when_partition_is_missing(
-    duckdb_conn,
     mock_r2_config,
     tmp_path,
 ):
@@ -176,13 +226,15 @@ def test_get_daily_summary_returns_empty_when_partition_is_missing(
         }
     ).to_parquet(other_month / "data.parquet")
     mock_r2_config.local_parquet_root = str(local_root)
+    conn = MagicMock()
+    conn.execute.return_value.fetchall.return_value = []
     utc_start, utc_end = to_utc_range(
         date(2026, 6, 1),
         date(2026, 6, 30),
         timezone.utc,
     )
     params = QueryParams(
-        conn=duckdb_conn,
+        conn=conn,
         r2_config=mock_r2_config,
         start_date=date(2026, 6, 1),
         end_date=date(2026, 6, 30),
@@ -193,3 +245,4 @@ def test_get_daily_summary_returns_empty_when_partition_is_missing(
     result = get_daily_summary(params)
 
     assert result == []
+    assert conn.execute.call_count == 2

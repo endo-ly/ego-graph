@@ -9,13 +9,11 @@
 ``epoch_us`` は絶対 UTC エポックを返すためセッションタイムゾーンに依存しない。
 """
 
-from pathlib import Path
 from typing import Any
 
 from dataset_catalog import datasets
 
 from backend.infrastructure.database.parquet_paths import (
-    COMPACTED_ROOT,
     build_dataset_glob,
     build_partition_paths,
 )
@@ -32,16 +30,10 @@ _GITHUB_TS = "{col}::TIMESTAMP"
 def dataset_has_parquet(params: QueryParams, dataset) -> bool:
     """dataset の compacted Parquet が1件でも存在するか。
 
-    ``local_parquet_root`` 設定時はローカルミラーを優先して判定し、
-    ローカルに無い場合は R2 の glob へ fallback する。
+    dataset-wide availabilityではLocal mirrorの完全性を判定できないため、
+    共通path resolverが返すR2 globを常に使用する。
     coverage の ``not_available`` 判定のために使う。
     """
-    if params.r2_config.local_parquet_root:
-        local_root = Path(
-            params.r2_config.local_parquet_root
-        ) / dataset.compacted_prefix(COMPACTED_ROOT)
-        if any(local_root.rglob("*.parquet")):
-            return True
     pattern = build_dataset_glob(params.r2_config, dataset)
     rows = params.conn.execute("SELECT COUNT(*) FROM glob(?)", (pattern,)).fetchone()
     return bool(rows and rows[0] > 0)

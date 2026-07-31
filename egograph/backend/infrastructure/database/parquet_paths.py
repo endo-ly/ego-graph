@@ -72,39 +72,34 @@ def build_partition_paths(
     utc_start: datetime,
     utc_end: datetime,
 ) -> list[str]:
-    """Build month-scoped parquet paths for compacted datasets."""
-    paths: list[str] = []
-    for partition in _iter_months(utc_start, utc_end):
-        local_path = (
-            _build_local_compacted_file(
-                config.local_parquet_root,
-                dataset,
-                partition,
-            )
-            if config.local_parquet_root
-            else None
-        )
-        if local_path and local_path.exists():
-            paths.append(str(local_path))
-            continue
+    """compacted datasetの月単位Parquet pathを構築する。
 
-        paths.append(_build_r2_compacted_file(config, dataset, partition))
+    Local mirrorは対象partitionがすべて存在する場合だけ使用する。1つでも欠けて
+    いる場合は、同一query内でsourceが混在しないよう全体をR2へ切り替える。
+    """
+    partitions = _iter_months(utc_start, utc_end)
+    if not config.local_parquet_root:
+        return [_build_r2_compacted_file(config, dataset, p) for p in partitions]
 
-    return paths
+    local_paths = [
+        _build_local_compacted_file(config.local_parquet_root, dataset, partition)
+        for partition in partitions
+    ]
+    if all(path.exists() for path in local_paths):
+        return [str(path) for path in local_paths]
+
+    return [_build_r2_compacted_file(config, dataset, p) for p in partitions]
 
 
 def build_dataset_glob(
     config: R2Config,
     dataset: DatasetDefinition,
 ) -> str:
-    """Build all-data glob for compacted datasets."""
-    if config.local_parquet_root:
-        local_root = Path(config.local_parquet_root) / dataset.compacted_prefix(
-            COMPACTED_ROOT
-        )
-        if any(local_root.rglob("*.parquet")):
-            return str(local_root / "**" / "*.parquet")
+    """compacted dataset全件用のR2 globを構築する。
 
+    dataset-wide globからLocal mirrorの完全性は判定できないため、全件queryは
+    単一のsourceとしてR2を使用する。
+    """
     return (
         f"s3://{config.bucket_name}/"
         f"{dataset.compacted_prefix(COMPACTED_ROOT)}**/*.parquet"

@@ -1,45 +1,35 @@
 """Google Health日次サマリ用DuckDBクエリ。"""
 
-from datetime import date
 from typing import Any
 
 from dataset_catalog import datasets
 
-from backend.infrastructure.database.parquet_paths import build_dataset_glob
+from backend.infrastructure.database.parquet_paths import build_partition_paths
 from backend.infrastructure.database.query_params import QueryParams
 
 
 def _resolve_daily_metric_paths(params: QueryParams) -> list[str]:
-    """存在するdaily_metricsから対象月のParquetだけを解決する。"""
-    dataset_glob = build_dataset_glob(
+    """対象期間のdaily_metrics Parquetを単一sourceから解決する。"""
+    partition_paths = build_partition_paths(
         params.r2_config,
         datasets.GOOGLE_HEALTH_DAILY_METRICS,
+        params.utc_start,
+        params.utc_end,
     )
-    rows = params.conn.execute(
-        "SELECT file FROM glob(?) ORDER BY file",
-        (dataset_glob,),
-    ).fetchall()
-    target_months = set(_iter_months(params.start_date, params.end_date))
-    return [
-        str(row[0])
-        for row in rows
-        if any(
-            f"/year={year}/month={month:02d}/" in str(row[0])
-            for year, month in target_months
-        )
-    ]
 
+    resolved_paths: list[str] = []
+    for path in partition_paths:
+        if not path.startswith("s3://"):
+            resolved_paths.append(path)
+            continue
 
-def _iter_months(start_date: date, end_date: date):
-    current = date(start_date.year, start_date.month, 1)
-    limit = date(end_date.year, end_date.month, 1)
-    while current <= limit:
-        yield current.year, current.month
-        current = (
-            date(current.year + 1, 1, 1)
-            if current.month == 12
-            else date(current.year, current.month + 1, 1)
-        )
+        rows = params.conn.execute(
+            "SELECT file FROM glob(?) ORDER BY file",
+            (f"{path.rsplit('/', 1)[0]}/*.parquet",),
+        ).fetchall()
+        resolved_paths.extend(str(row[0]) for row in rows)
+
+    return resolved_paths
 
 
 def get_daily_summary(params: QueryParams) -> list[dict[str, Any]]:
