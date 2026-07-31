@@ -2,6 +2,7 @@
 
 import logging
 import os
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from egograph_paths import PARQUET_DATA_DIR
@@ -40,7 +41,9 @@ class BackendConfig(BaseSettings):
     host: str = Field("127.0.0.1", alias="BACKEND_HOST")
     port: int = Field(8000, alias="BACKEND_PORT")
     reload: bool = Field(True, alias="BACKEND_RELOAD")
-    environment: str = Field("development", alias="BACKEND_ENV")
+    environment: Literal["development", "production"] = Field(
+        "development", alias="BACKEND_ENV"
+    )
 
     # オプショナル認証
     api_key: SecretStr | None = Field(None, alias="BACKEND_API_KEY")
@@ -111,9 +114,10 @@ class BackendConfig(BaseSettings):
         if self.api_key is None or not self.api_key.get_secret_value():
             raise ValueError("BACKEND_API_KEY is required for production")
         origins = [origin.strip() for origin in self.cors_origins.split(",")]
-        if not origins or any(origin == "*" for origin in origins):
+        if any(not origin or origin == "*" for origin in origins):
             raise ValueError(
-                "CORS_ORIGINS must be explicitly configured for production (not '*')"
+                "CORS_ORIGINS must be explicitly configured with non-empty origins "
+                "(not '*')"
             )
         if self.r2 is None:
             raise ValueError("R2 configuration is required for production")

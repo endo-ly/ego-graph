@@ -129,7 +129,7 @@ class TestHealthEndpoint:
         assert response.status_code == 503
         assert response.json() == {
             "status": "error",
-            "error": "invalid R2 path",
+            "error": "invalid_readiness: invalid R2 path",
         }
 
     def test_health_check_returns_ok_when_no_compacted_files_exist(
@@ -166,7 +166,7 @@ class TestHealthEndpoint:
             app.dependency_overrides[deps.get_config] = lambda: mock_backend_config
 
     def test_health_error_response_excludes_infra_info(
-        self, test_client, mock_backend_config
+        self, test_client, mock_backend_config, caplog
     ):
         """エラーレスポンスに R2 URL 等のインフラ情報が含まれない。"""
 
@@ -181,7 +181,8 @@ class TestHealthEndpoint:
 
         try:
             # Act: ヘルスチェックを実行
-            response = test_client.get("/health")
+            with caplog.at_level("ERROR", logger="backend.api.health"):
+                response = test_client.get("/health")
 
             # Assert: レスポンスに R2 ホスト名が含まれないことを検証
             assert response.status_code == 503
@@ -189,6 +190,8 @@ class TestHealthEndpoint:
             assert data["status"] == "error"
             assert "r2.cloudflarestorage.com" not in data["error"]
             assert "abc123" not in data["error"]
+            assert "r2.cloudflarestorage.com" not in caplog.text
+            assert "abc123" not in caplog.text
         finally:
             app.dependency_overrides.clear()
             app.dependency_overrides[deps.get_config] = lambda: mock_backend_config

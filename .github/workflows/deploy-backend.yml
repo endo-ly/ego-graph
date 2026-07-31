@@ -67,7 +67,8 @@ jobs:
             /root/.local/bin/uv sync --all-packages
             sudo systemctl restart egograph-backend
             for i in $(seq 1 10); do
-              if curl -fsS http://127.0.0.1:8000/health | python3 -c '
+              if curl -fsS --connect-timeout 2 --max-time 5 \
+                http://127.0.0.1:8000/health | python3 -c '
                 import json
                 import sys
 
@@ -79,6 +80,6 @@ jobs:
               fi
               sleep 2
             done
-            echo "=== Health check failed after 20s ==="
+            echo "=== Health check failed after 10 attempts (curl max 5s, 2s interval) ==="
             sudo journalctl -u egograph-backend --since "1 min ago" --no-pager
             exit 1

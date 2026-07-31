@@ -291,7 +291,7 @@ GitHub リポジトリの `Settings` → `Secrets and variables` → `Actions` �
 
 ### 6.3 デプロイ後の readiness 確認
 
-デプロイ workflow は `/health` の HTTP ステータスに加えて JSON の `status=ok` を確認する。Parquet が未投入の場合は `data_available=false` の HTTP 200 となり、R2・DuckDB・設定の障害は HTTP 503 となるため、障害をデプロイ成功として扱わない。
+デプロイ workflow は `/health` の HTTP ステータスに加えて JSON の `status=ok` を確認する。Parquet が未投入の場合は `data_available=false` の HTTP 200 となる。起動後の R2・DuckDB 障害は HTTP 503 となるため、障害をデプロイ成功として扱わない。本番設定の不足は起動時に app 生成前で検出され、systemd の起動失敗と journal で確認する。
 
 ## 7. 変更フロー（手動）
 

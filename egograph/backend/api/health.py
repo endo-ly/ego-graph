@@ -28,13 +28,13 @@ def _build_health_response(*, data_available: bool) -> dict[str, str | bool]:
     }
 
 
-def _build_health_error_response(error: Exception) -> JSONResponse:
+def _build_health_error_response(error_message: str) -> JSONResponse:
     """readiness failure の標準レスポンスを構築する。"""
     return JSONResponse(
         status_code=503,
         content={
             "status": "error",
-            "error": sanitize_infra_message(str(error)),
+            "error": f"invalid_readiness: {error_message}",
         },
     )
 
@@ -87,8 +87,13 @@ async def health_check(
         return _build_health_response(data_available=data_exists)
     except Exception as e:
         if _is_empty_dataset_error(e):
-            logger.info("Health check found no compacted parquet yet: %s", e)
+            sanitized_message = sanitize_infra_message(str(e))
+            logger.info(
+                "Health check found no compacted parquet yet: %s",
+                sanitized_message,
+            )
             return _build_health_response(data_available=False)
 
-        logger.exception("Health check failed")
-        return _build_health_error_response(e)
+        sanitized_message = sanitize_infra_message(str(e))
+        logger.error("Health check failed: %s", sanitized_message)
+        return _build_health_error_response(sanitized_message)

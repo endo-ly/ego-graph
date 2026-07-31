@@ -89,6 +89,16 @@ class TestBackendConfig:
 
         assert config.environment == "production"
 
+    @pytest.mark.parametrize("environment", ["prod", "Production", "production "])
+    def test_from_env_rejects_unknown_backend_environment(
+        self, monkeypatch, environment
+    ):
+        """BACKEND_ENVの値域外を拒否する。"""
+        monkeypatch.setenv("BACKEND_ENV", environment)
+
+        with pytest.raises(ValidationError):
+            BackendConfig()
+
     def test_validate_for_production_with_api_key(self, mock_backend_config):
         """API Keyがあれば本番環境検証成功。"""
         mock_backend_config.validate_for_production()
@@ -107,6 +117,22 @@ class TestBackendConfig:
         with pytest.raises(
             ValueError,
             match="CORS_ORIGINS must be explicitly configured",
+        ):
+            mock_backend_config.validate_for_production()
+
+    @pytest.mark.parametrize(
+        "cors_origins",
+        ["", " ", "https://app.example.com,,https://admin.example.com"],
+    )
+    def test_validate_for_production_rejects_empty_cors_origin(
+        self, mock_backend_config, cors_origins
+    ):
+        """空要素を含むCORS設定を本番環境で拒否する。"""
+        mock_backend_config.cors_origins = cors_origins
+
+        with pytest.raises(
+            ValueError,
+            match="CORS_ORIGINS must be explicitly configured with non-empty origins",
         ):
             mock_backend_config.validate_for_production()
 
