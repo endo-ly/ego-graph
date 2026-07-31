@@ -81,9 +81,7 @@ def _resolve_since_iso(
     repo_cursor = repos_state.get(repo_full_name, {}).get("cursor_utc")
 
     if repo_cursor:
-        logger.info(
-            "Using incremental cursor for %s: %s", repo_full_name, repo_cursor
-        )
+        logger.info("Using incremental cursor for %s: %s", repo_full_name, repo_cursor)
         return repo_cursor
 
     # 旧形式からの移行cursor
@@ -98,6 +96,40 @@ def _resolve_since_iso(
     since = start.isoformat()
     logger.info("No cursor for %s. Backfill mode since=%s", repo_full_name, since)
     return since
+
+
+def _build_ingest_state(
+    state: dict[str, Any],
+    target_repos: list[str],
+    repo_cursors: dict[str, str],
+    failed_repos: set[str],
+    github_login: str,
+    updated_at: str,
+) -> dict[str, Any]:
+    """保存完了結果から次回実行用のstateを構築する。
+
+    失敗したリポジトリは新しいcursorを持たず、既存cursorだけを維持する。
+    これにより、未保存データを次回実行で再取得できる。
+    """
+    existing_repos = state.get("repos", {})
+    repos_state: dict[str, dict[str, str]] = {}
+
+    for repo_full_name in target_repos:
+        if repo_full_name in failed_repos:
+            existing_cursor = existing_repos.get(repo_full_name, {}).get("cursor_utc")
+            if existing_cursor:
+                repos_state[repo_full_name] = {"cursor_utc": existing_cursor}
+            continue
+
+        cursor = repo_cursors.get(repo_full_name)
+        if cursor:
+            repos_state[repo_full_name] = {"cursor_utc": cursor}
+
+    return {
+        "github_login": github_login,
+        "repos": repos_state,
+        "updated_at": updated_at,
+    }
 
 
 def run_pipeline(config: Config) -> None:
@@ -182,7 +214,6 @@ def run_pipeline(config: Config) -> None:
     total_failed_records = 0
     total_failed_fatal_api_calls = 0
     total_failed_enrichment_api_calls = 0
-    total_failed_repos = 0
 
     all_commits_data = []
     # リポジトリごとのcursorを追跡
@@ -209,6 +240,7 @@ def run_pipeline(config: Config) -> None:
                         "Failed to save repository master for %s", repo_full_name
                     )
                     total_failed_records += 1
+                    failed_repos.add(repo_full_name)
             else:
                 logger.info("Skipping non-personal repo: %s", repo_full_name)
                 continue
@@ -262,6 +294,7 @@ def run_pipeline(config: Config) -> None:
                                 month,
                             )
                             total_failed_records += stats["failed"]
+                            failed_repos.add(repo_full_name)
                         else:
                             logger.info(
                                 (
@@ -282,6 +315,7 @@ def run_pipeline(config: Config) -> None:
                 if raw_pr_saved is None:
                     logger.error("Failed to save raw PRs for %s", repo_full_name)
                     total_failed_records += len(prs)
+                    failed_repos.add(repo_full_name)
 
             # Repository Commitsを取得
             commits = collector.get_repository_commits(owner, repo, since=since_iso)
@@ -352,18 +386,19 @@ def run_pipeline(config: Config) -> None:
                 if raw_commits_saved is None:
                     logger.error("Failed to save raw commits for %s", repo_full_name)
                     total_failed_records += len(commits)
+                    failed_repos.add(repo_full_name)
 
             # リポジトリのcursorを記録
-            if max_cursor_candidate is not None:
-                repo_cursors[repo_full_name] = max_cursor_candidate.isoformat()
-            else:
-                now_utc = datetime.now(timezone.utc)
-                repo_cursors[repo_full_name] = now_utc.isoformat()
+            if repo_full_name not in failed_repos:
+                if max_cursor_candidate is not None:
+                    repo_cursors[repo_full_name] = max_cursor_candidate.isoformat()
+                else:
+                    now_utc = datetime.now(timezone.utc)
+                    repo_cursors[repo_full_name] = now_utc.isoformat()
 
         except Exception:
             logger.exception("Failed to process repository %s", repo_full_name)
             total_failed_fatal_api_calls += 1
-            total_failed_repos += 1
             failed_repos.add(repo_full_name)
             continue
 
@@ -372,12 +407,23 @@ def run_pipeline(config: Config) -> None:
     # Commitイベントを年月でグループ化して保存
     commits_by_month = _group_commits_by_month(all_commits_data)
 
-    all_saved = True
     for (year, month), commits in commits_by_month.items():
-        stats = storage.save_commits_parquet_with_stats(commits, year, month)
+        contributing_repos = {
+            commit["repo_full_name"]
+            for commit in commits
+            if commit.get("repo_full_name")
+        }
+        try:
+            stats = storage.save_commits_parquet_with_stats(commits, year, month)
+        except Exception:
+            logger.exception("Failed to save commits Parquet for %d-%02d", year, month)
+            failed_repos.update(contributing_repos)
+            total_failed_records += len(commits)
+            continue
+
         if stats["failed"] > 0:
             logger.error("Failed to save commits Parquet for %d-%02d", year, month)
-            all_saved = False
+            failed_repos.update(contributing_repos)
         else:
             logger.info(
                 "Saved commits for %d-%02d (fetched=%d new=%d duplicates=%d)",
@@ -405,44 +451,36 @@ def run_pipeline(config: Config) -> None:
         total_duplicate_commits,
         total_failed_records,
         total_failed_fatal_api_calls,
-        total_failed_repos,
+        len(failed_repos),
     )
     logger.info("Ingest enrichment API failures: %d", total_failed_enrichment_api_calls)
 
     # 状態を更新（失敗リポジトリのcursorは更新しない）
     now_utc = datetime.now(timezone.utc).isoformat()
-    repos_state: dict[str, dict[str, str]] = {}
+    new_state = _build_ingest_state(
+        state,
+        target_repos,
+        repo_cursors,
+        failed_repos,
+        github_conf.github_login,
+        now_utc,
+    )
 
-    for repo_full_name in target_repos:
-        if repo_full_name in failed_repos:
-            # 失敗リポジトリは旧cursorを維持
-            existing_cursor = (
-                state.get("repos", {})
-                .get(repo_full_name, {})
-                .get("cursor_utc")
-            )
-            if existing_cursor:
-                repos_state[repo_full_name] = {"cursor_utc": existing_cursor}
-            continue
-        if repo_full_name in repo_cursors:
-            repos_state[repo_full_name] = {
-                "cursor_utc": repo_cursors[repo_full_name]
-            }
-
-    new_state: dict[str, Any] = {
-        "github_login": github_conf.github_login,
-        "repos": repos_state,
-        "updated_at": now_utc,
-    }
-
-    if all_saved and total_failed_fatal_api_calls == 0 and total_failed_repos == 0:
+    try:
         storage.save_ingest_state(new_state)
-        logger.info("Pipeline completed successfully!")
-    else:
-        storage.save_ingest_state(new_state)
+    except Exception as exc:
+        logger.exception("Failed to save GitHub ingest state")
+        raise RuntimeError("Failed to save GitHub ingest state") from exc
+
+    if failed_repos:
         logger.warning(
             "Pipeline had failures. State partially updated (failed repos excluded)."
         )
+        raise RuntimeError(
+            f"GitHub ingest failed for repositories: {', '.join(sorted(failed_repos))}"
+        )
+
+    logger.info("Pipeline completed successfully!")
 
 
 def _group_commits_by_month(
