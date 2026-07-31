@@ -115,7 +115,7 @@ uv run python -m pipelines.main run log <run_id> <step_id>
 ## REST API リファレンス
 
 Pipelines Service はポート `8001`（デフォルト）で HTTP API を提供する。
-全エンドポイントは API キー認証が必要（環境変数 `PIPELINES_API_KEY` で設定）。
+`/v1/health` を除くエンドポイントは API キー認証が必要（環境変数 `PIPELINES_API_KEY` で設定）。
 
 ### エンドポイント一覧
 

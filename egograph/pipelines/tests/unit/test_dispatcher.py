@@ -26,6 +26,7 @@ from pipelines.infrastructure.db.workflow_repository import WorkflowRepository
 from pipelines.infrastructure.dispatching.lock_manager import WorkflowLockManager
 from pipelines.infrastructure.dispatching.run_dispatcher import (
     RunDispatcher,
+    _LeaseState,
     _status_from_summary,
 )
 from pipelines.infrastructure.execution.inprocess_executor import InProcessStepExecutor
@@ -1138,6 +1139,68 @@ def test_dispatch_once_does_not_mark_run_succeeded_after_last_step_lease_loss(
     updated_run = run_repository.get_run(run.run_id)
     assert updated_run.status == WorkflowRunStatus.FAILED
     assert "lease_lost:" in (updated_run.last_error_message or "")
+
+
+def test_lease_loss_exception_skips_only_unexecuted_steps_and_preserves_error(
+    tmp_path,
+):
+    """lease喪失後の例外処理が未実行stepと例外理由を保持する。"""
+    workflows = {
+        "lease_workflow": WorkflowDefinition(
+            workflow_id="lease_workflow",
+            name="Lease workflow",
+            description="Lease loss test workflow",
+            steps=(
+                StepDefinition(
+                    step_id="first",
+                    step_name="First",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:succeed",
+                ),
+                StepDefinition(
+                    step_id="second",
+                    step_name="Second",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:succeed",
+                ),
+            ),
+        )
+    }
+    run_repository, step_run_repository, dispatcher, _ = _build_dispatcher(
+        tmp_path, workflows
+    )
+    run = run_repository.enqueue_run(
+        workflow_id="lease_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+    )
+    lease = dispatcher._lock_manager.acquire(
+        lock_key="lease_workflow", run_id=run.run_id
+    )
+    lease_state = _LeaseState()
+
+    def execute_step(*, step, **_kwargs):
+        if step.step_id == "first":
+            return True, {"message": "first completed"}, None, None
+        lease_state.mark_lost(error_message="lease_lost: heartbeat unavailable")
+        raise RuntimeError("step persistence failed")
+
+    dispatcher._execute_step = execute_step
+
+    # Act
+    dispatcher._execute_run(workflows["lease_workflow"], run, lease_state, lease)
+
+    # Assert
+    updated_run = run_repository.get_run(run.run_id)
+    steps = step_run_repository.list_step_runs(run.run_id)
+    assert updated_run.status == WorkflowRunStatus.FAILED
+    assert updated_run.result_summary == {"message": "first completed"}
+    assert "lease_lost: heartbeat unavailable" in (updated_run.last_error_message or "")
+    assert "RuntimeError: step persistence failed" in (
+        updated_run.last_error_message or ""
+    )
+    assert [step.sequence_no for step in steps] == [2]
+    assert [step.status for step in steps] == [StepRunStatus.SKIPPED]
 
 
 def test_lease_loss_takes_precedence_over_step_failure(tmp_path):

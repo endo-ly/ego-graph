@@ -287,10 +287,14 @@ class RunDispatcher:
     ) -> None:
         lease_state = lease_state or _LeaseState()
         last_summary: dict | None = None
+        lease_loss_handled = False
+        next_sequence_no = 1
         try:
             for sequence_no, step in enumerate(workflow.steps, start=1):
+                next_sequence_no = sequence_no
                 self._check_lease(lease, lease_state)
                 if lease_state.is_lost:
+                    lease_loss_handled = True
                     self._mark_run_failed_due_to_lease_loss(
                         workflow=workflow,
                         run=run,
@@ -306,8 +310,10 @@ class RunDispatcher:
                     step=step,
                     sequence_no=sequence_no,
                 )
+                next_sequence_no = sequence_no + 1
                 self._check_lease(lease, lease_state)
                 if lease_state.is_lost:
+                    lease_loss_handled = True
                     self._mark_run_failed_due_to_lease_loss(
                         workflow=workflow,
                         run=run,
@@ -337,8 +343,10 @@ class RunDispatcher:
                         exc=last_exc,
                     )
                     return
+            next_sequence_no = len(workflow.steps) + 1
             self._check_lease(lease, lease_state)
             if lease_state.is_lost:
+                lease_loss_handled = True
                 self._mark_run_failed_due_to_lease_loss(
                     workflow=workflow,
                     run=run,
@@ -377,14 +385,16 @@ class RunDispatcher:
                 run.run_id,
             )
             if lease_state.is_lost:
-                self._mark_run_failed_due_to_lease_loss(
-                    workflow=workflow,
-                    run=run,
-                    lease_state=lease_state,
-                    remaining_steps=(),
-                    first_sequence_no=len(workflow.steps) + 1,
-                    result_summary=last_summary,
-                )
+                if not lease_loss_handled:
+                    self._mark_run_failed_due_to_lease_loss(
+                        workflow=workflow,
+                        run=run,
+                        lease_state=lease_state,
+                        remaining_steps=workflow.steps[next_sequence_no - 1 :],
+                        first_sequence_no=next_sequence_no,
+                        result_summary=last_summary,
+                        exception=exc,
+                    )
             else:
                 self._mark_run_failed_after_unexpected_exception(
                     workflow=workflow,
@@ -583,6 +593,7 @@ class RunDispatcher:
         remaining_steps: tuple[StepDefinition, ...],
         first_sequence_no: int,
         result_summary: dict | None,
+        exception: Exception | None = None,
     ) -> None:
         """lease喪失を記録し、未開始stepをskipしてrunを失敗させる。"""
         self._skip_remaining_steps(
@@ -591,6 +602,11 @@ class RunDispatcher:
             first_sequence_no=first_sequence_no,
         )
         error_message = lease_state.error_message
+        if exception is not None and exception is not lease_state.exception:
+            error_message = (
+                f"{error_message}; dispatcher failure: "
+                f"{type(exception).__name__}: {exception}"
+            )
         self._run_repository.update_run_result(
             run_id=run.run_id,
             status=WorkflowRunStatus.FAILED,
@@ -601,7 +617,7 @@ class RunDispatcher:
             workflow=workflow,
             run=run,
             error_message=error_message,
-            exc=lease_state.exception,
+            exc=exception or lease_state.exception,
         )
 
     def _execute_run_in_worker(

@@ -74,7 +74,11 @@ def test_heartbeat_returns_true_for_current_lease(tmp_path):
     lock_manager = WorkflowLockManager(conn, lease_seconds=60)
     lease = lock_manager.acquire(lock_key="dummy_workflow", run_id="run-1")
 
-    assert lock_manager.heartbeat(lease) is True
+    # Act
+    heartbeat_succeeded = lock_manager.heartbeat(lease)
+
+    # Assert
+    assert heartbeat_succeeded is True
 
 
 def test_heartbeat_returns_false_when_lock_is_missing(tmp_path):
@@ -86,7 +90,11 @@ def test_heartbeat_returns_false_when_lock_is_missing(tmp_path):
     conn.execute("DELETE FROM workflow_locks WHERE lock_key = ?", (lease.lock_key,))
     conn.commit()
 
-    assert lock_manager.heartbeat(lease) is False
+    # Act
+    heartbeat_succeeded = lock_manager.heartbeat(lease)
+
+    # Assert
+    assert heartbeat_succeeded is False
 
 
 def test_heartbeat_returns_false_for_different_run_id(tmp_path):
@@ -101,7 +109,11 @@ def test_heartbeat_returns_false_for_different_run_id(tmp_path):
         lease_owner=lease.lease_owner,
     )
 
-    assert lock_manager.heartbeat(wrong_run_lease) is False
+    # Act
+    heartbeat_succeeded = lock_manager.heartbeat(wrong_run_lease)
+
+    # Assert
+    assert heartbeat_succeeded is False
 
 
 def test_heartbeat_returns_false_for_different_lease_owner(tmp_path):
@@ -116,4 +128,8 @@ def test_heartbeat_returns_false_for_different_lease_owner(tmp_path):
         lease_owner="other-owner",
     )
 
-    assert lock_manager.heartbeat(wrong_owner_lease) is False
+    # Act
+    heartbeat_succeeded = lock_manager.heartbeat(wrong_owner_lease)
+
+    # Assert
+    assert heartbeat_succeeded is False

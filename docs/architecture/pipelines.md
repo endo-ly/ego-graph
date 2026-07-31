@@ -160,16 +160,19 @@ sequenceDiagram
     Q-->>D: WorkflowRun
     D->>L: acquire(lock_key)
     L-->>D: Lease
-    loop Heartbeat
-        D->>L: heartbeat(lease)
-        L-->>D: true / false
-    end
-    loop Steps
-        D->>L: lease再確認
-        L-->>D: 有効 / 喪失
-        D->>X: execute(step)
-        X-->>D: StepResult
-        D->>R: update_step_result()
+    par 実行中
+        loop Heartbeat
+            D->>L: heartbeat(lease)
+            L-->>D: true / false
+        end
+    and Steps
+        loop Steps
+            D->>L: lease再確認
+            L-->>D: 有効 / 喪失
+            D->>X: execute(step)
+            X-->>D: StepResult
+            D->>R: update_step_result()
+        end
     end
     D->>L: 最終lease再確認
     D->>L: release(lease)
@@ -359,6 +362,7 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> QUEUED: create
     QUEUED --> RUNNING: start
+    QUEUED --> SKIPPED: lease lost
     RUNNING --> SUCCEEDED: success
     RUNNING --> FAILED: failure (retryable)
     RUNNING --> SKIPPED: prev step failed
