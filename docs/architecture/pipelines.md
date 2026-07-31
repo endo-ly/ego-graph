@@ -162,12 +162,16 @@ sequenceDiagram
     L-->>D: Lease
     loop Heartbeat
         D->>L: heartbeat(lease)
+        L-->>D: true / false
     end
     loop Steps
+        D->>L: lease再確認
+        L-->>D: 有効 / 喪失
         D->>X: execute(step)
         X-->>D: StepResult
         D->>R: update_step_result()
     end
+    D->>L: 最終lease再確認
     D->>L: release(lease)
     D->>R: update_run_result(SUCCEEDED/FAILED)
 ```
@@ -177,7 +181,8 @@ sequenceDiagram
 **主要機能**:
 - `dispatch_once()`: キューから1件取得して実行
 - `run_forever()`: 停止要求まで poll を継続
-- Heartbeat: 実行中の lock を定期更新
+- Heartbeat: 実行中の lock を定期更新し、失敗時は lease 喪失を記録
+- Step 境界: 各 step 開始前と最終状態保存前に lease を再確認
 
 #### 3.2 LockManager
 
@@ -185,14 +190,19 @@ sequenceDiagram
 
 **機能**:
 - `acquire()`: lock 取得（失敗時は `WorkflowLockUnavailableError`）
-- `heartbeat()`: lock 更新
+- `heartbeat()`: lock 更新（対象leaseの更新行数が1のときだけ `True`）
 - `release()`: lock 解放
 - `cleanup_stale_locks()`: 古い lock のクリーンアップ
 
 **Lock のライフサイクル**:
 1. run 開始時に `acquire`
 2. 実行中に `heartbeat` を定期的に送信
-3. run 終了時に `release`
+3. 各 step 境界と最終状態保存前に lease を再確認
+4. run 終了時に `release`（lease喪失後もbest-effort）
+
+#### 3.3 Lease 喪失時の動作
+
+heartbeat のDB例外、または `heartbeat()` が `False` を返した場合は、run のエラー理由に `lease_lost:` を付けて `FAILED` を保存する。現在の step が完了するまでは強制停止せず、完了後に後続 step を開始しない。最後の step 完了後に喪失を検知した場合も `SUCCEEDED` を保存しない。
 
 ---
 
@@ -227,7 +237,7 @@ stateDiagram-v2
     [*] --> QUEUED: enqueue
     QUEUED --> RUNNING: dispatch
     RUNNING --> SUCCEEDED: all steps passed
-    RUNNING --> FAILED: step failed (after retries)
+    RUNNING --> FAILED: step failure or lease lost
     RUNNING --> CANCELED: cancel request
     SUCCEEDED --> [*]
     FAILED --> [*]
@@ -336,7 +346,7 @@ stateDiagram-v2
     QUEUED --> RUNNING: dispatch
     QUEUED --> CANCELED: cancel
     RUNNING --> SUCCEEDED: success
-    RUNNING --> FAILED: failure
+    RUNNING --> FAILED: failure or lease lost
     RUNNING --> CANCELED: cancel
     SUCCEEDED --> [*]
     FAILED --> [*]
@@ -371,6 +381,7 @@ stateDiagram-v2
 | Step timeout | FAILED として記録、再試行判定 |
 | Step exception | FAILED として記録、再試行判定 |
 | `AuthenticationError` | **即時** FAILED（リトライ対象外） |
+| lease heartbeat の例外 / 更新失敗 | `lease_lost:` を記録して FAILED、未開始 step は SKIPPED |
 
 ### 再試行ロジック
 

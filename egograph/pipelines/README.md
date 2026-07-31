@@ -20,7 +20,7 @@ uv run python -m egograph.pipelines.main serve
 ```
 
 - **API Docs**: http://localhost:8001/docs
-- **Health Check**: http://localhost:8001/health
+- **Health Check**: http://localhost:8001/v1/health
 
 環境変数は `egograph/pipelines/.env.example` を参照。
 
@@ -95,6 +95,8 @@ uv run python -m pipelines.main run cancel 722e2f38-def8-4bba-9283-bfe07459935c 
 
 run の状態遷移: `queued` → `running` → `succeeded` / `failed` / `canceled`
 
+workflow lock は lease として管理される。heartbeat のDB例外や更新失敗を検知した場合、実行中のstep完了後に後続stepを開始せず、runを `failed` にして `error_message` へ `lease_lost:` から始まる理由を保存する。最後のstep完了後にleaseを失った場合も成功にはならない。
+
 **ログ取得時の注意点**: `run log` は step が実行され、log ファイルが生成された後にのみ利用可能。`queued` 状態の run に対して実行すると `WorkflowNotFoundError` になる。
 
 ```bash
@@ -140,8 +142,8 @@ Google Healthは`TIMEZONE`基準で3時間ごとの当日・前日repair、毎�
 # API ドキュメント（Swagger UI）
 http://localhost:8001/docs
 
-# ヘルスチェック
-curl http://localhost:8001/health
+# ヘルスチェック（データ収集前でも status=ok を返す）
+curl http://localhost:8001/v1/health
 
 # ワークフロー一覧
 curl -H "X-API-Key: $PIPELINES_API_KEY" http://localhost:8001/v1/workflows

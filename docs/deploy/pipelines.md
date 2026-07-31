@@ -119,6 +119,10 @@ main への push をトリガーに本番へデプロイする。
    - `systemctl restart egograph-pipelines` でサービス再起動
    - `/v1/health` でヘルスチェック（最大20秒）
 
+### 3.1 lease 喪失の確認
+
+実行中の workflow は `run show --json` または `GET /v1/runs/{run_id}` で確認する。heartbeat のDB障害や別workerによるlease置換が起きた場合、run は `failed` となり、`error_message` に `lease_lost:` を含む。後続 step は開始されず、失敗した run は通常の retry 操作で再実行できる。
+
 ### GitHub Secrets
 
 Backend で使用するものと同じ Secrets を使用する。追加の登録は不要。
