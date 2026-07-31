@@ -1115,30 +1115,28 @@ def test_dispatch_once_does_not_mark_run_succeeded_after_last_step_lease_loss(
         trigger_type=TriggerType.MANUAL,
         queued_reason=QueuedReason.MANUAL_REQUEST,
     )
-    heartbeat_available = True
-
-    def execute_step(**_kwargs):
-        nonlocal heartbeat_available
-        heartbeat_available = False
-        return StepExecutionResult(
-            status=StepRunStatus.SUCCEEDED,
-            exit_code=0,
-            stdout_tail="",
-            stderr_tail="",
-            log_path="",
-            result_summary=None,
-        )
-
-    dispatcher._inprocess_executor.execute = execute_step
-    dispatcher._lock_manager.heartbeat = Mock(
-        side_effect=lambda _lease: heartbeat_available
+    lease = dispatcher._lock_manager.acquire(
+        lock_key="lease_workflow", run_id=run.run_id
     )
+    lease_state = _LeaseState()
+    heartbeat_calls = 0
 
-    dispatcher.dispatch_once()
+    def heartbeat(_lease):
+        nonlocal heartbeat_calls
+        heartbeat_calls += 1
+        return heartbeat_calls < 3
 
+    dispatcher._lock_manager.heartbeat = heartbeat
+
+    # Act
+    dispatcher._execute_run(workflows["lease_workflow"], run, lease_state, lease)
+    dispatcher._lock_manager.release(lease)
+
+    # Assert
     updated_run = run_repository.get_run(run.run_id)
     assert updated_run.status == WorkflowRunStatus.FAILED
     assert "lease_lost:" in (updated_run.last_error_message or "")
+    assert heartbeat_calls == 3
 
 
 def test_lease_loss_exception_skips_only_unexecuted_steps_and_preserves_error(
@@ -1160,6 +1158,12 @@ def test_lease_loss_exception_skips_only_unexecuted_steps_and_preserves_error(
                 StepDefinition(
                     step_id="second",
                     step_name="Second",
+                    executor_type=StepExecutorType.INPROCESS,
+                    callable_ref="pipelines.tests.support.dummy_steps:succeed",
+                ),
+                StepDefinition(
+                    step_id="third",
+                    step_name="Third",
                     executor_type=StepExecutorType.INPROCESS,
                     callable_ref="pipelines.tests.support.dummy_steps:succeed",
                 ),
@@ -1199,7 +1203,7 @@ def test_lease_loss_exception_skips_only_unexecuted_steps_and_preserves_error(
     assert "RuntimeError: step persistence failed" in (
         updated_run.last_error_message or ""
     )
-    assert [step.sequence_no for step in steps] == [2]
+    assert [step.sequence_no for step in steps] == [3]
     assert [step.status for step in steps] == [StepRunStatus.SKIPPED]
 
 

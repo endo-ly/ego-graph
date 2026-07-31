@@ -172,6 +172,8 @@ sequenceDiagram
             D->>X: execute(step)
             X-->>D: StepResult
             D->>R: update_step_result()
+            D->>L: lease再確認
+            L-->>D: 有効 / 喪失
         end
     end
     D->>L: 最終lease再確認
@@ -185,7 +187,7 @@ sequenceDiagram
 - `dispatch_once()`: キューから1件取得して実行
 - `run_forever()`: 停止要求まで poll を継続
 - Heartbeat: 実行中の lock を定期更新し、失敗時は lease 喪失を記録
-- Step 境界: 各 step 開始前と最終状態保存前に lease を再確認
+- Step 境界: 各 step の開始前と完了後、および最終状態保存前に lease を再確認
 
 #### 3.2 LockManager
 
@@ -200,7 +202,7 @@ sequenceDiagram
 **Lock のライフサイクル**:
 1. run 開始時に `acquire`
 2. 実行中に `heartbeat` を定期的に送信
-3. 各 step 境界と最終状態保存前に lease を再確認
+3. 各 step の開始前と完了後、および最終状態保存前に lease を再確認
 4. run 終了時に `release`（lease喪失後もbest-effort）
 
 #### 3.3 Lease 喪失時の動作

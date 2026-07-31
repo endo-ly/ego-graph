@@ -289,6 +289,7 @@ class RunDispatcher:
         last_summary: dict | None = None
         lease_loss_handled = False
         next_sequence_no = 1
+        step_started = False
         try:
             for sequence_no, step in enumerate(workflow.steps, start=1):
                 next_sequence_no = sequence_no
@@ -303,13 +304,16 @@ class RunDispatcher:
                         first_sequence_no=sequence_no,
                         result_summary=last_summary,
                     )
+                    lease_loss_handled = True
                     return
+                step_started = True
                 success, last_summary, error_message, last_exc = self._execute_step(
                     workflow=workflow,
                     run=run,
                     step=step,
                     sequence_no=sequence_no,
                 )
+                step_started = False
                 next_sequence_no = sequence_no + 1
                 self._check_lease(lease, lease_state)
                 if lease_state.is_lost:
@@ -322,6 +326,7 @@ class RunDispatcher:
                         first_sequence_no=sequence_no + 1,
                         result_summary=last_summary,
                     )
+                    lease_loss_handled = True
                     return
                 if not success:
                     final_error = error_message or f"step failed: {step.step_id}"
@@ -355,6 +360,7 @@ class RunDispatcher:
                     first_sequence_no=len(workflow.steps) + 1,
                     result_summary=last_summary,
                 )
+                lease_loss_handled = True
                 return
             final_status = _status_from_summary(last_summary)
             error_message = (
@@ -386,15 +392,19 @@ class RunDispatcher:
             )
             if lease_state.is_lost:
                 if not lease_loss_handled:
+                    first_unstarted_sequence_no = next_sequence_no + int(step_started)
                     self._mark_run_failed_due_to_lease_loss(
                         workflow=workflow,
                         run=run,
                         lease_state=lease_state,
-                        remaining_steps=workflow.steps[next_sequence_no - 1 :],
-                        first_sequence_no=next_sequence_no,
+                        remaining_steps=workflow.steps[
+                            first_unstarted_sequence_no - 1 :
+                        ],
+                        first_sequence_no=first_unstarted_sequence_no,
                         result_summary=last_summary,
                         exception=exc,
                     )
+                    lease_loss_handled = True
             else:
                 self._mark_run_failed_after_unexpected_exception(
                     workflow=workflow,
@@ -494,11 +504,29 @@ class RunDispatcher:
         first_sequence_no: int,
     ) -> None:
         for offset, step in enumerate(steps):
+            sequence_no = first_sequence_no + offset
+            existing_step_runs = {
+                existing.sequence_no: existing
+                for existing in self._step_run_repository.list_step_runs(run.run_id)
+            }
+            existing_step_run = existing_step_runs.get(sequence_no)
+            if existing_step_run is not None:
+                if existing_step_run.status != StepRunStatus.SKIPPED:
+                    self._step_run_repository.update_step_result(
+                        step_run_id=existing_step_run.step_run_id,
+                        status=StepRunStatus.SKIPPED,
+                        exit_code=None,
+                        stdout_tail="",
+                        stderr_tail="",
+                        log_path=None,
+                        result_summary=None,
+                    )
+                continue
             step_run = self._step_run_repository.insert_step_run(
                 run_id=run.run_id,
                 step_id=step.step_id,
                 step_name=step.step_name,
-                sequence_no=first_sequence_no + offset,
+                sequence_no=sequence_no,
                 attempt_no=1,
                 command=self._format_command(step),
                 status=StepRunStatus.SKIPPED,
