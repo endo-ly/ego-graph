@@ -180,6 +180,18 @@ sudo cp /opt/egograph/repo/egograph/backend/.env.example /opt/egograph/repo/egog
 sudo nano /opt/egograph/repo/egograph/backend/.env
 ```
 
+本番用 `.env` では、少なくとも次を設定する。`BACKEND_ENV=production` にすると、API key・明示的な CORS・R2 設定が不足した状態では Backend は起動しない。
+
+```dotenv
+BACKEND_ENV=production
+BACKEND_API_KEY=<random-long-secret>
+CORS_ORIGINS=https://<allowed-origin>
+R2_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=<access-key>
+R2_SECRET_ACCESS_KEY=<secret-key>
+R2_BUCKET_NAME=<bucket-name>
+```
+
 起動:
 
 ```bash
@@ -276,6 +288,10 @@ GitHub リポジトリの `Settings` → `Secrets and variables` → `Actions` �
 - `SSH_HOST`: 例 `egograph-prod.<tailnet>.ts.net`
 - `SSH_USER`: `root`
 - `SSH_KEY`: `egograph_deploy_key` の内容 (秘密鍵)
+
+### 6.3 デプロイ後の readiness 確認
+
+デプロイ workflow は `/health` の HTTP ステータスに加えて JSON の `status=ok` を確認する。Parquet が未投入の場合は `data_available=false` の HTTP 200 となり、R2・DuckDB・設定の障害は HTTP 503 となるため、障害をデプロイ成功として扱わない。
 
 ## 7. 変更フロー（手動）
 

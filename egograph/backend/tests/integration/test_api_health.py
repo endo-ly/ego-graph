@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import duckdb
 
@@ -77,7 +77,7 @@ class TestHealthEndpoint:
         try:
             response = test_client.get("/health")
 
-            assert response.status_code == 200  # エラーでも200を返す
+            assert response.status_code == 503
             data = response.json()
             assert data["status"] == "error"
             assert "error" in data
@@ -115,6 +115,22 @@ class TestHealthEndpoint:
         finally:
             app.dependency_overrides.clear()
             app.dependency_overrides[deps.get_config] = lambda: mock_backend_config
+
+    def test_health_check_handles_path_resolution_error(
+        self, test_client, mock_backend_config
+    ):
+        """R2 path 解決エラーを readiness failure として返す。"""
+        with patch(
+            "backend.api.health.build_dataset_glob",
+            side_effect=ValueError("invalid R2 path"),
+        ):
+            response = test_client.get("/health")
+
+        assert response.status_code == 503
+        assert response.json() == {
+            "status": "error",
+            "error": "invalid R2 path",
+        }
 
     def test_health_check_returns_ok_when_no_compacted_files_exist(
         self, test_client, mock_backend_config
@@ -168,7 +184,7 @@ class TestHealthEndpoint:
             response = test_client.get("/health")
 
             # Assert: レスポンスに R2 ホスト名が含まれないことを検証
-            assert response.status_code == 200
+            assert response.status_code == 503
             data = response.json()
             assert data["status"] == "error"
             assert "r2.cloudflarestorage.com" not in data["error"]

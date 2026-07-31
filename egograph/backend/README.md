@@ -25,6 +25,14 @@ uv run uvicorn egograph.backend.main:create_app --factory --reload --host 127.0.
 
 環境変数は `egograph/backend/.env.example` を参照。
 
+## Configuration modes
+
+ローカル開発では `BACKEND_ENV=development`（デフォルト）を使用する。API key なしでも起動でき、`CORS_ORIGINS=*` を許可する。
+
+本番では `BACKEND_ENV=production` を設定する。起動時に `BACKEND_API_KEY`、ワイルドカードでない `CORS_ORIGINS`、R2 設定の存在を検証し、不足時は app を起動しない。
+
+`/health` と `/v1/health` は readiness endpoint であり、依存サービスが利用可能なら HTTP 200（データ未投入も含む）、DuckDB・R2・設定の障害なら HTTP 503 を返す。
+
 ## Development
 
 | 操作 | コマンド |

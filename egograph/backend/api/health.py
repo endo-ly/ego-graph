@@ -5,6 +5,7 @@ import logging
 import duckdb
 from dataset_catalog import datasets
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 
 from backend.config import BackendConfig
 from backend.constants import HEALTH_CHECK_LIMIT
@@ -25,6 +26,17 @@ def _build_health_response(*, data_available: bool) -> dict[str, str | bool]:
         "r2": "accessible",
         "data_available": data_available,
     }
+
+
+def _build_health_error_response(error: Exception) -> JSONResponse:
+    """readiness failure の標準レスポンスを構築する。"""
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "error",
+            "error": sanitize_infra_message(str(error)),
+        },
+    )
 
 
 def _is_empty_dataset_error(error: Exception) -> bool:
@@ -79,4 +91,4 @@ async def health_check(
             return _build_health_response(data_available=False)
 
         logger.exception("Health check failed")
-        return {"status": "error", "error": sanitize_infra_message(str(e))}
+        return _build_health_error_response(e)

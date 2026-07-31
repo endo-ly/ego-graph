@@ -107,7 +107,7 @@ Daily Timeline の詳細は [daily-timeline.md](./daily-timeline.md) を参照�
 
 | メソッド | パス | 内容 |
 |---|---|---|
-| GET | `/health` `/v1/health` | DuckDB + R2 接続確認 |
+| GET | `/health` `/v1/health` | DuckDB + R2 readiness（正常: 200、依存障害: 503） |
 | GET | `/v1/data/spotify/stats/top-tracks` | トップトラック |
 | GET | `/v1/data/spotify/stats/listening` | 再生統計（日/週/月） |
 | GET | `/v1/data/browser-history/page-views` | ページビュー一覧 |
@@ -248,7 +248,7 @@ FastMCP を使用し、ToolRegistry のツールを MCP プロトコルで公開
 
 ### API Key 認証
 
-`BACKEND_API_KEY` 環境変数が設定されている場合、`_ApiKeyAuthMiddleware` が全リクエストで `X-API-Key` ヘッダーを検証する。
+`BACKEND_API_KEY` 環境変数が設定されている場合、`_ApiKeyAuthMiddleware` が全リクエストで `X-API-Key` ヘッダーを検証する。`BACKEND_ENV=production` では、アプリ生成時に API key が必須であることを検証する。
 
 - **対象**: REST API + MCP（共通）
 - **除外パス**: `/health`, `/v1/health`, `/docs`, `/redoc`, `/openapi.json`
@@ -256,7 +256,17 @@ FastMCP を使用し、ToolRegistry のツールを MCP プロトコルで公開
 
 ### CORS
 
-`CORS_ORIGINS` 環境変数（カンマ区切り）で許可オリジンを指定。ワイルドカード `*` は開発環境用。
+`CORS_ORIGINS` 環境変数（カンマ区切り）で許可オリジンを指定。ワイルドカード `*` は開発環境用で、`BACKEND_ENV=production` では拒否される。
+
+### 本番起動時の設定検証
+
+`BACKEND_ENV` のデフォルトは `development`。`production` を指定すると、FastAPI app の生成前に次を検証する。
+
+- `BACKEND_API_KEY` が空でないこと
+- `CORS_ORIGINS` が明示され、`*` を含まないこと
+- R2 設定が存在すること
+
+検証に失敗した場合は app を起動せず、設定エラーとして終了する。
 
 ### MCP Transport Security
 
@@ -271,7 +281,8 @@ FastMCP を使用し、ToolRegistry のツールを MCP プロトコルで公開
 | `host` | `BACKEND_HOST` | `127.0.0.1` | バインドホスト |
 | `port` | `BACKEND_PORT` | `8000` | バインドポート |
 | `reload` | `BACKEND_RELOAD` | `True` | ホットリロード |
-| `api_key` | `BACKEND_API_KEY` | `None` | API Key（オプション） |
+| `environment` | `BACKEND_ENV` | `development` | 実行環境（`development` / `production`） |
+| `api_key` | `BACKEND_API_KEY` | `None` | API Key（production では必須） |
 | `cors_origins` | `CORS_ORIGINS` | `*` | CORS 許可オリジン |
 | `log_level` | `LOG_LEVEL` | `INFO` | ログレベル |
 | `mcp_allowed_hosts` | `MCP_ALLOWED_HOSTS` | `[]` | MCP Host 許可リスト |
@@ -302,8 +313,8 @@ FastMCP を使用し、ToolRegistry のツールを MCP プロトコルで公開
 | エラー | HTTP ステータス | 内容 |
 |---|---|---|
 | `ValueError` (validation) | 400 | バリデーションエラー（日付範囲、limit 等） |
-| `FileNotFoundError` | - | Parquet ファイル未存在（health では `data_available=False`） |
-| `duckdb.IOException` | - | R2 接続エラー |
+| `FileNotFoundError` | 200 | Parquet ファイル未存在（`data_available=False`） |
+| DuckDB / R2 / 設定障害 | 503 | readiness failure（`status=error`、詳細はサニタイズ済み） |
 | 認証エラー | 401 | API Key 不正 |
 | MCP ツール不明 | - | `ValueError("Unknown tool")` |
 | MCP 実行エラー | - | `RuntimeError` でラップ |
