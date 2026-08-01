@@ -56,8 +56,6 @@ def validate_parquet_bytes(definition: DatasetDefinition, data: bytes) -> None:
         ValueError: 契約外のカラム・型が見つかった場合
             （``invalid_schema: ...``）
     """
-    if not definition.column_types:
-        return
     try:
         table = pq.read_table(io.BytesIO(data))
         validate_required_columns(definition, table.schema.names)
@@ -67,6 +65,8 @@ def validate_parquet_bytes(definition: DatasetDefinition, data: bytes) -> None:
         raise ValueError(
             f"invalid_schema: unreadable_parquet: {definition.dataset_id}: {exc}"
         ) from exc
+    if not definition.column_types:
+        return
     for column in definition.column_types:
         expected = definition.column_types[column]
         arrow_type = table.schema.field(column).type
