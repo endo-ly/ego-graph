@@ -11,7 +11,11 @@ from urllib.parse import quote
 import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
-from dataset_catalog import datasets
+from dataset_catalog import DatasetDefinition, datasets
+from dataset_catalog.validation import (
+    validate_parquet_bytes,
+    validate_required_columns,
+)
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -100,18 +104,25 @@ class BrowserHistoryStorage:
         *,
         year: int,
         month: int,
-        prefix: str = datasets.BROWSER_HISTORY_PAGE_VIEWS.path,
+        dataset: DatasetDefinition = datasets.BROWSER_HISTORY_PAGE_VIEWS,
     ) -> str | None:
-        """events parquet を保存する。"""
+        """events parquet を保存する。
+
+        アップロード前に dataset の schema 契約（必須カラム・型）を検証し、
+        違反があれば保存失敗（None）として扱う。
+        """
         if not rows:
             return None
         key = (
-            f"{self.events_path}{prefix}/year={year}/month={month:02d}/"
+            f"{self.events_path}{dataset.path}/year={year}/month={month:02d}/"
             f"{uuid.uuid4()}.parquet"
         )
         try:
+            df = pd.DataFrame(rows)
+            validate_required_columns(dataset, df.columns)
             buffer = BytesIO()
-            pd.DataFrame(rows).to_parquet(buffer, index=False, engine="pyarrow")
+            df.to_parquet(buffer, index=False, engine="pyarrow")
+            validate_parquet_bytes(dataset, buffer.getvalue())
             buffer.seek(0)
             self.s3.put_object(
                 Bucket=self.bucket_name,
@@ -119,6 +130,9 @@ class BrowserHistoryStorage:
                 Body=buffer.getvalue(),
                 ContentType="application/octet-stream",
             )
+        except ValueError:
+            logger.exception("Schema validation failed for browser history parquet")
+            return None
         except Exception:
             logger.exception("Failed to save browser history parquet")
             return None

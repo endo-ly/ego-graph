@@ -466,6 +466,12 @@ dev = [
 name = "egograph-dataset-catalog"
 version = "0.1.0"
 source = { editable = "egograph/dataset_catalog" }
+dependencies = [
+    { name = "pyarrow" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pyarrow", specifier = ">=14.0.0" }]
 
 [[package]]
 name = "egograph-pipelines"

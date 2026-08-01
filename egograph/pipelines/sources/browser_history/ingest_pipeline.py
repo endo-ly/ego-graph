@@ -65,7 +65,6 @@ def run_browser_history_pipeline(
                 partition_rows,
                 year=year,
                 month=month,
-                prefix="browser_history/page_views",
             )
             if not saved_key:
                 raise RuntimeError(

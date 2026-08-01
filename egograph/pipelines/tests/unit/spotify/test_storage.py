@@ -1,10 +1,21 @@
 import json
 import unittest
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 from botocore.exceptions import ClientError
 from dataset_catalog import datasets
 from pipelines.sources.spotify.storage import SpotifyStorage, StorageConsistencyError
+
+
+def _play_row() -> dict:
+    """schema 契約を満たす spotify.plays 行。"""
+    return {
+        "play_id": "2023-10-01T00:00:00.000Z_t1",
+        "played_at_utc": datetime(2023, 10, 1, tzinfo=UTC),
+        "track_id": "t1",
+        "track_name": "Song A",
+    }
 
 
 class TestSpotifyStorage(unittest.TestCase):
@@ -44,24 +55,83 @@ class TestSpotifyStorage(unittest.TestCase):
 
     def test_save_parquet(self):
         # Arrange: 保存するデータの準備
-        data = [{"col1": 1, "col2": "a"}, {"col1": 2, "col2": "b"}]
+        data = [_play_row()]
 
         # Act: Parquet 形式での保存を実行
-        with patch("pipelines.sources.spotify.storage.pd.DataFrame.to_parquet") as _:
-            key = self.storage.save_parquet(
-                data, year=2023, month=10, prefix="test_events"
-            )
+        key = self.storage.save_parquet(
+            data,
+            year=2023,
+            month=10,
+            dataset=datasets.SPOTIFY_PLAYS,
+        )
 
-            # Assert: 保存結果を検証
-            self.mock_s3.put_object.assert_called_once()
-            call_args = self.mock_s3.put_object.call_args[1]
-            self.assertEqual(call_args["Bucket"], "test-bucket")
-            self.assertTrue(
-                call_args["Key"].startswith("events/test_events/year=2023/month=10/")
+        # Assert: 保存結果を検証
+        self.mock_s3.put_object.assert_called_once()
+        call_args = self.mock_s3.put_object.call_args[1]
+        self.assertEqual(call_args["Bucket"], "test-bucket")
+        self.assertTrue(
+            call_args["Key"].startswith(
+                "events/spotify/plays/year=2023/month=10/"
             )
-            self.assertTrue(call_args["Key"].endswith(".parquet"))
-            self.assertEqual(call_args["ContentType"], "application/octet-stream")
-            self.assertIsNotNone(key)
+        )
+        self.assertTrue(call_args["Key"].endswith(".parquet"))
+        self.assertEqual(call_args["ContentType"], "application/octet-stream")
+        self.assertIsNotNone(key)
+
+    def test_save_parquet_returns_none_without_upload_on_missing_required_column(
+        self,
+    ):
+        # Arrange: 必須カラム欠落データ
+        data = [{"play_id": "p1", "track_name": "Song A"}]
+
+        # Act: 保存を実行
+        key = self.storage.save_parquet(
+            data,
+            year=2023,
+            month=10,
+            dataset=datasets.SPOTIFY_PLAYS,
+        )
+
+        # Assert: アップロードされず None を返す
+        self.mock_s3.put_object.assert_not_called()
+        self.assertIsNone(key)
+
+    def test_save_parquet_returns_none_without_upload_on_type_mismatch(self):
+        # Arrange: played_at_utc が文字列（契約違反）のデータ
+        data = [
+            {
+                "play_id": "2023-10-01T00:00:00.000Z_t1",
+                "played_at_utc": "2023-10-01T00:00:00Z",
+                "track_id": "t1",
+                "track_name": "Song A",
+            }
+        ]
+
+        # Act: 保存を実行
+        key = self.storage.save_parquet(
+            data,
+            year=2023,
+            month=10,
+            dataset=datasets.SPOTIFY_PLAYS,
+        )
+
+        # Assert: アップロードされず None を返す
+        self.mock_s3.put_object.assert_not_called()
+        self.assertIsNone(key)
+
+    def test_save_parquet_returns_none_without_upload_when_data_is_empty(self):
+        # Arrange: 保存対象なし
+        # Act: 保存を実行
+        key = self.storage.save_parquet(
+            [],
+            year=2023,
+            month=10,
+            dataset=datasets.SPOTIFY_PLAYS,
+        )
+
+        # Assert: アップロードされず None を返す
+        self.mock_s3.put_object.assert_not_called()
+        self.assertIsNone(key)
 
     def test_get_ingest_state_exists(self):
         # Arrange: 保存されている状態がある場合をモック
@@ -106,41 +176,57 @@ class TestSpotifyStorage(unittest.TestCase):
 
     def test_save_master_parquet_with_partition(self):
         # Arrange: 保存するデータの準備
-        data = [{"track_id": "t1", "name": "Song A"}]
+        data = [
+            {
+                "track_id": "t1",
+                "name": "Song A",
+                "updated_at": datetime(2024, 1, 1, tzinfo=UTC),
+            }
+        ]
 
         # Act: パーティション付きで保存を実行
-        with patch("pipelines.sources.spotify.storage.pd.DataFrame.to_parquet") as _:
-            key = self.storage.save_master_parquet(
-                data, prefix="spotify/tracks", year=2024, month=1
-            )
+        key = self.storage.save_master_parquet(
+            data,
+            dataset=datasets.SPOTIFY_TRACKS,
+            year=2024,
+            month=1,
+        )
 
-            # Assert: 保存結果を検証
-            self.mock_s3.put_object.assert_called_once()
-            call_args = self.mock_s3.put_object.call_args[1]
-            self.assertEqual(call_args["Bucket"], "test-bucket")
-            self.assertTrue(
-                call_args["Key"].startswith("master/spotify/tracks/year=2024/month=01/")
-            )
-            self.assertTrue(call_args["Key"].endswith(".parquet"))
-            self.assertEqual(call_args["ContentType"], "application/octet-stream")
-            self.assertIsNotNone(key)
+        # Assert: 保存結果を検証
+        self.mock_s3.put_object.assert_called_once()
+        call_args = self.mock_s3.put_object.call_args[1]
+        self.assertEqual(call_args["Bucket"], "test-bucket")
+        self.assertTrue(
+            call_args["Key"].startswith("master/spotify/tracks/year=2024/month=01/")
+        )
+        self.assertTrue(call_args["Key"].endswith(".parquet"))
+        self.assertEqual(call_args["ContentType"], "application/octet-stream")
+        self.assertIsNotNone(key)
 
     def test_save_master_parquet_without_partition(self):
         # Arrange: 保存するデータの準備
-        data = [{"artist_id": "a1", "name": "Artist A"}]
+        data = [
+            {
+                "artist_id": "a1",
+                "name": "Artist A",
+                "updated_at": datetime(2024, 1, 1, tzinfo=UTC),
+            }
+        ]
 
         # Act: パーティションなしで保存を実行
-        with patch("pipelines.sources.spotify.storage.pd.DataFrame.to_parquet") as _:
-            key = self.storage.save_master_parquet(data, prefix="spotify/artists")
+        key = self.storage.save_master_parquet(
+            data,
+            dataset=datasets.SPOTIFY_ARTISTS,
+        )
 
-            # Assert: 保存結果を検証
-            self.mock_s3.put_object.assert_called_once()
-            call_args = self.mock_s3.put_object.call_args[1]
-            self.assertEqual(call_args["Bucket"], "test-bucket")
-            self.assertTrue(call_args["Key"].startswith("master/spotify/artists/"))
-            self.assertTrue(call_args["Key"].endswith(".parquet"))
-            self.assertEqual(call_args["ContentType"], "application/octet-stream")
-            self.assertIsNotNone(key)
+        # Assert: 保存結果を検証
+        self.mock_s3.put_object.assert_called_once()
+        call_args = self.mock_s3.put_object.call_args[1]
+        self.assertEqual(call_args["Bucket"], "test-bucket")
+        self.assertTrue(call_args["Key"].startswith("master/spotify/artists/"))
+        self.assertTrue(call_args["Key"].endswith(".parquet"))
+        self.assertEqual(call_args["ContentType"], "application/octet-stream")
+        self.assertIsNotNone(key)
 
     def test_compact_month_for_events_saves_fixed_key(self):
         data = [{"play_id": "play_1", "track_name": "Song A"}]

@@ -90,6 +90,7 @@ def test_required_dedupe_key_returns_key_or_raises():
         path="test/none",
         partition_policy=PartitionPolicy.MONTHLY,
         compaction_strategy=CompactionStrategy.NONE,
+        required_columns=("id",),
     )
     with pytest.raises(ValueError, match="dedupe_key_required: test.none"):
         no_dedupe.required_dedupe_key()
@@ -126,6 +127,7 @@ def test_duplicate_dataset_id_fails_fast():
         path="test/a",
         partition_policy=PartitionPolicy.MONTHLY,
         compaction_strategy=CompactionStrategy.NONE,
+        required_columns=("id",),
     )
     duplicate_b = DatasetDefinition(
         dataset_id="duplicate.dataset",
@@ -134,7 +136,63 @@ def test_duplicate_dataset_id_fails_fast():
         path="test/b",
         partition_policy=PartitionPolicy.MONTHLY,
         compaction_strategy=CompactionStrategy.NONE,
+        required_columns=("id",),
     )
 
     with pytest.raises(ValueError, match="duplicate_dataset_id: duplicate.dataset"):
         _build_datasets_by_id((duplicate_a, duplicate_b))
+
+
+def _contract_definition(**overrides) -> DatasetDefinition:
+    """schema 契約付き DatasetDefinition を組み立てる。"""
+    base = dict(
+        dataset_id="test.contract",
+        provider="test",
+        domain=DataDomain.EVENTS,
+        path="test/contract",
+        partition_policy=PartitionPolicy.MONTHLY,
+        compaction_strategy=CompactionStrategy.NONE,
+        required_columns=("id", "created_at"),
+        column_types={"id": "string", "created_at": "timestamp"},
+    )
+    base.update(overrides)
+    return DatasetDefinition(**base)
+
+
+def test_schema_version_defaults_to_one():
+    """schema_version は未指定なら 1。"""
+    assert _contract_definition().schema_version == 1
+
+
+def test_empty_required_columns_raises():
+    """required_columns が空の定義は拒否する。"""
+    with pytest.raises(ValueError, match="invalid_schema"):
+        _contract_definition(required_columns=())
+
+
+def test_duplicate_required_columns_raises():
+    """required_columns の重複は拒否する。"""
+    with pytest.raises(ValueError, match="invalid_schema"):
+        _contract_definition(required_columns=("id", "id"))
+
+
+def test_column_type_key_not_in_required_columns_raises():
+    """column_types の key が required_columns に含まれない定義は拒否する。"""
+    with pytest.raises(ValueError, match="invalid_schema"):
+        _contract_definition(column_types={"id": "string", "unknown": "string"})
+
+
+def test_unknown_canonical_type_raises():
+    """未定義の canonical type は拒否する。"""
+    with pytest.raises(ValueError, match="invalid_schema"):
+        _contract_definition(column_types={"id": "varchar", "created_at": "timestamp"})
+
+
+def test_all_datasets_have_schema_contracts():
+    """全 dataset が schema version と required columns を持つ。"""
+    for dataset in ALL_DATASETS:
+        assert dataset.schema_version >= 1
+        assert (
+            dataset.required_columns
+        ), f"missing required_columns: {dataset.dataset_id}"
+        assert set(dataset.column_types) <= set(dataset.required_columns)

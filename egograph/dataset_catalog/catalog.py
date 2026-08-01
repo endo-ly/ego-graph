@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from types import SimpleNamespace
+
+from dataset_catalog.canonical import VALID_CANONICAL_TYPES
 
 
 class DataDomain(StrEnum):
@@ -45,6 +47,9 @@ class DatasetDefinition:
     dedupe_key: str | None = None
     sort_key: str | None = None
     snapshot_file_name: str | None = None
+    schema_version: int = 1
+    required_columns: tuple[str, ...] = ()
+    column_types: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.path.startswith("/") or self.path.endswith("/"):
@@ -58,6 +63,25 @@ class DatasetDefinition:
             and not self.dedupe_key
         ):
             raise ValueError(f"dedupe_key_required: {self.dataset_id}")
+        if not self.required_columns:
+            raise ValueError(
+                f"invalid_schema: required_columns_empty: {self.dataset_id}"
+            )
+        if len(self.required_columns) != len(set(self.required_columns)):
+            raise ValueError(
+                f"invalid_schema: duplicate_required_columns: {self.dataset_id}"
+            )
+        for column in self.column_types:
+            if column not in self.required_columns:
+                raise ValueError(
+                    f"invalid_schema: column_type_not_required: "
+                    f"{self.dataset_id} <{column}>"
+                )
+            if self.column_types[column] not in VALID_CANONICAL_TYPES:
+                raise ValueError(
+                    f"invalid_schema: unknown_column_type: "
+                    f"{self.dataset_id} <{column}={self.column_types[column]}>"
+                )
 
     def source_root(self, events_path: str, master_path: str) -> str:
         """domain に応じた source root を返す。
@@ -136,6 +160,13 @@ datasets = SimpleNamespace(
         time_column="played_at_utc",
         dedupe_key="play_id",
         sort_key="played_at_utc",
+        required_columns=("play_id", "played_at_utc", "track_id", "track_name"),
+        column_types={
+            "play_id": "string",
+            "played_at_utc": "timestamp",
+            "track_id": "string",
+            "track_name": "string",
+        },
     ),
     SPOTIFY_TRACKS=DatasetDefinition(
         dataset_id="spotify.tracks",
@@ -147,6 +178,12 @@ datasets = SimpleNamespace(
         time_column="updated_at",
         dedupe_key="track_id",
         sort_key="updated_at",
+        required_columns=("track_id", "name", "updated_at"),
+        column_types={
+            "track_id": "string",
+            "name": "string",
+            "updated_at": "timestamp",
+        },
     ),
     SPOTIFY_ARTISTS=DatasetDefinition(
         dataset_id="spotify.artists",
@@ -158,6 +195,12 @@ datasets = SimpleNamespace(
         time_column="updated_at",
         dedupe_key="artist_id",
         sort_key="updated_at",
+        required_columns=("artist_id", "name", "updated_at"),
+        column_types={
+            "artist_id": "string",
+            "name": "string",
+            "updated_at": "timestamp",
+        },
     ),
     GITHUB_COMMITS=DatasetDefinition(
         dataset_id="github.commits",
@@ -169,6 +212,18 @@ datasets = SimpleNamespace(
         time_column="committed_at_utc",
         dedupe_key="commit_event_id",
         sort_key="committed_at_utc",
+        required_columns=(
+            "commit_event_id",
+            "repo_full_name",
+            "sha",
+            "committed_at_utc",
+        ),
+        column_types={
+            "commit_event_id": "string",
+            "repo_full_name": "string",
+            "sha": "string",
+            "committed_at_utc": "timestamp",
+        },
     ),
     GITHUB_PULL_REQUESTS=DatasetDefinition(
         dataset_id="github.pull_requests",
@@ -180,6 +235,18 @@ datasets = SimpleNamespace(
         time_column="updated_at_utc",
         dedupe_key="pr_event_id",
         sort_key="updated_at_utc",
+        required_columns=(
+            "pr_event_id",
+            "repo_full_name",
+            "pr_number",
+            "updated_at_utc",
+        ),
+        column_types={
+            "pr_event_id": "string",
+            "repo_full_name": "string",
+            "pr_number": "integer",
+            "updated_at_utc": "timestamp",
+        },
     ),
     GITHUB_REPOSITORIES=DatasetDefinition(
         dataset_id="github.repositories",
@@ -189,6 +256,12 @@ datasets = SimpleNamespace(
         partition_policy=PartitionPolicy.RECURSIVE,
         compaction_strategy=CompactionStrategy.NONE,
         time_column="updated_at_utc",
+        required_columns=("repo_id", "repo_full_name", "updated_at_utc"),
+        column_types={
+            "repo_id": "integer",
+            "repo_full_name": "string",
+            "updated_at_utc": "timestamp",
+        },
     ),
     BROWSER_HISTORY_PAGE_VIEWS=DatasetDefinition(
         dataset_id="browser_history.page_views",
@@ -203,6 +276,13 @@ datasets = SimpleNamespace(
         # started_at_utc を使うと重複行間で同値になり決定性が失われる。
         # ingested_at_utc で「最新 run のレコード」を確定勝者とする。
         sort_key="ingested_at_utc",
+        required_columns=("page_view_id", "started_at_utc", "url", "source_device"),
+        column_types={
+            "page_view_id": "string",
+            "started_at_utc": "timestamp",
+            "url": "string",
+            "source_device": "string",
+        },
     ),
     YOUTUBE_WATCH_EVENTS=DatasetDefinition(
         dataset_id="youtube.watch_events",
@@ -214,6 +294,18 @@ datasets = SimpleNamespace(
         time_column="watched_at_utc",
         dedupe_key="watch_event_id",
         sort_key="watched_at_utc",
+        required_columns=(
+            "watch_event_id",
+            "watched_at_utc",
+            "video_id",
+            "source_event_id",
+        ),
+        column_types={
+            "watch_event_id": "string",
+            "watched_at_utc": "timestamp",
+            "video_id": "string",
+            "source_event_id": "string",
+        },
     ),
     YOUTUBE_VIDEOS=DatasetDefinition(
         dataset_id="youtube.videos",
@@ -223,6 +315,12 @@ datasets = SimpleNamespace(
         partition_policy=PartitionPolicy.SNAPSHOT,
         compaction_strategy=CompactionStrategy.SNAPSHOT_UPSERT,
         snapshot_file_name="data.parquet",
+        required_columns=("video_id", "title", "updated_at"),
+        column_types={
+            "video_id": "string",
+            "title": "string",
+            "updated_at": "timestamp",
+        },
     ),
     YOUTUBE_CHANNELS=DatasetDefinition(
         dataset_id="youtube.channels",
@@ -232,6 +330,12 @@ datasets = SimpleNamespace(
         partition_policy=PartitionPolicy.SNAPSHOT,
         compaction_strategy=CompactionStrategy.SNAPSHOT_UPSERT,
         snapshot_file_name="data.parquet",
+        required_columns=("channel_id", "channel_name", "updated_at"),
+        column_types={
+            "channel_id": "string",
+            "channel_name": "string",
+            "updated_at": "timestamp",
+        },
     ),
     GOOGLE_HEALTH_DAILY_METRICS=DatasetDefinition(
         dataset_id="google_health.daily_metrics",
@@ -241,6 +345,13 @@ datasets = SimpleNamespace(
         partition_policy=PartitionPolicy.MONTHLY,
         compaction_strategy=CompactionStrategy.RANGE_REPLACE,
         time_column="date",
+        required_columns=("connection_id", "date", "metric_name", "value"),
+        column_types={
+            "connection_id": "string",
+            "date": "date",
+            "metric_name": "string",
+            "value": "float",
+        },
     ),
     GOOGLE_HEALTH_SAMPLES=DatasetDefinition(
         dataset_id="google_health.samples",
@@ -250,6 +361,12 @@ datasets = SimpleNamespace(
         partition_policy=PartitionPolicy.MONTHLY,
         compaction_strategy=CompactionStrategy.RANGE_REPLACE,
         time_column="measured_at_utc",
+        required_columns=("connection_id", "measured_at_utc", "value"),
+        column_types={
+            "connection_id": "string",
+            "measured_at_utc": "timestamp",
+            "value": "float",
+        },
     ),
     GOOGLE_HEALTH_INTERVALS=DatasetDefinition(
         dataset_id="google_health.intervals",
@@ -259,6 +376,12 @@ datasets = SimpleNamespace(
         partition_policy=PartitionPolicy.MONTHLY,
         compaction_strategy=CompactionStrategy.RANGE_REPLACE,
         time_column="started_at_utc",
+        required_columns=("connection_id", "started_at_utc", "value"),
+        column_types={
+            "connection_id": "string",
+            "started_at_utc": "timestamp",
+            "value": "float",
+        },
     ),
     GOOGLE_HEALTH_SESSIONS=DatasetDefinition(
         dataset_id="google_health.sessions",
@@ -268,6 +391,12 @@ datasets = SimpleNamespace(
         partition_policy=PartitionPolicy.MONTHLY,
         compaction_strategy=CompactionStrategy.RANGE_REPLACE,
         time_column="started_at_utc",
+        required_columns=("connection_id", "session_id", "started_at_utc"),
+        column_types={
+            "connection_id": "string",
+            "session_id": "string",
+            "started_at_utc": "timestamp",
+        },
     ),
 )
 

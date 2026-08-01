@@ -1,5 +1,7 @@
 """GitHub Worklog Transformモジュールのテスト."""
 
+from datetime import datetime, timezone
+
 from pipelines.sources.github.transform import (
     _generate_pr_key,
     _is_personal_repo,
@@ -179,7 +181,7 @@ class TestTransformPullRequest:
         assert result is not None
         assert result["state"] == "closed"
         assert result["is_merged"] is True
-        assert result["merged_at_utc"] == "2024-01-02T00:00:00Z"
+        assert result["merged_at_utc"] == datetime(2024, 1, 2, tzinfo=timezone.utc)
         assert result["action"] == "merged"
 
     def test_transform_pr_opened_action_when_created_equals_updated(self):

@@ -1,5 +1,6 @@
 """YouTube storage unit tests."""
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 from botocore.exceptions import ClientError
@@ -13,6 +14,16 @@ def _storage() -> YouTubeStorage:
         secret_access_key="test",
         bucket_name="test-bucket",
     )
+
+
+def _watch_event_row() -> dict:
+    """schema 契約を満たす youtube.watch_events 行。"""
+    return {
+        "watch_event_id": "youtube_watch_event_w1",
+        "watched_at_utc": datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        "video_id": "v1",
+        "source_event_id": "pv1",
+    }
 
 
 def test_save_video_master_upserts_by_video_id(monkeypatch):
@@ -117,3 +128,43 @@ def test_save_video_master_retries_on_precondition_failed(monkeypatch):
     assert result == "master/youtube/videos/data.parquet"
     assert load_mock.call_count == 2
     assert save_mock.call_count == 2
+
+
+def test_save_watch_events_uploads_contract_valid_data(monkeypatch):
+    """契約準拠データは検証を通過し S3 にアップロードされる。"""
+    storage = _storage()
+    mock_s3 = MagicMock()
+    monkeypatch.setattr(storage, "s3", mock_s3)
+
+    result = storage.save_watch_events(
+        [_watch_event_row()],
+        year=2026,
+        month=1,
+        sync_id="s1",
+    )
+
+    assert result == (
+        "events/youtube/watch_events/year=2026/month=01/sync_id=s1.parquet"
+    )
+    assert mock_s3.put_object.call_count == 1
+
+
+def test_save_watch_events_returns_none_without_upload_on_validation_failure(
+    monkeypatch,
+):
+    """契約違反データは検証エラーとなりアップロードされない。"""
+    storage = _storage()
+    mock_s3 = MagicMock()
+    monkeypatch.setattr(storage, "s3", mock_s3)
+    invalid_row = _watch_event_row()
+    del invalid_row["video_id"]
+
+    result = storage.save_watch_events(
+        [invalid_row],
+        year=2026,
+        month=1,
+        sync_id="s1",
+    )
+
+    assert result is None
+    mock_s3.put_object.assert_not_called()

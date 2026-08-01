@@ -6,6 +6,7 @@
 from types import SimpleNamespace
 from unittest.mock import ANY, MagicMock
 
+from dataset_catalog import datasets
 from pydantic import SecretStr
 
 from pipelines.sources.spotify import ingest_pipeline as spotify_pipeline
@@ -81,10 +82,10 @@ def test_enrichment_fetches_only_new_master_data():
 
     # マスター保存が行われる
     mock_storage.save_master_parquet.assert_any_call(
-        ANY, prefix="spotify/tracks", year=ANY, month=ANY
+        ANY, datasets.SPOTIFY_TRACKS, year=ANY, month=ANY
     )
     mock_storage.save_master_parquet.assert_any_call(
-        ANY, prefix="spotify/artists", year=ANY, month=ANY
+        ANY, datasets.SPOTIFY_ARTISTS, year=ANY, month=ANY
     )
 
 

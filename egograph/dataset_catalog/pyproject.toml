@@ -7,7 +7,9 @@ name = "egograph-dataset-catalog"
 version = "0.1.0"
 description = "Shared Parquet dataset catalog for EgoGraph"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pyarrow>=14.0.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["dataset_catalog"]

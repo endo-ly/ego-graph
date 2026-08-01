@@ -1,9 +1,20 @@
 import json
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 from botocore.exceptions import ClientError
 from pipelines.sources.browser_history.storage import BrowserHistoryStorage
+
+
+def _page_view_row() -> dict:
+    """schema 契約を満たす page view 行。"""
+    return {
+        "page_view_id": "pv1",
+        "started_at_utc": datetime(2026, 3, 22, 8, 31, 12, tzinfo=UTC),
+        "url": "https://example.com",
+        "source_device": "home pc",
+    }
 
 
 class TestBrowserHistoryStorage:
@@ -34,18 +45,31 @@ class TestBrowserHistoryStorage:
         assert key.endswith(".json")
 
     def test_save_parquet_uses_expected_key_format(self):
-        with patch(
-            "pipelines.sources.browser_history.storage.pd.DataFrame.to_parquet"
-        ) as _mock_to_parquet:
-            key = self.storage.save_parquet(
-                [{"page_view_id": "pv1", "started_at_utc": "2026-03-22T08:31:12Z"}],
-                year=2026,
-                month=3,
-            )
+        key = self.storage.save_parquet(
+            [_page_view_row()],
+            year=2026,
+            month=3,
+        )
 
         assert key is not None
         assert key.startswith("events/browser_history/page_views/year=2026/month=03/")
         assert key.endswith(".parquet")
+
+    def test_save_parquet_returns_none_without_upload_on_validation_failure(self):
+        key = self.storage.save_parquet(
+            [{"page_view_id": "pv1", "started_at_utc": "2026-03-22T08:31:12Z"}],
+            year=2026,
+            month=3,
+        )
+
+        assert key is None
+        self.mock_s3.put_object.assert_not_called()
+
+    def test_save_parquet_returns_none_without_upload_when_data_is_empty(self):
+        key = self.storage.save_parquet([], year=2026, month=3)
+
+        assert key is None
+        self.mock_s3.put_object.assert_not_called()
 
     def test_build_state_key_uses_source_browser_profile_granularity(self):
         key = self.storage.build_state_key("home pc", "edge", "Profile 1")

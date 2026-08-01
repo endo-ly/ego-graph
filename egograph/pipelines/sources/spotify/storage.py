@@ -11,6 +11,10 @@ import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
 from dataset_catalog import DatasetDefinition
+from dataset_catalog.validation import (
+    validate_parquet_bytes,
+    validate_required_columns,
+)
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -72,14 +76,22 @@ class SpotifyStorage:
         logger.info("Storage initialized for bucket: %s", bucket_name)
 
     def _upload_parquet(
-        self, data: list[dict[str, Any]], key: str, description: str
+        self,
+        data: list[dict[str, Any]],
+        key: str,
+        description: str,
+        dataset: DatasetDefinition,
     ) -> str | None:
         """データをParquet形式でS3にアップロードする共通処理。
+
+        アップロード前に dataset の schema 契約（必須カラム・型）を検証し、
+        違反があれば保存失敗（None）として扱う。
 
         Args:
             data: 保存するデータ(辞書のリスト)
             key: S3オブジェクトキー
             description: ログ用の説明
+            dataset: schema 契約の基準となる DatasetDefinition
 
         Returns:
             保存されたオブジェクトのキー (失敗時はNone)
@@ -90,8 +102,10 @@ class SpotifyStorage:
 
         try:
             df = pd.DataFrame(data)
+            validate_required_columns(dataset, df.columns)
             buffer = BytesIO()
             df.to_parquet(buffer, index=False, engine="pyarrow")
+            validate_parquet_bytes(dataset, buffer.getvalue())
             buffer.seek(0)
 
             self.s3.put_object(
@@ -102,6 +116,9 @@ class SpotifyStorage:
             )
             logger.info("Saved %s to %s", description, key)
             return key
+        except ValueError:
+            logger.exception("Schema validation failed for %s", description)
+            return None
         except ImportError:
             logger.exception("Pandas or PyArrow is required for Parquet saving")
             return None
@@ -150,44 +167,44 @@ class SpotifyStorage:
         data: list[dict[str, Any]],
         year: int,
         month: int,
-        prefix: str = "spotify/plays",
+        dataset: DatasetDefinition,
     ) -> str | None:
         """データをParquet形式で保存する。
 
-        Path format: events/{prefix}/year={YYYY}/month={MM}/{uuid}.parquet
+        Path format: events/{dataset.path}/year={YYYY}/month={MM}/{uuid}.parquet
 
         Args:
             data: 保存するデータ(辞書のリスト)
             year: パーティション年
             month: パーティション月
-            prefix: イベントカテゴリー
+            dataset: schema 契約と保存パスの基準となる DatasetDefinition
 
         Returns:
             保存されたオブジェクトのキー (失敗時はNone)
         """
         unique_id = str(uuid.uuid4())
         key = (
-            f"{self.events_path}{prefix}/"
+            f"{self.events_path}{dataset.path}/"
             f"year={year}/month={month:02d}/{unique_id}.parquet"
         )
-        return self._upload_parquet(data, key, "Parquet")
+        return self._upload_parquet(data, key, "Parquet", dataset)
 
     def save_master_parquet(
         self,
         data: list[dict[str, Any]],
-        prefix: str,
+        dataset: DatasetDefinition,
         year: int | None = None,
         month: int | None = None,
     ) -> str | None:
         """マスターデータをParquet形式で保存する。
 
         Path format:
-        - master/{prefix}/year={YYYY}/month={MM}/{uuid}.parquet
-        - master/{prefix}/{uuid}.parquet (パーティションなし)
+        - master/{dataset.path}/year={YYYY}/month={MM}/{uuid}.parquet
+        - master/{dataset.path}/{uuid}.parquet (パーティションなし)
 
         Args:
             data: 保存するデータ(辞書のリスト)
-            prefix: マスターデータカテゴリー
+            dataset: schema 契約と保存パスの基準となる DatasetDefinition
             year: パーティション年
             month: パーティション月
 
@@ -198,13 +215,13 @@ class SpotifyStorage:
 
         if year is not None and month is not None:
             key = (
-                f"{self.master_path}{prefix}/"
+                f"{self.master_path}{dataset.path}/"
                 f"year={year}/month={month:02d}/{unique_id}.parquet"
             )
         else:
-            key = f"{self.master_path}{prefix}/{unique_id}.parquet"
+            key = f"{self.master_path}{dataset.path}/{unique_id}.parquet"
 
-        return self._upload_parquet(data, key, "master Parquet")
+        return self._upload_parquet(data, key, "master Parquet", dataset)
 
     def get_ingest_state(
         self, key: str = "state/spotify_ingest_state.json"
