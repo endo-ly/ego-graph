@@ -2,16 +2,13 @@
 
 import logging
 import os
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from egograph_paths import PARQUET_DATA_DIR
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-# 環境変数で .env ファイルの使用を制御（デフォルトは使用）
-USE_ENV_FILE = os.getenv("USE_ENV_FILE", "true").lower() in ("true", "1", "yes")
-BACKEND_ENV_FILES = ["egograph/backend/.env"] if USE_ENV_FILE else []
 
 
 class R2Config(BaseModel):
@@ -31,8 +28,7 @@ class BackendConfig(BaseSettings):
     """Backend APIサーバー設定。"""
 
     model_config = SettingsConfigDict(
-        env_file=BACKEND_ENV_FILES,
-        env_file_encoding="utf-8",
+        env_file=None,
         extra="ignore",
     )
 
@@ -40,6 +36,9 @@ class BackendConfig(BaseSettings):
     host: str = Field("127.0.0.1", alias="BACKEND_HOST")
     port: int = Field(8000, alias="BACKEND_PORT")
     reload: bool = Field(True, alias="BACKEND_RELOAD")
+    environment: Literal["development", "production"] = Field(
+        "development", alias="BACKEND_ENV"
+    )
 
     # オプショナル認証
     api_key: SecretStr | None = Field(None, alias="BACKEND_API_KEY")
@@ -107,12 +106,16 @@ class BackendConfig(BaseSettings):
         Raises:
             ValueError: 本番環境で必須の設定が不足している場合
         """
-        if not self.api_key:
+        if self.api_key is None or not self.api_key.get_secret_value().strip():
             raise ValueError("BACKEND_API_KEY is required for production")
-        if self.cors_origins == "*":
+        origins = [origin.strip() for origin in self.cors_origins.split(",")]
+        if any(not origin or origin == "*" for origin in origins):
             raise ValueError(
-                "CORS_ORIGINS must be explicitly configured for production (not '*')"
+                "CORS_ORIGINS must be explicitly configured with non-empty origins "
+                "(not '*')"
             )
+        if self.r2 is None:
+            raise ValueError("R2 configuration is required for production")
 
     @property
     def mcp_transport_security(self):
@@ -137,8 +140,7 @@ class R2Settings(BaseSettings):
     """Cloudflare R2設定 (S3互換)。"""
 
     model_config = SettingsConfigDict(
-        env_file=BACKEND_ENV_FILES,
-        env_file_encoding="utf-8",
+        env_file=None,
         extra="ignore",
     )
 

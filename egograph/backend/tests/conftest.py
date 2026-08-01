@@ -14,23 +14,6 @@ from backend.config import BackendConfig, R2Config
 from backend.main import create_app
 
 # ========================================
-# 環境変数クリア（テスト用）
-# ========================================
-
-
-@pytest.fixture(autouse=True)
-def disable_env_files():
-    """Pydantic Settingsの.env読み込みを無効化する。"""
-    original_backend_env_file = BackendConfig.model_config.get("env_file")
-
-    BackendConfig.model_config["env_file"] = []
-
-    yield
-
-    BackendConfig.model_config["env_file"] = original_backend_env_file
-
-
-# ========================================
 # 設定フィクスチャ
 # ========================================
 
@@ -61,6 +44,7 @@ def mock_backend_config(mock_r2_config):
         host="127.0.0.1",
         port=8000,
         reload=False,
+        environment="development",
         api_key=SecretStr("test-backend-key"),  # SecretStrでラップ
         cors_origins="http://localhost:3000",  # ワイルドカードを避ける
         log_level="DEBUG",

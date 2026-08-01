@@ -85,6 +85,8 @@ def create_app(config: BackendConfig | None = None) -> FastAPI:
     """
     if config is None:
         config = BackendConfig.from_env()
+    if config.environment == "production":
+        config.validate_for_production()
 
     # インフラ情報マスキングフィルターを全ロガーに適用（冪等）
     if not any(isinstance(f, InfraSanitizingFilter) for f in logging.root.filters):
