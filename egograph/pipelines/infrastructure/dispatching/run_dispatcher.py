@@ -35,6 +35,48 @@ logger = logging.getLogger(__name__)
 
 NOTIFICATION_SOURCE = "urn:egograph:pipelines"
 NOTIFICATION_TYPE = "egograph.pipelines.workflow_failed"
+LEASE_LOST_PREFIX = "lease_lost:"
+
+
+class _LeaseState:
+    """workerとheartbeat threadが共有するlease状態。"""
+
+    def __init__(self) -> None:
+        self._lost_event = threading.Event()
+        self._mutex = threading.Lock()
+        self._error_message: str | None = None
+        self._exception: Exception | None = None
+
+    @property
+    def is_lost(self) -> bool:
+        """leaseが失われたかどうかを返す。"""
+        return self._lost_event.is_set()
+
+    @property
+    def error_message(self) -> str:
+        """lease喪失理由を返す。"""
+        with self._mutex:
+            return self._error_message or f"{LEASE_LOST_PREFIX} workflow lease was lost"
+
+    @property
+    def exception(self) -> Exception | None:
+        """heartbeat失敗時の例外を返す。"""
+        with self._mutex:
+            return self._exception
+
+    def mark_lost(
+        self,
+        *,
+        error_message: str,
+        exception: Exception | None = None,
+    ) -> None:
+        """最初に検知したlease喪失理由を保存する。"""
+        with self._mutex:
+            if self._lost_event.is_set():
+                return
+            self._error_message = error_message
+            self._exception = exception
+            self._lost_event.set()
 
 
 class _DispatchOutcome:
@@ -229,34 +271,63 @@ class RunDispatcher:
         self,
         lease: WorkflowLease,
         stop_event: threading.Event,
+        lease_state: _LeaseState | None = None,
     ) -> None:
+        lease_state = lease_state or _LeaseState()
         while not stop_event.wait(self._heartbeat_seconds):
-            try:
-                # Heartbeat failure should not kill the background thread silently.
-                self._lock_manager.heartbeat(lease)
-            except Exception as exc:
-                logger.warning(
-                    "workflow heartbeat failed: lock_key=%s, run_id=%s, error=%s: %s",
-                    lease.lock_key,
-                    lease.run_id,
-                    type(exc).__name__,
-                    exc,
-                )
+            if not self._check_lease(lease, lease_state):
+                return
 
     def _execute_run(
         self,
         workflow: WorkflowDefinition,
         run: WorkflowRun,
+        lease_state: _LeaseState | None = None,
+        lease: WorkflowLease | None = None,
     ) -> None:
+        lease_state = lease_state or _LeaseState()
         last_summary: dict | None = None
+        lease_loss_handled = False
+        next_sequence_no = 1
+        step_started = False
         try:
             for sequence_no, step in enumerate(workflow.steps, start=1):
+                next_sequence_no = sequence_no
+                self._check_lease(lease, lease_state)
+                if lease_state.is_lost:
+                    lease_loss_handled = True
+                    self._mark_run_failed_due_to_lease_loss(
+                        workflow=workflow,
+                        run=run,
+                        lease_state=lease_state,
+                        remaining_steps=workflow.steps[sequence_no - 1 :],
+                        first_sequence_no=sequence_no,
+                        result_summary=last_summary,
+                    )
+                    lease_loss_handled = True
+                    return
+                step_started = True
                 success, last_summary, error_message, last_exc = self._execute_step(
                     workflow=workflow,
                     run=run,
                     step=step,
                     sequence_no=sequence_no,
                 )
+                step_started = False
+                next_sequence_no = sequence_no + 1
+                self._check_lease(lease, lease_state)
+                if lease_state.is_lost:
+                    lease_loss_handled = True
+                    self._mark_run_failed_due_to_lease_loss(
+                        workflow=workflow,
+                        run=run,
+                        lease_state=lease_state,
+                        remaining_steps=workflow.steps[sequence_no:],
+                        first_sequence_no=sequence_no + 1,
+                        result_summary=last_summary,
+                    )
+                    lease_loss_handled = True
+                    return
                 if not success:
                     final_error = error_message or f"step failed: {step.step_id}"
                     self._skip_remaining_steps(
@@ -277,6 +348,20 @@ class RunDispatcher:
                         exc=last_exc,
                     )
                     return
+            next_sequence_no = len(workflow.steps) + 1
+            self._check_lease(lease, lease_state)
+            if lease_state.is_lost:
+                lease_loss_handled = True
+                self._mark_run_failed_due_to_lease_loss(
+                    workflow=workflow,
+                    run=run,
+                    lease_state=lease_state,
+                    remaining_steps=(),
+                    first_sequence_no=len(workflow.steps) + 1,
+                    result_summary=last_summary,
+                )
+                lease_loss_handled = True
+                return
             final_status = _status_from_summary(last_summary)
             error_message = (
                 _error_from_summary(last_summary)
@@ -305,11 +390,27 @@ class RunDispatcher:
                 "run execution crashed unexpectedly: run_id=%s",
                 run.run_id,
             )
-            self._mark_run_failed_after_unexpected_exception(
-                workflow=workflow,
-                run=run,
-                exc=exc,
-            )
+            if lease_state.is_lost:
+                if not lease_loss_handled:
+                    first_unstarted_sequence_no = next_sequence_no + int(step_started)
+                    self._mark_run_failed_due_to_lease_loss(
+                        workflow=workflow,
+                        run=run,
+                        lease_state=lease_state,
+                        remaining_steps=workflow.steps[
+                            first_unstarted_sequence_no - 1 :
+                        ],
+                        first_sequence_no=first_unstarted_sequence_no,
+                        result_summary=last_summary,
+                        exception=exc,
+                    )
+                    lease_loss_handled = True
+            else:
+                self._mark_run_failed_after_unexpected_exception(
+                    workflow=workflow,
+                    run=run,
+                    exc=exc,
+                )
 
     def _execute_step(
         self,
@@ -403,11 +504,29 @@ class RunDispatcher:
         first_sequence_no: int,
     ) -> None:
         for offset, step in enumerate(steps):
+            sequence_no = first_sequence_no + offset
+            existing_step_runs = {
+                existing.sequence_no: existing
+                for existing in self._step_run_repository.list_step_runs(run.run_id)
+            }
+            existing_step_run = existing_step_runs.get(sequence_no)
+            if existing_step_run is not None:
+                if existing_step_run.status != StepRunStatus.SKIPPED:
+                    self._step_run_repository.update_step_result(
+                        step_run_id=existing_step_run.step_run_id,
+                        status=StepRunStatus.SKIPPED,
+                        exit_code=None,
+                        stdout_tail="",
+                        stderr_tail="",
+                        log_path=None,
+                        result_summary=None,
+                    )
+                continue
             step_run = self._step_run_repository.insert_step_run(
                 run_id=run.run_id,
                 step_id=step.step_id,
                 step_name=step.step_name,
-                sequence_no=first_sequence_no + offset,
+                sequence_no=sequence_no,
                 attempt_no=1,
                 command=self._format_command(step),
                 status=StepRunStatus.SKIPPED,
@@ -434,15 +553,16 @@ class RunDispatcher:
         run: WorkflowRun,
         lease: WorkflowLease,
     ) -> None:
+        lease_state = _LeaseState()
         heartbeat_stop = threading.Event()
         heartbeat_thread = threading.Thread(
             target=self._heartbeat_loop,
-            args=(lease, heartbeat_stop),
+            args=(lease, heartbeat_stop, lease_state),
             daemon=True,
         )
         heartbeat_thread.start()
         try:
-            self._execute_run(workflow, run)
+            self._execute_run(workflow, run, lease_state, lease)
         finally:
             heartbeat_stop.set()
             heartbeat_thread.join(timeout=max(1, self._heartbeat_seconds))
@@ -454,6 +574,79 @@ class RunDispatcher:
                     lease.lock_key,
                     lease.run_id,
                 )
+
+    def _check_lease(
+        self,
+        lease: WorkflowLease | None,
+        lease_state: _LeaseState,
+    ) -> bool:
+        """leaseを再確認し、失敗時は共有状態へ記録する。"""
+        if lease is None or lease_state.is_lost:
+            return not lease_state.is_lost
+        try:
+            if self._lock_manager.heartbeat(lease):
+                return True
+        except Exception as exc:
+            lease_state.mark_lost(
+                error_message=(
+                    f"{LEASE_LOST_PREFIX} heartbeat failed: {type(exc).__name__}: {exc}"
+                ),
+                exception=exc,
+            )
+            logger.warning(
+                "workflow heartbeat failed: lock_key=%s, run_id=%s, error=%s: %s",
+                lease.lock_key,
+                lease.run_id,
+                type(exc).__name__,
+                exc,
+            )
+            return False
+
+        lease_state.mark_lost(
+            error_message=f"{LEASE_LOST_PREFIX} workflow lease was lost"
+        )
+        logger.warning(
+            "workflow lease was lost: lock_key=%s, run_id=%s",
+            lease.lock_key,
+            lease.run_id,
+        )
+        return False
+
+    def _mark_run_failed_due_to_lease_loss(
+        self,
+        *,
+        workflow: WorkflowDefinition,
+        run: WorkflowRun,
+        lease_state: _LeaseState,
+        remaining_steps: tuple[StepDefinition, ...],
+        first_sequence_no: int,
+        result_summary: dict | None,
+        exception: Exception | None = None,
+    ) -> None:
+        """lease喪失を記録し、未開始stepをskipしてrunを失敗させる。"""
+        self._skip_remaining_steps(
+            run=run,
+            steps=remaining_steps,
+            first_sequence_no=first_sequence_no,
+        )
+        error_message = lease_state.error_message
+        if exception is not None and exception is not lease_state.exception:
+            error_message = (
+                f"{error_message}; dispatcher failure: "
+                f"{type(exception).__name__}: {exception}"
+            )
+        self._run_repository.update_run_result(
+            run_id=run.run_id,
+            status=WorkflowRunStatus.FAILED,
+            error_message=error_message,
+            result_summary=result_summary,
+        )
+        self._notify_failure(
+            workflow=workflow,
+            run=run,
+            error_message=error_message,
+            exc=exception or lease_state.exception,
+        )
 
     def _execute_run_in_worker(
         self,

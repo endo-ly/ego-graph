@@ -97,12 +97,12 @@ class WorkflowLockManager:
             lease_owner=self._lease_owner,
         )
 
-    def heartbeat(self, lease: WorkflowLease) -> None:
-        """lease の期限を延長する。"""
+    def heartbeat(self, lease: WorkflowLease) -> bool:
+        """lease の期限を延長し、現在の所有者なら成功を返す。"""
         now = _utc_now()
         expires_at = now + timedelta(seconds=self._lease_seconds)
         with self._mutex, self._conn:
-            self._conn.execute(
+            cursor = self._conn.execute(
                 """
                 UPDATE workflow_locks
                 SET heartbeat_at = ?,
@@ -119,6 +119,7 @@ class WorkflowLockManager:
                     lease.lease_owner,
                 ),
             )
+            return cursor.rowcount == 1
 
     def release(self, lease: WorkflowLease) -> None:
         """保持中 lease を解放する。"""
