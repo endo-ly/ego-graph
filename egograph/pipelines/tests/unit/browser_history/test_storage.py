@@ -2,6 +2,7 @@ import json
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 from botocore.exceptions import ClientError
 from pipelines.sources.browser_history.storage import BrowserHistoryStorage
@@ -116,21 +117,12 @@ class TestBrowserHistoryStorage:
         assert json.loads(call_args["Body"]) == {"sync_id": "abc"}
 
     def test_compact_month_saves_fixed_compacted_key(self):
-        with (
-            patch(
-                "pipelines.sources.browser_history.storage.read_parquet_records_from_prefix",
-                return_value=[
-                    {"page_view_id": "pv1", "ingested_at_utc": "2026-03-22T12:00:00Z"}
-                ],
-            ),
-            patch(
-                "pipelines.sources.browser_history.storage.compact_records",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "pipelines.sources.browser_history.storage.dataframe_to_parquet_bytes",
-                return_value=b"x",
-            ),
+        with patch(
+            "pipelines.sources.browser_history.storage.read_parquet_records_from_prefix",
+            return_value=[_page_view_row()],
+        ), patch(
+            "pipelines.sources.browser_history.storage.compact_records",
+            return_value=pd.DataFrame([_page_view_row()]),
         ):
             key = self.storage.compact_month(year=2026, month=3)
 
@@ -151,21 +143,11 @@ class TestBrowserHistoryStorage:
     def test_compact_month_raises_when_compacted_parquet_save_fails(self):
         self.mock_s3.put_object.side_effect = RuntimeError("r2 down")
 
-        with (
-            patch(
-                "pipelines.sources.browser_history.storage.read_parquet_records_from_prefix",
-                return_value=[
-                    {"page_view_id": "pv1", "ingested_at_utc": "2026-03-22T12:00:00Z"}
-                ],
-            ),
-            patch(
-                "pipelines.sources.browser_history.storage.compact_records",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "pipelines.sources.browser_history.storage.dataframe_to_parquet_bytes",
-                return_value=b"x",
-            ),
-            pytest.raises(RuntimeError, match="r2 down"),
-        ):
+        with patch(
+            "pipelines.sources.browser_history.storage.read_parquet_records_from_prefix",
+            return_value=[_page_view_row()],
+        ), patch(
+            "pipelines.sources.browser_history.storage.compact_records",
+            return_value=pd.DataFrame([_page_view_row()]),
+        ), pytest.raises(RuntimeError, match="r2 down"):
             self.storage.compact_month(year=2026, month=3)

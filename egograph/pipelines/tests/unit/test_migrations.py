@@ -164,5 +164,18 @@ def test_migration_failure_rolls_back_schema_and_version(conn, monkeypatch):
     with pytest.raises(RuntimeError, match="migration failure"):
         migrations.run_migrations(conn)
 
+    # Assert
     assert migrations.get_schema_version(conn) == original_count
     assert "rollback_probe" not in _table_names(conn)
+
+
+def test_run_migrations_rejects_newer_schema_version(conn):
+    """対応外の新しいschema versionのDBは適用せずエラーにする。"""
+    # Arrange
+    conn.execute("PRAGMA user_version = 99")
+
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="newer than supported"):
+        migrations.run_migrations(conn)
+
+    assert migrations.get_schema_version(conn) == 99

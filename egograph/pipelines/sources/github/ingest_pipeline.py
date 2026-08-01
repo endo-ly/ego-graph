@@ -484,11 +484,22 @@ def run_pipeline(config: Config) -> None:
 
 
 def _as_datetime(value: Any) -> datetime | None:
-    """datetime はそのまま、ISO 8601 文字列は UTC aware datetime に変換する。"""
+    """datetime / ISO 8601 文字列を UTC aware datetime に変換する。
+
+    不正な文字列・naive datetime は None を返し、非 UTC 書き込みを避ける。
+    """
     if isinstance(value, datetime):
-        return value
+        if value.tzinfo is None:
+            return None
+        return value.astimezone(timezone.utc)
     if isinstance(value, str) and value:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return None
+        return parsed.astimezone(timezone.utc)
     return None
 
 

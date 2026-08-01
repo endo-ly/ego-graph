@@ -508,21 +508,17 @@ class TestGitHubWorklogStorage(unittest.TestCase):
         self.assertEqual(storage_no_slash.master_path, "master/")
 
     def test_compact_month_saves_fixed_key(self):
-        data = [{"commit_event_id": "commit_1", "message": "test"}]
+        data = [_commit_row("commit_1", "abc123")]
 
         with patch(
             "pipelines.sources.github.storage.read_parquet_records_from_prefix",
             return_value=data,
         ):
-            with patch(
-                "pipelines.sources.github.storage.dataframe_to_parquet_bytes",
-                return_value=b"x",
-            ):
-                key = self.storage.compact_month(
-                    dataset=datasets.GITHUB_COMMITS,
-                    year=2024,
-                    month=1,
-                )
+            key = self.storage.compact_month(
+                dataset=datasets.GITHUB_COMMITS,
+                year=2024,
+                month=1,
+            )
 
         call_args = self.mock_s3.put_object.call_args[1]
         self.assertEqual(

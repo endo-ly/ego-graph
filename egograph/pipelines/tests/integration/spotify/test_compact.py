@@ -3,6 +3,8 @@
 MemoryS3 上で ingest 済みのデータに対する compaction (重複排除) を検証する。
 """
 
+import io
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pandas as pd
@@ -79,22 +81,23 @@ def _seed_duplicate_events(memory_s3) -> None:
         {
             "play_id": "dup-001",
             "track_id": "track-001",
-            "played_at_utc": "2026-04-01T02:30:00.000Z",
+            "played_at_utc": datetime(2026, 4, 1, 2, 30, tzinfo=UTC),
             "context_type": "playlist",
             "context_uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M",
+            "track_name": "Song A",
         },
         {
             "play_id": "dup-002",
             "track_id": "track-002",
-            "played_at_utc": "2026-04-01T02:26:00.000Z",
+            "played_at_utc": datetime(2026, 4, 1, 2, 26, tzinfo=UTC),
             "context_type": "album",
             "context_uri": "spotify:album:4yP0hdKOZPNshxUOjY0cZj",
+            "track_name": "Song B",
         },
     ]
     table = pa.Table.from_pandas(pd.DataFrame(rows))
 
     # 2つの異なるファイルに同じデータを書き込む
-    import io
 
     buf = io.BytesIO()
     pq.write_table(table, buf)
@@ -136,8 +139,6 @@ def test_compact_deduplicates_events():
             bucket_name="test-bucket",
         )
         resp = storage.s3.get_object(Bucket="test-bucket", Key=compacted_key)
-        import io
-
         compacted_table = pq.read_table(io.BytesIO(resp["Body"].read()))
         # 4行(2ファイル×2行) → 2行に重複排除される
         assert len(compacted_table) == 2, (

@@ -20,10 +20,19 @@ def _generate_pr_key(repo_full_name: str, pr_number: int) -> str:
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
-    """GitHub API の ISO 8601 文字列を UTC aware datetime に変換する。"""
+    """GitHub API の ISO 8601 文字列を UTC aware datetime に変換する。
+
+    不正な文字列や naive datetime は None を返し、書き込みを避ける。
+    """
     if not value:
         return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
 
 
 def _generate_pr_event_id(

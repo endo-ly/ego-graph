@@ -90,10 +90,13 @@ class YouTubeStorage:
             month=month,
         )
         try:
+            validate_required_columns(dataset, compacted_df.columns)
+            body = dataframe_to_parquet_bytes(compacted_df)
+            validate_parquet_bytes(dataset, body)
             self.s3.put_object(
                 Bucket=self.bucket_name,
                 Key=key,
-                Body=dataframe_to_parquet_bytes(compacted_df),
+                Body=body,
                 ContentType="application/octet-stream",
             )
         except ClientError:

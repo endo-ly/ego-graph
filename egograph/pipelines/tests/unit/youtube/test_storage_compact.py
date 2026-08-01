@@ -36,17 +36,21 @@ def _mock_s3_with_records(
     return mock_s3, mock_paginator
 
 
+def _watch_event_row(watch_event_id: str, watched_at: str, video_id: str) -> dict:
+    """schema 契約を満たす watch event 行。"""
+    return {
+        "watch_event_id": watch_event_id,
+        "watched_at_utc": pd.Timestamp(f"{watched_at}Z"),
+        "video_id": video_id,
+        "source_event_id": f"src-{watch_event_id}",
+    }
+
+
 def test_compact_month_reads_source_and_saves_compacted(monkeypatch):
     """source prefix の parquet を読み込み、compacted key で保存する。"""
     storage = _storage()
 
-    records = [
-        {
-            "watch_event_id": "we-1",
-            "watched_at_utc": "2026-04-10T12:00:00",
-            "video_id": "v1",
-        },
-    ]
+    records = [_watch_event_row("we-1", "2026-04-10T12:00:00", "v1")]
     parquet_bytes = _make_parquet_bytes(records)
     mock_s3, _ = _mock_s3_with_records(parquet_bytes, f"{_S3_KEY_PREFIX}sync.parquet")
 
@@ -86,21 +90,9 @@ def test_compact_month_deduplicates_by_watch_event_id(monkeypatch):
     storage = _storage()
 
     records = [
-        {
-            "watch_event_id": "we-1",
-            "watched_at_utc": "2026-04-10T12:00:00",
-            "video_id": "v1",
-        },
-        {
-            "watch_event_id": "we-1",
-            "watched_at_utc": "2026-04-10T12:00:00",
-            "video_id": "v1-dup",
-        },
-        {
-            "watch_event_id": "we-2",
-            "watched_at_utc": "2026-04-11T12:00:00",
-            "video_id": "v2",
-        },
+        _watch_event_row("we-1", "2026-04-10T12:00:00", "v1"),
+        _watch_event_row("we-1", "2026-04-10T12:00:00", "v1-dup"),
+        _watch_event_row("we-2", "2026-04-11T12:00:00", "v2"),
     ]
     parquet_bytes = _make_parquet_bytes(records)
     mock_s3, _ = _mock_s3_with_records(parquet_bytes, f"{_S3_KEY_PREFIX}a.parquet")
@@ -121,21 +113,9 @@ def test_compact_month_sorts_by_watched_at_utc(monkeypatch):
     storage = _storage()
 
     records = [
-        {
-            "watch_event_id": "we-1",
-            "watched_at_utc": "2026-04-10T12:00:00",
-            "video_id": "v1-old",
-        },
-        {
-            "watch_event_id": "we-2",
-            "watched_at_utc": "2026-04-09T12:00:00",
-            "video_id": "v2",
-        },
-        {
-            "watch_event_id": "we-1",
-            "watched_at_utc": "2026-04-11T12:00:00",
-            "video_id": "v1-new",
-        },
+        _watch_event_row("we-1", "2026-04-10T12:00:00", "v1-old"),
+        _watch_event_row("we-2", "2026-04-09T12:00:00", "v2"),
+        _watch_event_row("we-1", "2026-04-11T12:00:00", "v1-new"),
     ]
     parquet_bytes = _make_parquet_bytes(records)
     mock_s3, _ = _mock_s3_with_records(parquet_bytes, f"{_S3_KEY_PREFIX}a.parquet")

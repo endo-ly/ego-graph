@@ -235,14 +235,24 @@ def get_schema_version(conn: sqlite3.Connection) -> int:
 def run_migrations(conn: sqlite3.Connection) -> None:
     """未適用の migration を番号順に適用する。"""
     current = get_schema_version(conn)
+    if current > len(MIGRATIONS):
+        raise RuntimeError(
+            f"schema version {current} is newer than supported "
+            f"(latest={len(MIGRATIONS)})"
+        )
     for version in range(current + 1, len(MIGRATIONS) + 1):
         _apply_migration(conn, version)
 
 
 def _apply_migration(conn: sqlite3.Connection, version: int) -> None:
-    """1 つの migration をトランザクションで適用する。"""
-    conn.execute("BEGIN")
+    """1 つの migration を排他トランザクションで適用する。"""
+    conn.execute("BEGIN IMMEDIATE")
     try:
+        if get_schema_version(conn) != version - 1:
+            raise RuntimeError(
+                f"schema version changed during migration: expected {version - 1}, "
+                f"got {get_schema_version(conn)}"
+            )
         MIGRATIONS[version - 1](conn)
         conn.execute(f"PRAGMA user_version = {version}")
         conn.commit()

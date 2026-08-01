@@ -42,21 +42,31 @@ def validate_required_columns(
 
 
 def validate_parquet_bytes(definition: DatasetDefinition, data: bytes) -> None:
-    """Parquet バイト列の型が契約と一致することを検証する。
+    """Parquet バイト列が契約と一致することを検証する。
 
     pandas の内部 dtype に依存せず、バイト列から schema を取得して検証する。
-    アップロード前の検証に使うことを想定しており、読み直しは行わない。
+    required_columns / column_types の両方を検証し、アップロード前の検証に
+    使うことを想定している。読み直しは行わない。
 
     Args:
         definition: 契約元の DatasetDefinition
         data: アップロード前の Parquet バイト列
 
     Raises:
-        ValueError: 契約外の型が見つかった場合（``invalid_schema: <column>``）
+        ValueError: 契約外のカラム・型が見つかった場合
+            （``invalid_schema: ...``）
     """
     if not definition.column_types:
         return
-    table = pq.read_table(io.BytesIO(data), columns=list(definition.column_types))
+    try:
+        table = pq.read_table(io.BytesIO(data))
+        validate_required_columns(definition, table.schema.names)
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(
+            f"invalid_schema: unreadable_parquet: {definition.dataset_id}: {exc}"
+        ) from exc
     for column in definition.column_types:
         expected = definition.column_types[column]
         arrow_type = table.schema.field(column).type

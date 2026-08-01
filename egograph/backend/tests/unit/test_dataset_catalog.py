@@ -91,6 +91,7 @@ def test_required_dedupe_key_returns_key_or_raises():
         partition_policy=PartitionPolicy.MONTHLY,
         compaction_strategy=CompactionStrategy.NONE,
         required_columns=("id",),
+        column_types={"id": "string"},
     )
     with pytest.raises(ValueError, match="dedupe_key_required: test.none"):
         no_dedupe.required_dedupe_key()
@@ -128,6 +129,7 @@ def test_duplicate_dataset_id_fails_fast():
         partition_policy=PartitionPolicy.MONTHLY,
         compaction_strategy=CompactionStrategy.NONE,
         required_columns=("id",),
+        column_types={"id": "string"},
     )
     duplicate_b = DatasetDefinition(
         dataset_id="duplicate.dataset",
@@ -137,6 +139,7 @@ def test_duplicate_dataset_id_fails_fast():
         partition_policy=PartitionPolicy.MONTHLY,
         compaction_strategy=CompactionStrategy.NONE,
         required_columns=("id",),
+        column_types={"id": "string"},
     )
 
     with pytest.raises(ValueError, match="duplicate_dataset_id: duplicate.dataset"):
@@ -188,6 +191,15 @@ def test_unknown_canonical_type_raises():
         _contract_definition(column_types={"id": "varchar", "created_at": "timestamp"})
 
 
+def test_required_column_without_type_raises():
+    """column_types が required_columns を網羅しない定義は拒否する。"""
+    pattern = (
+        r"invalid_schema: required_column_type_missing: test.contract <created_at>"
+    )
+    with pytest.raises(ValueError, match=pattern):
+        _contract_definition(column_types={"id": "string"})
+
+
 def test_all_datasets_have_schema_contracts():
     """全 dataset が schema version と required columns を持つ。"""
     for dataset in ALL_DATASETS:
@@ -195,4 +207,6 @@ def test_all_datasets_have_schema_contracts():
         assert (
             dataset.required_columns
         ), f"missing required_columns: {dataset.dataset_id}"
-        assert set(dataset.column_types) <= set(dataset.required_columns)
+        assert set(dataset.column_types) == set(dataset.required_columns), (
+            f"column_types must cover required_columns exactly: {dataset.dataset_id}"
+        )

@@ -71,6 +71,13 @@ class DatasetDefinition:
             raise ValueError(
                 f"invalid_schema: duplicate_required_columns: {self.dataset_id}"
             )
+        missing_column_types = set(self.required_columns) - set(self.column_types)
+        if missing_column_types:
+            raise ValueError(
+                "invalid_schema: required_column_type_missing: "
+                f"{self.dataset_id} "
+                f"<{', '.join(sorted(missing_column_types))}>"
+            )
         for column in self.column_types:
             if column not in self.required_columns:
                 raise ValueError(

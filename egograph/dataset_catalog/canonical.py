@@ -1,4 +1,4 @@
-"""Parquet canonical type conversion helpers.
+"""Parquet の canonical type 変換ヘルパー。
 
 Pipelines（pyarrow で出力検証）と Backend（DuckDB で fixture 検証）が
 同じ型契約を参照できるよう、canonical type 文字列と各エンジンの型名を
@@ -92,12 +92,9 @@ def type_mismatch(expected: str, actual: str, *, has_nulls: bool) -> str | None:
     """canonical 型の差分を返す。許容される場合は None。
 
     - 実型が null（未投入カラム）はどの expected にも許容する
-    - pandas の float 拡張（int + None → float64）を expected integer で許容する
     """
     if actual == NULL:
         return None
     if expected == actual:
-        return None
-    if expected == INTEGER and actual == FLOAT and has_nulls:
         return None
     return f"expected {expected}, got {actual}"

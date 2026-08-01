@@ -229,21 +229,17 @@ class TestSpotifyStorage(unittest.TestCase):
         self.assertIsNotNone(key)
 
     def test_compact_month_for_events_saves_fixed_key(self):
-        data = [{"play_id": "play_1", "track_name": "Song A"}]
+        data = [_play_row()]
 
         with patch(
             "pipelines.sources.spotify.storage.read_parquet_records_from_prefix",
             return_value=data,
         ):
-            with patch(
-                "pipelines.sources.spotify.storage.dataframe_to_parquet_bytes",
-                return_value=b"x",
-            ):
-                key = self.storage.compact_month(
-                    dataset=datasets.SPOTIFY_PLAYS,
-                    year=2024,
-                    month=1,
-                )
+            key = self.storage.compact_month(
+                dataset=datasets.SPOTIFY_PLAYS,
+                year=2024,
+                month=1,
+            )
 
         call_args = self.mock_s3.put_object.call_args[1]
         self.assertEqual(

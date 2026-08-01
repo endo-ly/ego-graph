@@ -119,13 +119,13 @@ def test_validate_parquet_bytes_raises_on_type_mismatch():
         validate_parquet_bytes(_definition(), data)
 
 
-def test_validate_parquet_bytes_allows_nullable_integer_as_float():
-    """pandas の int+None 拡張（float64 化）を integer 契約で許容する。"""
-    float_schema = pa.schema(
+def test_validate_parquet_bytes_allows_nullable_integer_for_integer_contract():
+    """null を含む int64（pandas の int+None 保存形）は integer 契約で許容する。"""
+    integer_schema = pa.schema(
         [
             pa.field("id", pa.string(), nullable=False),
             pa.field("created_at", pa.timestamp("us", tz="UTC"), nullable=False),
-            pa.field("count", pa.float64(), nullable=True),
+            pa.field("count", pa.int64(), nullable=True),
         ]
     )
     integer_definition = _definition(
@@ -133,7 +133,7 @@ def test_validate_parquet_bytes_allows_nullable_integer_as_float():
         column_types={"id": "string", "created_at": "timestamp", "count": "integer"},
     )
     data = _parquet_bytes(
-        float_schema,
+        integer_schema,
         [
             {"id": "a", "created_at": "2026-01-01T00:00:00Z", "count": 1},
             {"id": "b", "created_at": "2026-01-02T00:00:00Z", "count": None},
@@ -142,13 +142,13 @@ def test_validate_parquet_bytes_allows_nullable_integer_as_float():
     validate_parquet_bytes(integer_definition, data)
 
 
-def test_validate_parquet_bytes_rejects_float_without_nulls_for_integer():
-    """null を含まない float64 は integer 契約として拒否する。"""
+def test_validate_parquet_bytes_rejects_float_with_nulls_for_integer():
+    """float64（null 有無を問わず）は integer 契約として拒否する。"""
     float_schema = pa.schema(
         [
             pa.field("id", pa.string(), nullable=False),
             pa.field("created_at", pa.timestamp("us", tz="UTC"), nullable=False),
-            pa.field("count", pa.float64(), nullable=False),
+            pa.field("count", pa.float64(), nullable=True),
         ]
     )
     integer_definition = _definition(
@@ -165,6 +165,22 @@ def test_validate_parquet_bytes_rejects_float_without_nulls_for_integer():
     pattern = r"invalid_schema: test.validation <count>: expected integer, got float"
     with pytest.raises(ValueError, match=pattern):
         validate_parquet_bytes(integer_definition, data)
+
+
+def test_validate_parquet_bytes_rejects_missing_required_column():
+    """契約にないカラムが欠落している Parquet は invalid_schema エラー。"""
+    missing_schema = pa.schema(
+        [
+            pa.field("id", pa.string(), nullable=False),
+        ]
+    )
+    data = _parquet_bytes(
+        missing_schema,
+        [{"id": "a"}],
+    )
+    pattern = r"invalid_schema: missing_columns: test.validation <created_at>"
+    with pytest.raises(ValueError, match=pattern):
+        validate_parquet_bytes(_definition(), data)
 
 
 def test_validate_parquet_bytes_allows_extra_columns():

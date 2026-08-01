@@ -36,7 +36,7 @@ Python workspace では `backend` と `pipelines` の両方から `dataset_catal
 | `snapshot_file_name` | snapshot dataset の固定ファイル名 |
 | `schema_version` | Parquet schema 契約の version。`required_columns` / `column_types` を変更するたびにインクリメント |
 | `required_columns` | Parquet に必ず存在する必須カラム名 |
-| `column_types` | 必須カラムごとの canonical type（key は必ず `required_columns` の部分集合） |
+| `column_types` | 必須カラムごとの canonical type（key 集合は `required_columns` と完全一致。定義は `__post_init__` で検証） |
 
 ## Schema 契約（Parquet）
 
@@ -58,19 +58,20 @@ Python workspace では `backend` と `pipelines` の両方から `dataset_catal
 `egograph/dataset_catalog/canonical.py` の `arrow_type_to_canonical()` / `duckdb_type_to_canonical()` で各エンジンの型名を canonical に正規化する。比較時に許容される差分は `type_mismatch()` に集約する:
 
 - 実型が `null`（未投入カラム）はどの期待型にも許容
-- pandas の float 拡張（`integer` 契約 × 実型 `float` + null）のみ許容
+- 整数カラムの null は `int64`（arrow の nullable）で表現する。pandas の float 拡張（int + None → float64）は **integer 契約として拒否**する。保存前に `astype("Int64")` 等で nullable 整数へ変換しておくこと
 
 ### validation 規則
 
 - `required_columns` が空または重複 → `ValueError`（`invalid_schema: ...`）
 - `column_types` の key が `required_columns` に含まれない → `ValueError`（`invalid_schema: ...`）。key の typo による契約ドリフトを構造的に防ぐ
+- `column_types` が `required_columns` を網羅しない（型未定義の必須カラム）→ `ValueError`（`invalid_schema: required_column_type_missing: ...`）
 - 保存時（アップロード前）の検証は `egograph/dataset_catalog/validation.py` が担う
   - `validate_required_columns(definition, columns)`: 必須カラムの存在確認
-  - `validate_parquet_bytes(definition, data)`: Parquet バイト列から schema を取得し型を検証
+  - `validate_parquet_bytes(definition, data)`: バイト列から schema を取得し、必須カラムの存在確認と型検証を一括実施
 
 ### 保存時の検証フロー
 
-各 source storage は「必須カラム確認 → Parquet バイト列生成 → バイト列から型検証 → アップロード」の順で保存する。アップロード後の読み直しは行わない。
+各 source storage は「必須カラム確認 → Parquet バイト列生成 → バイト列から型検証 → アップロード」の順で保存する。アップロード後の読み直しは行わない。compaction 出力（`compacted/` 配下）も同様に、アップロード前に `validate_required_columns` + `validate_parquet_bytes` を適用する。
 
 - 空データ（保存対象なし）は検証をスキップし、既存の `None` / `failed=0` 契約を維持する
 - 検証失敗は `ValueError`（`invalid_schema: ...`）として各 storage の既存の保存失敗契約へ変換する
