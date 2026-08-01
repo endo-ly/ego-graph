@@ -85,13 +85,15 @@ source /root/.profile
 ## 3. デプロイ配置
 
 パスを固定することでsystemdやCIのスクリプトがシンプルになる。
-backend/pipelines のランタイム secrets は LXC 内の `.env` に置き、
-GitHub Secrets には載せない運用を想定。
+Backend のランタイム設定と secrets はリポジトリ配下の `.env` に保存せず、
+systemd の保護された `EnvironmentFile` またはデプロイ基盤の Secret 機能から
+サービスプロセスの環境変数として注入する。GitHub Secrets にはアプリ本体の
+ランタイム secrets を載せない運用を想定。
 
 推奨パス:
 
 - Repo: `/opt/egograph/repo`
-- Backend env: `/opt/egograph/repo/egograph/backend/.env`
+- Backend environment file: `/etc/egograph/backend.env` (root のみ読み取り可)
 - Pipelines env: `/opt/egograph/repo/egograph/pipelines/.env`
 
 ```bash
@@ -135,7 +137,7 @@ uv run python -c "import duckdb; conn = duckdb.connect(); print(conn.execute(\"S
 ## 5. systemd 常駐
 
 systemdで `backend` を別プロセス常駐化し、障害時は自動復旧させる。
-`WorkingDirectory` と `.env` のパスは固定で運用する。
+`WorkingDirectory` と環境変数の注入元は固定で運用する。
 
 - `egograph-backend.service`
   - 読み取り / MCP API を提供する FastAPI 本体
@@ -158,8 +160,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/egograph/repo
-EnvironmentFile=/opt/egograph/repo/egograph/backend/.env
-Environment=USE_ENV_FILE=false
+EnvironmentFile=/etc/egograph/backend.env
 ExecStart=/root/.local/bin/uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=10
@@ -170,17 +171,15 @@ Group=root
 WantedBy=multi-user.target
 ```
 
-起動前に `egograph/backend/.env` を作成
+起動前に、systemd が読み込む環境変数ファイルを root 専用権限で作成する。
+リポジトリ配下の `.env` は使用しない。
 
 ```bash
-sudo cp /opt/egograph/repo/egograph/backend/.env.example /opt/egograph/repo/egograph/backend/.env
+sudo install -o root -g root -m 600 /dev/null /etc/egograph/backend.env
+sudoedit /etc/egograph/backend.env
 ```
 
-```bash
-sudo nano /opt/egograph/repo/egograph/backend/.env
-```
-
-本番用 `.env` では、少なくとも次を設定する。`BACKEND_ENV=production` にすると、API key・明示的な CORS・R2 設定が不足した状態では Backend は起動しない。
+`/etc/egograph/backend.env` には、デプロイ環境の Secret 管理機能から払い出した値を設定する。`BACKEND_ENV=production` にすると、API key・明示的な CORS・R2 設定が不足した状態では Backend は起動しない。
 
 ```dotenv
 BACKEND_ENV=production
@@ -321,10 +320,15 @@ docker build -t egograph-backend:latest .
 
 ### 8.2 起動
 
-backend 用の環境変数は `egograph/backend/.env` に置いて起動する。
+backend 用の環境変数は、デプロイ基盤の Secret Store からコンテナプロセスへ注入する。
+Docker の `--env-file` は Docker を実行するホスト上のファイルを読むため、
+リポジトリ外の root 専用ファイル（例: `/etc/egograph/backend.env`）を指定する。
+このファイルは root のみ読み取れるため、Docker も root 権限で実行する。
+コンテナ内へ Docker Secret をマウントするだけでは環境変数として注入されないため、
+Secret を使う場合は entrypoint 等で読み込む構成を別途用意する。
 
 ```bash
-docker run --env-file egograph/backend/.env -p 8000:8000 egograph-backend:latest
+sudo docker run --env-file /etc/egograph/backend.env -p 8000:8000 egograph-backend:latest
 ```
 
 ### 8.3 HTTPS

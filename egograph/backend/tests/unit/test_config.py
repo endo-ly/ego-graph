@@ -89,6 +89,23 @@ class TestBackendConfig:
 
         assert config.environment == "production"
 
+    def test_does_not_load_local_env_file(self, monkeypatch, tmp_path):
+        """リポジトリ配下の.envを設定ソースとして使用しない。"""
+        env_file = tmp_path / "egograph/backend/.env"
+        env_file.parent.mkdir(parents=True)
+        env_file.write_text(
+            "BACKEND_ENV=production\nBACKEND_API_KEY=from-local-file\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("BACKEND_ENV", raising=False)
+        monkeypatch.delenv("BACKEND_API_KEY", raising=False)
+
+        config = BackendConfig()
+
+        assert config.environment == "development"
+        assert config.api_key is None
+
     @pytest.mark.parametrize("environment", ["prod", "Production", "production "])
     def test_from_env_rejects_unknown_backend_environment(
         self, monkeypatch, environment
@@ -109,6 +126,27 @@ class TestBackendConfig:
 
         with pytest.raises(ValueError, match="BACKEND_API_KEY is required"):
             mock_backend_config.validate_for_production()
+
+    @pytest.mark.parametrize("api_key", ["", " ", "\t\n"])
+    def test_validate_for_production_rejects_blank_api_key(
+        self, mock_backend_config, api_key
+    ):
+        """空白だけのAPI Keyを本番環境で拒否する。"""
+        mock_backend_config.api_key = SecretStr(api_key)
+
+        with pytest.raises(ValueError, match="BACKEND_API_KEY is required"):
+            mock_backend_config.validate_for_production()
+
+    def test_validate_for_production_preserves_non_blank_api_key(
+        self, mock_backend_config
+    ):
+        """空白を含んでも値のあるAPI Keyを有効として扱う。"""
+        api_key = "  test-backend-key  "
+        mock_backend_config.api_key = SecretStr(api_key)
+
+        mock_backend_config.validate_for_production()
+
+        assert mock_backend_config.api_key.get_secret_value() == api_key
 
     def test_validate_for_production_wildcard_cors(self, mock_backend_config):
         """ワイルドカードCORSは本番環境で禁止。"""

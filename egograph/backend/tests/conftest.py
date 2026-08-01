@@ -14,23 +14,6 @@ from backend.config import BackendConfig, R2Config
 from backend.main import create_app
 
 # ========================================
-# 環境変数クリア（テスト用）
-# ========================================
-
-
-@pytest.fixture(autouse=True)
-def disable_env_files():
-    """Pydantic Settingsの.env読み込みを無効化する。"""
-    original_backend_env_file = BackendConfig.model_config.get("env_file")
-
-    BackendConfig.model_config["env_file"] = []
-
-    yield
-
-    BackendConfig.model_config["env_file"] = original_backend_env_file
-
-
-# ========================================
 # 設定フィクスチャ
 # ========================================
 

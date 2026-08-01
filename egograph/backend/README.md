@@ -23,7 +23,7 @@ uv run uvicorn egograph.backend.main:create_app --factory --reload --host 127.0.
 - **Health Check**: http://localhost:8000/health
 - **MCP Endpoint**: http://localhost:8000/mcp
 
-環境変数は `egograph/backend/.env.example` を参照。
+環境変数の一覧は `egograph/backend/.env.example` を参照。Backend は `.env` を自動読み込みしないため、シェル・IDE・systemd・デプロイ基盤からプロセス環境へ設定する。
 
 ## Configuration modes
 
