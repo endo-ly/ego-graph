@@ -103,6 +103,8 @@ CREATE SCHEMA IF NOT EXISTS ops;   -- ingest状態・ログ
 
 **採用理由:** 列指向で圧縮効率が良く、Object Storage と相性が良く、再利用・再計算・移送がしやすい。
 
+**Write / Read 契約:** Pipelines が書き込む Parquet の必須カラムと型は Dataset Catalog の schema 契約（`required_columns` / `column_types`）で定義する。書き込み時（アップロード前）に Parquet バイト列から schema を検証し、契約違反は保存失敗として扱う。Backend は同じ canonical type 正規化で読み取り側の fixture 契約テストを行う。詳細は [Dataset Catalog の Schema 契約](./dataset-catalog.md#schema-契約parquet) を参照。
+
 ### 2.4 Cloudflare R2 — 正本の永続化先
 
 S3 互換の Object Storage。egress 無料で、分析クエリでの大量読み取りがコストゼロ。

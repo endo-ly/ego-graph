@@ -11,6 +11,10 @@ import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
 from dataset_catalog import DatasetDefinition
+from dataset_catalog.validation import (
+    validate_parquet_bytes,
+    validate_required_columns,
+)
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -30,6 +34,16 @@ class StorageConsistencyError(RuntimeError):
 def _normalize_path(path: str) -> str:
     """パスを正規化して末尾に / を付ける。"""
     return path.rstrip("/") + "/"
+
+
+def _validate_partition(year: int, month: int) -> None:
+    """パーティションキーとして妥当な年月かを検証する。
+
+    Raises:
+        ValueError: year が 1..9999 または month が 1..12 の範囲外の場合
+    """
+    if not 1 <= year <= 9999 or not 1 <= month <= 12:
+        raise ValueError("year must be 1..9999 and month must be 1..12")
 
 
 class SpotifyStorage:
@@ -72,14 +86,22 @@ class SpotifyStorage:
         logger.info("Storage initialized for bucket: %s", bucket_name)
 
     def _upload_parquet(
-        self, data: list[dict[str, Any]], key: str, description: str
+        self,
+        data: list[dict[str, Any]],
+        key: str,
+        description: str,
+        dataset: DatasetDefinition,
     ) -> str | None:
         """データをParquet形式でS3にアップロードする共通処理。
+
+        アップロード前に dataset の schema 契約（必須カラム・型）を検証し、
+        違反があれば None を返して保存失敗として扱う。
 
         Args:
             data: 保存するデータ(辞書のリスト)
             key: S3オブジェクトキー
             description: ログ用の説明
+            dataset: schema 契約の基準となる DatasetDefinition
 
         Returns:
             保存されたオブジェクトのキー (失敗時はNone)
@@ -90,8 +112,10 @@ class SpotifyStorage:
 
         try:
             df = pd.DataFrame(data)
+            validate_required_columns(dataset, df.columns)
             buffer = BytesIO()
             df.to_parquet(buffer, index=False, engine="pyarrow")
+            validate_parquet_bytes(dataset, buffer.getvalue())
             buffer.seek(0)
 
             self.s3.put_object(
@@ -102,6 +126,9 @@ class SpotifyStorage:
             )
             logger.info("Saved %s to %s", description, key)
             return key
+        except ValueError:
+            logger.exception("Schema validation failed for %s", description)
+            return None
         except ImportError:
             logger.exception("Pandas or PyArrow is required for Parquet saving")
             return None
@@ -150,44 +177,48 @@ class SpotifyStorage:
         data: list[dict[str, Any]],
         year: int,
         month: int,
-        prefix: str = "spotify/plays",
+        dataset: DatasetDefinition,
     ) -> str | None:
         """データをParquet形式で保存する。
 
-        Path format: events/{prefix}/year={YYYY}/month={MM}/{uuid}.parquet
+        Path format: events/{dataset.path}/year={YYYY}/month={MM}/{uuid}.parquet
 
         Args:
             data: 保存するデータ(辞書のリスト)
             year: パーティション年
             month: パーティション月
-            prefix: イベントカテゴリー
+            dataset: schema 契約と保存パスの基準となる DatasetDefinition
 
         Returns:
             保存されたオブジェクトのキー (失敗時はNone)
+
+        Raises:
+            ValueError: year / month が値域外（year: 1..9999, month: 1..12）
         """
+        _validate_partition(year, month)
         unique_id = str(uuid.uuid4())
         key = (
-            f"{self.events_path}{prefix}/"
+            f"{self.events_path}{dataset.path}/"
             f"year={year}/month={month:02d}/{unique_id}.parquet"
         )
-        return self._upload_parquet(data, key, "Parquet")
+        return self._upload_parquet(data, key, "Parquet", dataset)
 
     def save_master_parquet(
         self,
         data: list[dict[str, Any]],
-        prefix: str,
+        dataset: DatasetDefinition,
         year: int | None = None,
         month: int | None = None,
     ) -> str | None:
         """マスターデータをParquet形式で保存する。
 
         Path format:
-        - master/{prefix}/year={YYYY}/month={MM}/{uuid}.parquet
-        - master/{prefix}/{uuid}.parquet (パーティションなし)
+        - master/{dataset.path}/year={YYYY}/month={MM}/{uuid}.parquet
+        - master/{dataset.path}/{uuid}.parquet (パーティションなし)
 
         Args:
             data: 保存するデータ(辞書のリスト)
-            prefix: マスターデータカテゴリー
+            dataset: schema 契約と保存パスの基準となる DatasetDefinition
             year: パーティション年
             month: パーティション月
 
@@ -196,15 +227,19 @@ class SpotifyStorage:
         """
         unique_id = str(uuid.uuid4())
 
+        if (year is None) != (month is None):
+            raise ValueError("year and month must be specified together")
+
         if year is not None and month is not None:
+            _validate_partition(year, month)
             key = (
-                f"{self.master_path}{prefix}/"
+                f"{self.master_path}{dataset.path}/"
                 f"year={year}/month={month:02d}/{unique_id}.parquet"
             )
         else:
-            key = f"{self.master_path}{prefix}/{unique_id}.parquet"
+            key = f"{self.master_path}{dataset.path}/{unique_id}.parquet"
 
-        return self._upload_parquet(data, key, "master Parquet")
+        return self._upload_parquet(data, key, "master Parquet", dataset)
 
     def get_ingest_state(
         self, key: str = "state/spotify_ingest_state.json"
@@ -279,10 +314,13 @@ class SpotifyStorage:
             month=month,
         )
         try:
+            validate_required_columns(dataset, compacted_df.columns)
+            body = dataframe_to_parquet_bytes(compacted_df)
+            validate_parquet_bytes(dataset, body)
             self.s3.put_object(
                 Bucket=self.bucket_name,
                 Key=key,
-                Body=dataframe_to_parquet_bytes(compacted_df),
+                Body=body,
                 ContentType="application/octet-stream",
             )
         except ClientError:

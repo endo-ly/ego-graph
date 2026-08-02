@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,26 @@ from pipelines.sources.github.storage import (
     GitHubWorklogStorage,
     StorageConsistencyError,
 )
+
+
+def _commit_row(event_id: str, sha: str) -> dict:
+    """schema 契約を満たす github.commits 行。"""
+    return {
+        "commit_event_id": event_id,
+        "repo_full_name": "testowner/testrepo",
+        "sha": sha,
+        "committed_at_utc": datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+    }
+
+
+def _pr_event_row(event_id: str, pr_number: int) -> dict:
+    """schema 契約を満たす github.pull_requests 行。"""
+    return {
+        "pr_event_id": event_id,
+        "repo_full_name": "testowner/testrepo",
+        "pr_number": pr_number,
+        "updated_at_utc": datetime(2026, 1, 1, tzinfo=UTC),
+    }
 
 
 class TestGitHubWorklogStorage(unittest.TestCase):
@@ -109,50 +130,26 @@ class TestGitHubWorklogStorage(unittest.TestCase):
         Path: events/github/commits/year={YYYY}/month={MM}/{uuid}.parquet
         """
         # Arrange: 保存するCommitイベントデータの準備
-        data = [
-            {
-                "commit_event_id": "testowner/testrepo/abc123",
-                "source": "github",
-                "owner": "testowner",
-                "repo": "testrepo",
-                "repo_full_name": "testowner/testrepo",
-                "sha": "abc123",
-                "message": "Test commit",
-                "committed_at_utc": "2024-01-15T10:00:00Z",
-                "changed_files_count": 3,
-                "additions": 10,
-                "deletions": 5,
-            }
-        ]
+        data = [_commit_row("testowner/testrepo/abc123", "abc123")]
 
         # Act: Parquet形式での保存を実行
-        with patch("pipelines.sources.github.storage.pd.DataFrame.to_parquet") as _:
-            key = self.storage.save_commits_parquet(data, year=2024, month=1)
+        key = self.storage.save_commits_parquet(data, year=2024, month=1)
 
-            # Assert: 保存結果を検証
-            self.mock_s3.put_object.assert_called_once()
-            call_args = self.mock_s3.put_object.call_args[1]
-            self.assertEqual(call_args["Bucket"], "test-bucket")
-            self.assertTrue(
-                call_args["Key"].startswith("events/github/commits/year=2024/month=01/")
-            )
-            self.assertTrue(call_args["Key"].endswith(".parquet"))
-            self.assertEqual(call_args["ContentType"], "application/octet-stream")
-            self.assertIsNotNone(key)
+        # Assert: 保存結果を検証
+        self.mock_s3.put_object.assert_called_once()
+        call_args = self.mock_s3.put_object.call_args[1]
+        self.assertEqual(call_args["Bucket"], "test-bucket")
+        self.assertTrue(
+            call_args["Key"].startswith("events/github/commits/year=2024/month=01/")
+        )
+        self.assertTrue(call_args["Key"].endswith(".parquet"))
+        self.assertEqual(call_args["ContentType"], "application/octet-stream")
+        self.assertIsNotNone(key)
 
     def test_save_commits_parquet_deduplication(self):
         """既存Commit IDが重複排除されることを検証する。"""
         # Arrange: 保存するデータ（既存IDを含む）
-        data = [
-            {
-                "commit_event_id": "existing_id",
-                "sha": "abc123",
-            },
-            {
-                "commit_event_id": "new_id",
-                "sha": "def456",
-            },
-        ]
+        data = [_commit_row("existing_id", "abc123"), _commit_row("new_id", "def456")]
 
         # Act: Parquet形式での保存を実行
         with patch.object(
@@ -160,13 +157,11 @@ class TestGitHubWorklogStorage(unittest.TestCase):
             "_load_existing_commit_ids",
             return_value={"existing_id"},
         ):
-            with patch("pipelines.sources.github.storage.pd.DataFrame.to_parquet") as _:
-                key = self.storage.save_commits_parquet(data, year=2024, month=1)
+            key = self.storage.save_commits_parquet(data, year=2024, month=1)
 
-                # Assert: 新規IDのみが保存されることを検証
-                # ※ 実装側でフィルタリングされることを期待
-                self.mock_s3.put_object.assert_called_once()
-                self.assertIsNotNone(key)
+        # Assert: 新規IDのみが保存されることを検証
+        self.mock_s3.put_object.assert_called_once()
+        self.assertIsNotNone(key)
 
     def test_save_commits_parquet_empty_when_all_duplicates(self):
         """全てのCommitが重複している場合、保存がスキップされることを検証する。"""
@@ -190,27 +185,46 @@ class TestGitHubWorklogStorage(unittest.TestCase):
 
     def test_save_commits_parquet_with_stats(self):
         """新規/重複件数の統計が返ることを検証する。"""
-        data = [
-            {"commit_event_id": "existing_id", "sha": "abc123"},
-            {"commit_event_id": "new_id", "sha": "def456"},
-        ]
+        data = [_commit_row("existing_id", "abc123"), _commit_row("new_id", "def456")]
 
         with patch.object(
             self.storage,
             "_load_existing_commit_ids",
             return_value={"existing_id"},
         ):
-            with patch("pipelines.sources.github.storage.pd.DataFrame.to_parquet") as _:
-                stats = self.storage.save_commits_parquet_with_stats(
-                    data,
-                    year=2024,
-                    month=1,
-                )
+            stats = self.storage.save_commits_parquet_with_stats(
+                data,
+                year=2024,
+                month=1,
+            )
 
-                self.assertEqual(stats["fetched"], 2)
-                self.assertEqual(stats["new"], 1)
-                self.assertEqual(stats["duplicates"], 1)
-                self.assertEqual(stats["failed"], 0)
+        self.assertEqual(stats["fetched"], 2)
+        self.assertEqual(stats["new"], 1)
+        self.assertEqual(stats["duplicates"], 1)
+        self.assertEqual(stats["failed"], 0)
+
+    def test_save_commits_parquet_with_stats_on_validation_failure(self):
+        """schema 契約違反時に failed 件数が返り、アップロードされないことを
+        検証する。"""
+        data = [_commit_row("new_id", "def456")]
+        data[0]["committed_at_utc"] = "2024-01-15T10:00:00Z"
+
+        with patch.object(
+            self.storage,
+            "_load_existing_commit_ids",
+            return_value=set(),
+        ):
+            stats = self.storage.save_commits_parquet_with_stats(
+                data,
+                year=2024,
+                month=1,
+            )
+
+        self.assertEqual(stats["fetched"], 1)
+        self.assertEqual(stats["new"], 0)
+        self.assertEqual(stats["duplicates"], 0)
+        self.assertEqual(stats["failed"], 1)
+        self.mock_s3.put_object.assert_not_called()
 
     def test_save_commits_parquet_with_stats_on_failure(self):
         """保存失敗時にfailed件数が返ることを検証する。"""
@@ -235,20 +249,8 @@ class TestGitHubWorklogStorage(unittest.TestCase):
 
     def test_save_pr_events_parquet_with_stats(self):
         data = [
-            {
-                "pr_event_id": "existing_event",
-                "pr_key": "key1",
-                "pr_number": 100,
-                "state": "open",
-                "updated_at_utc": "2026-01-01T00:00:00Z",
-            },
-            {
-                "pr_event_id": "new_event",
-                "pr_key": "key1",
-                "pr_number": 100,
-                "state": "closed",
-                "updated_at_utc": "2026-01-02T00:00:00Z",
-            },
+            _pr_event_row("existing_event", 100),
+            _pr_event_row("new_event", 101),
         ]
 
         with patch.object(
@@ -256,12 +258,11 @@ class TestGitHubWorklogStorage(unittest.TestCase):
             "_load_existing_pr_event_ids",
             return_value={"existing_event"},
         ):
-            with patch("pipelines.sources.github.storage.pd.DataFrame.to_parquet") as _:
-                stats = self.storage.save_pr_events_parquet_with_stats(
-                    data,
-                    year=2026,
-                    month=1,
-                )
+            stats = self.storage.save_pr_events_parquet_with_stats(
+                data,
+                year=2026,
+                month=1,
+            )
 
         self.assertEqual(stats["fetched"], 2)
         self.assertEqual(stats["new"], 1)
@@ -276,13 +277,7 @@ class TestGitHubWorklogStorage(unittest.TestCase):
         )
 
     def test_save_pr_events_parquet_with_stats_when_all_duplicates(self):
-        data = [
-            {
-                "pr_event_id": "existing_event",
-                "pr_key": "key1",
-                "updated_at_utc": "2026-01-01T00:00:00Z",
-            }
-        ]
+        data = [_pr_event_row("existing_event", 100)]
 
         with patch.object(
             self.storage,
@@ -310,36 +305,24 @@ class TestGitHubWorklogStorage(unittest.TestCase):
         data = [
             {
                 "repo_id": 12345,
-                "source": "github",
-                "owner": "testowner",
-                "repo": "testrepo",
                 "repo_full_name": "testowner/testrepo",
-                "description": "Test repository",
-                "is_private": False,
-                "is_fork": False,
-                "archived": False,
-                "primary_language": "Python",
+                "updated_at_utc": datetime(2024, 1, 15, tzinfo=UTC),
             }
         ]
 
         # Act: Repository Masterとして保存を実行
-        with patch("pipelines.sources.github.storage.pd.DataFrame.to_parquet") as _:
-            key = self.storage.save_repo_master(
-                data, owner="testowner", repo="testrepo"
-            )
+        key = self.storage.save_repo_master(data, owner="testowner", repo="testrepo")
 
-            # Assert: 保存結果を検証
-            self.mock_s3.put_object.assert_called_once()
-            call_args = self.mock_s3.put_object.call_args[1]
-            self.assertEqual(call_args["Bucket"], "test-bucket")
-            self.assertTrue(
-                call_args["Key"].startswith(
-                    "master/github/repositories/testowner/testrepo"
-                )
-            )
-            self.assertTrue(call_args["Key"].endswith(".parquet"))
-            self.assertEqual(call_args["ContentType"], "application/octet-stream")
-            self.assertIsNotNone(key)
+        # Assert: 保存結果を検証
+        self.mock_s3.put_object.assert_called_once()
+        call_args = self.mock_s3.put_object.call_args[1]
+        self.assertEqual(call_args["Bucket"], "test-bucket")
+        self.assertTrue(
+            call_args["Key"].startswith("master/github/repositories/testowner/testrepo")
+        )
+        self.assertTrue(call_args["Key"].endswith(".parquet"))
+        self.assertEqual(call_args["ContentType"], "application/octet-stream")
+        self.assertIsNotNone(key)
 
     def test_get_ingest_state_exists(self):
         """インジェスト状態が存在する場合、正しく取得されることを検証する。"""
@@ -525,21 +508,17 @@ class TestGitHubWorklogStorage(unittest.TestCase):
         self.assertEqual(storage_no_slash.master_path, "master/")
 
     def test_compact_month_saves_fixed_key(self):
-        data = [{"commit_event_id": "commit_1", "message": "test"}]
+        data = [_commit_row("commit_1", "abc123")]
 
         with patch(
             "pipelines.sources.github.storage.read_parquet_records_from_prefix",
             return_value=data,
         ):
-            with patch(
-                "pipelines.sources.github.storage.dataframe_to_parquet_bytes",
-                return_value=b"x",
-            ):
-                key = self.storage.compact_month(
-                    dataset=datasets.GITHUB_COMMITS,
-                    year=2024,
-                    month=1,
-                )
+            key = self.storage.compact_month(
+                dataset=datasets.GITHUB_COMMITS,
+                year=2024,
+                month=1,
+            )
 
         call_args = self.mock_s3.put_object.call_args[1]
         self.assertEqual(

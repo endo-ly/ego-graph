@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import duckdb
+from dataset_catalog import datasets
 
 from pipelines.sources.common.config import Config
 from pipelines.sources.common.utils import iso8601_to_unix_ms
@@ -143,7 +144,7 @@ def _enrich_tracks(
             now = datetime.now(timezone.utc)
             result = storage.save_master_parquet(
                 track_rows,
-                prefix="spotify/tracks",
+                datasets.SPOTIFY_TRACKS,
                 year=now.year,
                 month=now.month,
             )
@@ -179,7 +180,7 @@ def _enrich_artists(
             now = datetime.now(timezone.utc)
             result = storage.save_master_parquet(
                 artist_rows,
-                prefix="spotify/artists",
+                datasets.SPOTIFY_ARTISTS,
                 year=now.year,
                 month=now.month,
             )
@@ -317,7 +318,10 @@ def run_pipeline(config: Config) -> None:
     all_saved = True
     for (year, month), partition_events in grouped_events.items():
         result = storage.save_parquet(
-            partition_events, year, month, prefix="spotify/plays"
+            partition_events,
+            year,
+            month,
+            datasets.SPOTIFY_PLAYS,
         )
         if result is None:
             logger.error("Failed to save Parquet for %d-%02d", year, month)

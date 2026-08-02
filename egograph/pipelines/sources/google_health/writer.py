@@ -12,6 +12,10 @@ import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
 from dataset_catalog import DatasetDefinition, datasets
+from dataset_catalog.validation import (
+    validate_parquet_bytes,
+    validate_required_columns,
+)
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -112,7 +116,7 @@ class GoogleHealthWriter:
                 self.s3.put_object(
                     Bucket=self.bucket_name,
                     Key=key,
-                    Body=_parquet_bytes(rows),
+                    Body=_validated_parquet_bytes(dataset, rows),
                     ContentType="application/octet-stream",
                 )
                 saved_keys.append(key)
@@ -170,7 +174,7 @@ class GoogleHealthWriter:
                 self.s3.put_object(
                     Bucket=self.bucket_name,
                     Key=compacted_key,
-                    Body=_parquet_bytes(merged),
+                    Body=_validated_parquet_bytes(dataset, merged),
                     ContentType="application/octet-stream",
                 )
                 compacted_keys.append(compacted_key)
@@ -309,6 +313,18 @@ def _target_months(
 
 def _normalize_path(path: str) -> str:
     return path.rstrip("/") + "/"
+
+
+def _validated_parquet_bytes(
+    dataset: DatasetDefinition,
+    rows: list[dict[str, Any]],
+) -> bytes:
+    """契約検証を通過した rows を parquet bytes に変換する。"""
+    df = pd.DataFrame(rows)
+    validate_required_columns(dataset, df.columns)
+    body = dataframe_to_parquet_bytes(df)
+    validate_parquet_bytes(dataset, body)
+    return body
 
 
 def _parquet_bytes(rows: list[dict[str, Any]]) -> bytes:

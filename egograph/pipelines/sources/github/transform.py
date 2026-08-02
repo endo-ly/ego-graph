@@ -19,6 +19,22 @@ def _generate_pr_key(repo_full_name: str, pr_number: int) -> str:
     return hashlib.sha256(key_string.encode()).hexdigest()
 
 
+def _parse_datetime(value: str | None) -> datetime | None:
+    """GitHub API の ISO 8601 文字列を UTC aware datetime に変換する。
+
+    不正な文字列や naive datetime は None を返し、書き込みを避ける。
+    """
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
 def _generate_pr_event_id(
     repo_full_name: str,
     pr_number: int,
@@ -120,10 +136,10 @@ def transform_pull_request(
         "labels": labels,
         "base_ref": pr.get("base", {}).get("ref"),
         "head_ref": head_info.get("ref"),
-        "created_at_utc": pr.get("created_at"),
-        "updated_at_utc": pr.get("updated_at"),
-        "closed_at_utc": pr.get("closed_at"),
-        "merged_at_utc": merged_at,
+        "created_at_utc": _parse_datetime(pr.get("created_at")),
+        "updated_at_utc": _parse_datetime(pr.get("updated_at")),
+        "closed_at_utc": _parse_datetime(pr.get("closed_at")),
+        "merged_at_utc": _parse_datetime(merged_at),
         "comments_count": pr.get("comments"),
         "review_comments_count": pr.get("review_comments"),
         "reviews_count": pr.get("reviews_count"),
@@ -131,7 +147,7 @@ def transform_pull_request(
         "additions": pr.get("additions"),
         "deletions": pr.get("deletions"),
         "changed_files_count": pr.get("changed_files"),
-        "ingested_at_utc": datetime.now(timezone.utc).isoformat(),
+        "ingested_at_utc": datetime.now(timezone.utc),
     }
 
 
@@ -178,11 +194,11 @@ def transform_commit(
         "repo_full_name": repo_full_name,
         "sha": sha,
         "message": commit_info.get("message"),
-        "committed_at_utc": committed_date,
+        "committed_at_utc": _parse_datetime(committed_date),
         "changed_files_count": changed_files_count,
         "additions": stats.get("additions"),
         "deletions": stats.get("deletions"),
-        "ingested_at_utc": datetime.now(timezone.utc).isoformat(),
+        "ingested_at_utc": datetime.now(timezone.utc),
     }
 
 
@@ -226,12 +242,12 @@ def transform_repository(
         "forks_count": repo.get("forks_count"),
         "open_issues_count": repo.get("open_issues_count"),
         "size_kb": repo.get("size"),
-        "created_at_utc": repo.get("created_at"),
-        "updated_at_utc": repo.get("updated_at"),
-        "pushed_at_utc": repo.get("pushed_at"),
+        "created_at_utc": _parse_datetime(repo.get("created_at")),
+        "updated_at_utc": _parse_datetime(repo.get("updated_at")),
+        "pushed_at_utc": _parse_datetime(repo.get("pushed_at")),
         "repo_summary_text": generate_repo_summary(repo),
         "summary_source": "template",
-        "summary_updated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "summary_updated_at_utc": datetime.now(timezone.utc),
     }
 
 

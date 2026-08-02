@@ -376,7 +376,7 @@ def run_pipeline(config: Config) -> None:
             total_commits += len(commits_transformed)
 
             for commit in commits_transformed:
-                dt = _parse_iso_utc(commit.get("committed_at_utc"))
+                dt = _as_datetime(commit.get("committed_at_utc"))
                 if dt and (max_cursor_candidate is None or dt > max_cursor_candidate):
                     max_cursor_candidate = dt
 
@@ -483,6 +483,26 @@ def run_pipeline(config: Config) -> None:
     logger.info("Pipeline completed successfully!")
 
 
+def _as_datetime(value: Any) -> datetime | None:
+    """datetime / ISO 8601 文字列を UTC aware datetime に変換する。
+
+    不正な文字列・naive datetime は None を返し、非 UTC 書き込みを避ける。
+    """
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return None
+        return value.astimezone(timezone.utc)
+    if isinstance(value, str) and value:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return None
+        return parsed.astimezone(timezone.utc)
+    return None
+
+
 def _group_commits_by_month(
     commits: list[dict[str, Any]],
 ) -> dict[tuple[int, int], list[dict[str, Any]]]:
@@ -500,7 +520,9 @@ def _group_commits_by_month(
         committed_date = commit.get("committed_at_utc")
         if committed_date:
             try:
-                dt = datetime.fromisoformat(committed_date.replace("Z", "+00:00"))
+                dt = _as_datetime(committed_date)
+                if dt is None:
+                    raise ValueError(f"invalid date: {committed_date}")
                 grouped[(dt.year, dt.month)].append(commit)
             except (ValueError, AttributeError) as e:
                 logger.warning("Failed to parse date %s: %s", committed_date, e)
@@ -523,7 +545,9 @@ def _group_pr_events_by_month(
         updated_date = pr_event.get("updated_at_utc")
         if updated_date:
             try:
-                dt = datetime.fromisoformat(updated_date.replace("Z", "+00:00"))
+                dt = _as_datetime(updated_date)
+                if dt is None:
+                    raise ValueError(f"invalid date: {updated_date}")
                 grouped[(dt.year, dt.month)].append(pr_event)
             except (ValueError, AttributeError) as e:
                 pr_key = pr_event.get("pr_key", "unknown")

@@ -4,6 +4,7 @@ MemoryS3 上で ingest 済みのデータに対する compaction (重複排除) 
 """
 
 import io
+from datetime import UTC, datetime
 
 import pandas as pd
 import pyarrow as pa
@@ -63,7 +64,7 @@ def _seed_duplicate_commits(memory_s3) -> None:
             "repo_full_name": "test-user/test-repo",
             "sha": "abc123",
             "message": "Test commit",
-            "committed_at_utc": "2026-04-01T00:00:00Z",
+            "committed_at_utc": datetime(2026, 4, 1, tzinfo=UTC),
             "changed_files_count": 1,
             "additions": 10,
             "deletions": 5,

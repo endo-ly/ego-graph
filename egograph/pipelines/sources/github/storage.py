@@ -10,7 +10,11 @@ from typing import Any
 import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
-from dataset_catalog import DatasetDefinition
+from dataset_catalog import DatasetDefinition, datasets
+from dataset_catalog.validation import (
+    validate_parquet_bytes,
+    validate_required_columns,
+)
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -74,14 +78,22 @@ class GitHubWorklogStorage:
         logger.info("Storage initialized for bucket: %s", bucket_name)
 
     def _upload_parquet(
-        self, data: list[dict[str, Any]], key: str, description: str
+        self,
+        data: list[dict[str, Any]],
+        key: str,
+        description: str,
+        dataset: DatasetDefinition,
     ) -> str | None:
         """データをParquet形式でS3にアップロードする共通処理。
+
+        アップロード前に dataset の schema 契約（必須カラム・型）を検証し、
+        違反があれば保存失敗（None）として扱う。
 
         Args:
             data: 保存するデータ(辞書のリスト)
             key: S3オブジェクトキー
             description: ログ用の説明
+            dataset: schema 契約の基準となる DatasetDefinition
 
         Returns:
             保存されたオブジェクトのキー (失敗時はNone)
@@ -92,8 +104,10 @@ class GitHubWorklogStorage:
 
         try:
             df = pd.DataFrame(data)
+            validate_required_columns(dataset, df.columns)
             buffer = BytesIO()
             df.to_parquet(buffer, index=False, engine="pyarrow")
+            validate_parquet_bytes(dataset, buffer.getvalue())
             buffer.seek(0)
 
             self.s3.put_object(
@@ -104,6 +118,9 @@ class GitHubWorklogStorage:
             )
             logger.info("Saved %s to %s", description, key)
             return key
+        except ValueError:
+            logger.exception("Schema validation failed for %s", description)
+            return None
         except ImportError:
             logger.exception("Pandas or PyArrow is required for Parquet saving")
             return None
@@ -140,8 +157,7 @@ class GitHubWorklogStorage:
                             existing_ids.update(df["commit_event_id"].tolist())
                     except Exception as exc:
                         raise StorageConsistencyError(
-                            "Failed to read existing commits parquet: "
-                            f"{obj['Key']}"
+                            f"Failed to read existing commits parquet: {obj['Key']}"
                         ) from exc
 
         except ClientError as e:
@@ -331,7 +347,9 @@ class GitHubWorklogStorage:
             f"year={year}/month={month:02d}/{unique_id}.parquet"
         )
 
-        return self._upload_parquet(new_commits, key, "commits Parquet")
+        return self._upload_parquet(
+            new_commits, key, "commits Parquet", datasets.GITHUB_COMMITS
+        )
 
     def save_commits_parquet_with_stats(
         self,
@@ -361,7 +379,9 @@ class GitHubWorklogStorage:
             f"{self.events_path}github/commits/"
             f"year={year}/month={month:02d}/{unique_id}.parquet"
         )
-        saved = self._upload_parquet(new_commits, key, "commits Parquet")
+        saved = self._upload_parquet(
+            new_commits, key, "commits Parquet", datasets.GITHUB_COMMITS
+        )
         if saved is None:
             return {
                 "fetched": len(data),
@@ -404,7 +424,12 @@ class GitHubWorklogStorage:
             f"{self.events_path}github/pull_requests/"
             f"year={year}/month={month:02d}/{unique_id}.parquet"
         )
-        saved = self._upload_parquet(new_events, key, "pull request events Parquet")
+        saved = self._upload_parquet(
+            new_events,
+            key,
+            "pull request events Parquet",
+            datasets.GITHUB_PULL_REQUESTS,
+        )
         if saved is None:
             return {
                 "fetched": len(data),
@@ -444,7 +469,9 @@ class GitHubWorklogStorage:
 
         key = f"{self.master_path}github/repositories/{owner}/{repo}.parquet"
 
-        return self._upload_parquet(data, key, "repository master Parquet")
+        return self._upload_parquet(
+            data, key, "repository master Parquet", datasets.GITHUB_REPOSITORIES
+        )
 
     def get_ingest_state(self, key: str = DEFAULT_STATE_KEY) -> dict[str, Any] | None:
         """インジェスト状態を取得する。
@@ -517,10 +544,13 @@ class GitHubWorklogStorage:
             month=month,
         )
         try:
+            validate_required_columns(dataset, compacted_df.columns)
+            body = dataframe_to_parquet_bytes(compacted_df)
+            validate_parquet_bytes(dataset, body)
             self.s3.put_object(
                 Bucket=self.bucket_name,
                 Key=key,
-                Body=dataframe_to_parquet_bytes(compacted_df),
+                Body=body,
                 ContentType="application/octet-stream",
             )
         except ClientError:

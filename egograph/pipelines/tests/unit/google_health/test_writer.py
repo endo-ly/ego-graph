@@ -6,6 +6,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import pytest
 from botocore.exceptions import ClientError
 from pipelines.sources.google_health.writer import GoogleHealthWriter
 
@@ -46,6 +47,32 @@ def _put_parquet(memory_s3, key, rows):
     buffer = BytesIO()
     pd.DataFrame(rows).to_parquet(buffer, index=False)
     memory_s3.objects[key] = buffer.getvalue()
+
+
+def _sample_row(**overrides) -> dict:
+    """schema 契約を満たす google_health.samples 行。"""
+    row = {
+        "connection_id": "google-health-primary",
+        "data_type": "heart-rate",
+        "measured_at_utc": datetime(2026, 6, 1, tzinfo=UTC),
+        "value": 75.0,
+    }
+    row.update(overrides)
+    return row
+
+
+def _session_row(**overrides) -> dict:
+    """schema 契約を満たす google_health.sessions 行。"""
+    row = {
+        "connection_id": "google-health-primary",
+        "data_type": "sleep",
+        "session_id": "session-1",
+        "started_at_utc": datetime(2026, 5, 31, 23, tzinfo=UTC),
+        "ended_at_utc": datetime(2026, 6, 1, 7, tzinfo=UTC),
+        "duration_seconds": 28800,
+    }
+    row.update(overrides)
+    return row
 
 
 def test_raw_key_contains_required_lineage_fields():
@@ -252,13 +279,10 @@ def test_sleep_uses_end_date_for_range_and_start_date_for_partition():
         memory_s3,
         event_key,
         [
-            {
-                "connection_id": "google-health-primary",
-                "data_type": "sleep",
-                "started_at_utc": datetime(2026, 5, 31, 23, tzinfo=UTC),
-                "ended_at_utc": datetime(2026, 6, 1, 7, tzinfo=UTC),
-                "duration_seconds": 28800,
-            }
+            _session_row(
+                started_at_utc=datetime(2026, 5, 31, 23, tzinfo=UTC),
+                ended_at_utc=datetime(2026, 6, 1, 7, tzinfo=UTC),
+            )
         ],
     )
 
@@ -275,3 +299,43 @@ def test_sleep_uses_end_date_for_range_and_start_date_for_partition():
     rows = pd.read_parquet(BytesIO(memory_s3.objects[compacted_key]))
     assert rows.iloc[0]["duration_seconds"] == 28800
     assert event_key in memory_s3.objects
+
+
+def test_save_events_raises_without_upload_on_validation_failure():
+    """契約違反イベントは検証エラーとなりアップロードされない。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+
+    # Act / Assert
+    with pytest.raises(ValueError, match="invalid_schema"):
+        writer.save_events(
+            run_id="run-1",
+            records={"samples": [_sample_row(measured_at_utc="2026-06-01T00:00:00Z")]},
+        )
+    assert not any("run-1.parquet" in key for key in memory_s3.objects)
+
+
+def test_compact_range_raises_without_upload_on_validation_failure():
+    """契約違反のマージ結果は検証エラーとなりcompactedを上書きしない。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    compacted_key = (
+        "compacted/events/google_health/samples/year=2026/month=06/data.parquet"
+    )
+    event_key = "events/google_health/samples/year=2026/month=06/run-1.parquet"
+    _put_parquet(memory_s3, compacted_key, [_sample_row(value=70.0)])
+    _put_parquet(memory_s3, event_key, [_sample_row(value="invalid")])
+
+    # Act / Assert
+    with pytest.raises(ValueError, match="invalid_schema"):
+        writer.compact_range(
+            connection_id="google-health-primary",
+            selected_data_types=("heart-rate",),
+            date_from=date(2026, 6, 1),
+            date_to=date(2026, 6, 2),
+            run_id="run-1",
+        )
+    rows = pd.read_parquet(BytesIO(memory_s3.objects[compacted_key]))
+    assert rows.iloc[0]["value"] == 70.0

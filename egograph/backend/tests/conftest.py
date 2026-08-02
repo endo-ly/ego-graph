@@ -85,6 +85,13 @@ def duckdb_with_sample_data(duckdb_conn, tmp_path):
     # サンプルデータ作成
     sample_data = pd.DataFrame(
         {
+            "play_id": [
+                "play_1",
+                "play_2",
+                "play_3",
+                "play_4",
+                "play_5",
+            ],
             "played_at_utc": pd.to_datetime(
                 [
                     "2024-01-01 10:00:00",

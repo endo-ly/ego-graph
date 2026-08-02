@@ -12,7 +12,11 @@ import boto3
 import pandas as pd
 import pyarrow.parquet as pq
 from botocore.exceptions import ClientError
-from dataset_catalog import datasets
+from dataset_catalog import DatasetDefinition, datasets
+from dataset_catalog.validation import (
+    validate_parquet_bytes,
+    validate_required_columns,
+)
 
 from pipelines.sources.common.compaction import (
     COMPACTED_ROOT,
@@ -86,10 +90,13 @@ class YouTubeStorage:
             month=month,
         )
         try:
+            validate_required_columns(dataset, compacted_df.columns)
+            body = dataframe_to_parquet_bytes(compacted_df)
+            validate_parquet_bytes(dataset, body)
             self.s3.put_object(
                 Bucket=self.bucket_name,
                 Key=key,
-                Body=dataframe_to_parquet_bytes(compacted_df),
+                Body=body,
                 ContentType="application/octet-stream",
             )
         except ClientError:
@@ -163,12 +170,10 @@ class YouTubeStorage:
         ]
         rows: list[dict[str, Any]] = []
         for year, month in target_months:
-            key = (
-                datasets.BROWSER_HISTORY_PAGE_VIEWS.compacted_partition_key(
-                    self.compacted_path,
-                    year=year,
-                    month=month,
-                )
+            key = datasets.BROWSER_HISTORY_PAGE_VIEWS.compacted_partition_key(
+                self.compacted_path,
+                year=year,
+                month=month,
             )
             try:
                 response = self.s3.get_object(Bucket=self.bucket_name, Key=key)
@@ -205,7 +210,7 @@ class YouTubeStorage:
             month=month,
         )
         key = f"{prefix}sync_id={sync_id}.parquet"
-        return self._save_dataframe_key(rows, key)
+        return self._save_dataframe_key(rows, key, datasets.YOUTUBE_WATCH_EVENTS)
 
     def build_video_master_key(self) -> str:
         """video master の固定保存キーを返す。"""
@@ -234,6 +239,7 @@ class YouTubeStorage:
             rows=rows,
             id_key="video_id",
             key=self.build_video_master_key(),
+            dataset=datasets.YOUTUBE_VIDEOS,
         )
 
     def save_channel_master(
@@ -247,6 +253,7 @@ class YouTubeStorage:
             rows=rows,
             id_key="channel_id",
             key=self.build_channel_master_key(),
+            dataset=datasets.YOUTUBE_CHANNELS,
         )
 
     def _load_master_rows(self, key: str) -> list[dict[str, Any]]:
@@ -285,8 +292,13 @@ class YouTubeStorage:
                 merged[row_id] = row
         return [merged[row_id] for row_id in sorted(merged)]
 
-    def _save_dataframe_key(self, rows: list[dict[str, Any]], key: str) -> str | None:
-        return self._save_dataframe_key_with_condition(rows, key)
+    def _save_dataframe_key(
+        self,
+        rows: list[dict[str, Any]],
+        key: str,
+        dataset: DatasetDefinition,
+    ) -> str | None:
+        return self._save_dataframe_key_with_condition(rows, key, dataset)
 
     def _save_master_snapshot_with_retry(
         self,
@@ -294,6 +306,7 @@ class YouTubeStorage:
         rows: list[dict[str, Any]],
         id_key: str,
         key: str,
+        dataset: DatasetDefinition,
     ) -> str | None:
         for attempt in range(MAX_MASTER_SAVE_RETRIES):
             existing_rows, etag = self._load_master_rows_with_etag(key)
@@ -306,6 +319,7 @@ class YouTubeStorage:
                 return self._save_dataframe_key_with_condition(
                     merged_rows,
                     key,
+                    dataset,
                     if_match=etag if etag else None,
                     if_none_match="*" if etag is None else None,
                     reraise=True,
@@ -354,14 +368,18 @@ class YouTubeStorage:
         self,
         rows: list[dict[str, Any]],
         key: str,
+        dataset: DatasetDefinition,
         *,
         if_match: str | None = None,
         if_none_match: str | None = None,
         reraise: bool = False,
     ) -> str | None:
         try:
+            df = pd.DataFrame(rows)
+            validate_required_columns(dataset, df.columns)
             buffer = BytesIO()
-            pd.DataFrame(rows).to_parquet(buffer, index=False, engine="pyarrow")
+            df.to_parquet(buffer, index=False, engine="pyarrow")
+            validate_parquet_bytes(dataset, buffer.getvalue())
             buffer.seek(0)
             put_kwargs: dict[str, Any] = {}
             if if_match is not None:
@@ -375,6 +393,13 @@ class YouTubeStorage:
                 ContentType="application/octet-stream",
                 **put_kwargs,
             )
+        except ValueError:
+            logger.exception(
+                "Schema validation failed for youtube parquet: key=%s", key
+            )
+            if reraise:
+                raise
+            return None
         except Exception:
             logger.exception("Failed to save youtube parquet: key=%s", key)
             if reraise:

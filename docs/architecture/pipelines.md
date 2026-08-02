@@ -142,6 +142,23 @@ flowchart TB
     WR -->|1:1| WL
 ```
 
+#### 2.2 SQLite Migration（`PRAGMA user_version`）
+
+SQLite schema の変更は `egograph/pipelines/infrastructure/db/migrations.py` で一元管理する。
+
+- `MIGRATIONS` に migration 関数を番号順で登録し、`PRAGMA user_version` を schema version として追跡する
+- 各 migration は 1 トランザクションで実行し、途中失敗時は rollback して `user_version` も進めない
+- `PipelineService.create()` は `initialize_schema(conn)` で未適用の migration を順に適用する
+
+**version 1（基準 schema）:** 現行のデプロイ済み schema を基準として登録済み。
+
+- 空DB: 全テーブルを `CREATE TABLE IF NOT EXISTS` で作成し version 1 を記録する
+- `user_version=0` の既存DB: `google_health_sync_cursors` の Phase 2 列（`status` / `range_start` / `range_end` / `last_run_id` / `record_count` / `last_error_message`）が不足している場合のみ `ALTER TABLE` で追加し、version 1 へ昇格する。既に存在する列には再実行しない
+
+以後の schema 変更は個別の列存在チェックを追加せず、`MIGRATIONS` へ番号付き migration を追記する。
+
+`get_schema_version(conn)` で現在 version を確認でき、テストは `egograph/pipelines/tests/unit/test_migrations.py` が空DB・Phase 1 既存DB・Phase 2 適用済みDB・rollback の各ケースを検証する。
+
 ---
 
 ### 3. Dispatch Layer
