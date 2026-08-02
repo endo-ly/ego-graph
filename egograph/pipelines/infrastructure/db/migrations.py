@@ -245,15 +245,28 @@ def run_migrations(conn: sqlite3.Connection) -> None:
 
 
 def _apply_migration(conn: sqlite3.Connection, version: int) -> None:
-    """1 つの migration を排他トランザクションで適用する。"""
+    """1 つの migration を排他トランザクションで適用する。
+
+    並行実行時は、先行プロセスが適用済みの version を読み取った場合は
+    スキップして成功として扱う。
+    """
     if not isinstance(version, int):
         raise TypeError(f"version must be an int, got {type(version).__name__}")
     conn.execute("BEGIN IMMEDIATE")
     try:
-        if get_schema_version(conn) != version - 1:
+        actual = get_schema_version(conn)
+        if actual > len(MIGRATIONS):
+            raise RuntimeError(
+                f"schema version {actual} is newer than supported "
+                f"(latest={len(MIGRATIONS)})"
+            )
+        if actual >= version:
+            conn.commit()
+            return
+        if actual != version - 1:
             raise RuntimeError(
                 f"schema version changed during migration: expected {version - 1}, "
-                f"got {get_schema_version(conn)}"
+                f"got {actual}"
             )
         MIGRATIONS[version - 1](conn)
         conn.execute(f"PRAGMA user_version = {version}")

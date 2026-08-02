@@ -179,3 +179,17 @@ def test_run_migrations_rejects_newer_schema_version(conn):
         migrations.run_migrations(conn)
 
     assert migrations.get_schema_version(conn) == 99
+
+
+def test_apply_migration_skips_versions_applied_by_other_process(conn):
+    """並行実行で先行プロセスが適用済みの version はスキップして成功する。"""
+    # Arrange: 後続プロセスが current=0 を読んだ後に先行プロセスが
+    # version 1 を適用した状況を再現する
+    conn.execute("PRAGMA user_version = 1")
+
+    # Act
+    migrations._apply_migration(conn, 1)
+
+    # Assert
+    assert migrations.get_schema_version(conn) == 1
+    assert not _table_names(conn)
