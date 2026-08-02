@@ -78,6 +78,16 @@ class DatasetDefinition:
                 f"{self.dataset_id} "
                 f"<{', '.join(sorted(missing_column_types))}>"
             )
+        for role, column in (
+            ("time_column", self.time_column),
+            ("dedupe_key", self.dedupe_key),
+            ("sort_key", self.sort_key),
+        ):
+            if column is not None and column not in self.required_columns:
+                raise ValueError(
+                    f"invalid_schema: {role}_not_required: "
+                    f"{self.dataset_id} <{column}>"
+                )
         for column in self.column_types:
             if column not in self.required_columns:
                 raise ValueError(
@@ -283,12 +293,19 @@ datasets = SimpleNamespace(
         # started_at_utc を使うと重複行間で同値になり決定性が失われる。
         # ingested_at_utc で「最新 run のレコード」を確定勝者とする。
         sort_key="ingested_at_utc",
-        required_columns=("page_view_id", "started_at_utc", "url", "source_device"),
+        required_columns=(
+            "page_view_id",
+            "started_at_utc",
+            "url",
+            "source_device",
+            "ingested_at_utc",
+        ),
         column_types={
             "page_view_id": "string",
             "started_at_utc": "timestamp",
             "url": "string",
             "source_device": "string",
+            "ingested_at_utc": "timestamp",
         },
     ),
     YOUTUBE_WATCH_EVENTS=DatasetDefinition(

@@ -246,6 +246,8 @@ def run_migrations(conn: sqlite3.Connection) -> None:
 
 def _apply_migration(conn: sqlite3.Connection, version: int) -> None:
     """1 つの migration を排他トランザクションで適用する。"""
+    if not isinstance(version, int):
+        raise TypeError(f"version must be an int, got {type(version).__name__}")
     conn.execute("BEGIN IMMEDIATE")
     try:
         if get_schema_version(conn) != version - 1:

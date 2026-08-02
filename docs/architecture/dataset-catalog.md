@@ -15,7 +15,9 @@ EgoGraph の中核境界は「Pipelines が R2 に Parquet を生成し、Backen
 ```text
 egograph/dataset_catalog/
 ├── __init__.py
-└── catalog.py
+├── catalog.py          # DatasetDefinition / 定義レジストリ
+├── canonical.py        # canonical type 変換・型差分判定
+└── validation.py       # 保存前の schema 検証
 ```
 
 Python workspace では `backend` と `pipelines` の両方から `dataset_catalog` として import する。

@@ -70,9 +70,7 @@ class TestSpotifyStorage(unittest.TestCase):
         call_args = self.mock_s3.put_object.call_args[1]
         self.assertEqual(call_args["Bucket"], "test-bucket")
         self.assertTrue(
-            call_args["Key"].startswith(
-                "events/spotify/plays/year=2023/month=10/"
-            )
+            call_args["Key"].startswith("events/spotify/plays/year=2023/month=10/")
         )
         self.assertTrue(call_args["Key"].endswith(".parquet"))
         self.assertEqual(call_args["ContentType"], "application/octet-stream")
@@ -227,6 +225,28 @@ class TestSpotifyStorage(unittest.TestCase):
         self.assertTrue(call_args["Key"].endswith(".parquet"))
         self.assertEqual(call_args["ContentType"], "application/octet-stream")
         self.assertIsNotNone(key)
+
+    def test_save_master_parquet_rejects_partial_partition(self):
+        # Arrange: 保存するデータの準備
+        data = [
+            {
+                "track_id": "t1",
+                "name": "Song A",
+                "updated_at": datetime(2024, 1, 1, tzinfo=UTC),
+            }
+        ]
+
+        # Act / Assert: year のみ指定は拒否される
+        with self.assertRaisesRegex(
+            ValueError, "year and month must be specified together"
+        ):
+            self.storage.save_master_parquet(
+                data,
+                dataset=datasets.SPOTIFY_TRACKS,
+                year=2024,
+            )
+
+        self.mock_s3.put_object.assert_not_called()
 
     def test_compact_month_for_events_saves_fixed_key(self):
         data = [_play_row()]

@@ -1,7 +1,7 @@
 """Parquet の canonical type 変換ヘルパー。
 
-Pipelines（pyarrow で出力検証）と Backend（DuckDB で fixture 検証）が
-同じ型契約を参照できるよう、canonical type 文字列と各エンジンの型名を
+Pipelines は pyarrow で出力を検証し、Backend は DuckDB で fixture を検証する。
+両者が同じ型契約を参照できるよう、canonical type 文字列と各エンジンの型名を
 正規化する関数を提供する。
 """
 

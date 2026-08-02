@@ -85,7 +85,7 @@ class SpotifyStorage:
         """データをParquet形式でS3にアップロードする共通処理。
 
         アップロード前に dataset の schema 契約（必須カラム・型）を検証し、
-        違反があれば保存失敗（None）として扱う。
+        違反があれば None を返して保存失敗として扱う。
 
         Args:
             data: 保存するデータ(辞書のリスト)
@@ -212,6 +212,9 @@ class SpotifyStorage:
             保存されたオブジェクトのキー (失敗時はNone)
         """
         unique_id = str(uuid.uuid4())
+
+        if (year is None) != (month is None):
+            raise ValueError("year and month must be specified together")
 
         if year is not None and month is not None:
             key = (

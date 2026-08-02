@@ -142,7 +142,9 @@ def test_duplicate_dataset_id_fails_fast():
         column_types={"id": "string"},
     )
 
-    with pytest.raises(ValueError, match="duplicate_dataset_id: duplicate.dataset"):
+    with pytest.raises(
+        ValueError, match=r"duplicate_dataset_id: duplicate\.dataset"
+    ):
         _build_datasets_by_id((duplicate_a, duplicate_b))
 
 
@@ -198,6 +200,13 @@ def test_required_column_without_type_raises():
     )
     with pytest.raises(ValueError, match=pattern):
         _contract_definition(column_types={"id": "string"})
+
+
+def test_operational_key_missing_from_required_columns_raises():
+    """sort_key 等の操作キーが required_columns に無い定義は拒否する。"""
+    pattern = r"invalid_schema: sort_key_not_required: test.contract <winner_at>"
+    with pytest.raises(ValueError, match=pattern):
+        _contract_definition(sort_key="winner_at")
 
 
 def test_all_datasets_have_schema_contracts():

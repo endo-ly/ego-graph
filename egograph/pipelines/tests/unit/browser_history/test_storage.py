@@ -15,6 +15,7 @@ def _page_view_row() -> dict:
         "started_at_utc": datetime(2026, 3, 22, 8, 31, 12, tzinfo=UTC),
         "url": "https://example.com",
         "source_device": "home pc",
+        "ingested_at_utc": datetime(2026, 3, 22, 12, 0, 0, tzinfo=UTC),
     }
 
 
@@ -117,12 +118,15 @@ class TestBrowserHistoryStorage:
         assert json.loads(call_args["Body"]) == {"sync_id": "abc"}
 
     def test_compact_month_saves_fixed_compacted_key(self):
-        with patch(
-            "pipelines.sources.browser_history.storage.read_parquet_records_from_prefix",
-            return_value=[_page_view_row()],
-        ), patch(
-            "pipelines.sources.browser_history.storage.compact_records",
-            return_value=pd.DataFrame([_page_view_row()]),
+        with (
+            patch(
+                "pipelines.sources.browser_history.storage.read_parquet_records_from_prefix",
+                return_value=[_page_view_row()],
+            ),
+            patch(
+                "pipelines.sources.browser_history.storage.compact_records",
+                return_value=pd.DataFrame([_page_view_row()]),
+            ),
         ):
             key = self.storage.compact_month(year=2026, month=3)
 
@@ -143,11 +147,15 @@ class TestBrowserHistoryStorage:
     def test_compact_month_raises_when_compacted_parquet_save_fails(self):
         self.mock_s3.put_object.side_effect = RuntimeError("r2 down")
 
-        with patch(
-            "pipelines.sources.browser_history.storage.read_parquet_records_from_prefix",
-            return_value=[_page_view_row()],
-        ), patch(
-            "pipelines.sources.browser_history.storage.compact_records",
-            return_value=pd.DataFrame([_page_view_row()]),
-        ), pytest.raises(RuntimeError, match="r2 down"):
+        with (
+            patch(
+                "pipelines.sources.browser_history.storage.read_parquet_records_from_prefix",
+                return_value=[_page_view_row()],
+            ),
+            patch(
+                "pipelines.sources.browser_history.storage.compact_records",
+                return_value=pd.DataFrame([_page_view_row()]),
+            ),
+            pytest.raises(RuntimeError, match="r2 down"),
+        ):
             self.storage.compact_month(year=2026, month=3)

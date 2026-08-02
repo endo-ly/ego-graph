@@ -109,7 +109,7 @@ class BrowserHistoryStorage:
         """events parquet を保存する。
 
         アップロード前に dataset の schema 契約（必須カラム・型）を検証し、
-        違反があれば保存失敗（None）として扱う。
+        違反があれば None を返して保存失敗として扱う。
         """
         if not rows:
             return None
