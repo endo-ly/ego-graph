@@ -399,6 +399,8 @@ class YouTubeStorage:
             logger.exception(
                 "Schema validation failed for youtube parquet: key=%s", key
             )
+            if reraise:
+                raise
             return None
         except Exception:
             logger.exception("Failed to save youtube parquet: key=%s", key)

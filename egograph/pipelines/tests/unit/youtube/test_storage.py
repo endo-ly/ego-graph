@@ -3,7 +3,9 @@
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
+import pytest
 from botocore.exceptions import ClientError
+from dataset_catalog import datasets
 from pipelines.sources.youtube.storage import YouTubeStorage
 
 
@@ -167,4 +169,24 @@ def test_save_watch_events_returns_none_without_upload_on_validation_failure(
     )
 
     assert result is None
+    mock_s3.put_object.assert_not_called()
+
+
+def test_save_dataframe_key_with_condition_reraises_validation_error(
+    monkeypatch,
+):
+    """master snapshot パス(reraise=True)は検証エラーを再送出する。"""
+    storage = _storage()
+    mock_s3 = MagicMock()
+    monkeypatch.setattr(storage, "s3", mock_s3)
+    invalid_row = _watch_event_row()
+    del invalid_row["video_id"]
+
+    with pytest.raises(ValueError, match="invalid_schema"):
+        storage._save_dataframe_key_with_condition(
+            [invalid_row],
+            "master/youtube/videos/data.parquet",
+            datasets.YOUTUBE_VIDEOS,
+            reraise=True,
+        )
     mock_s3.put_object.assert_not_called()
