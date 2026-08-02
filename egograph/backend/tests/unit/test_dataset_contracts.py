@@ -113,11 +113,15 @@ def test_fixture_parquet_supports_representative_query(
     # Arrange
     parquet_path = _fixture_parquet_path(request, fixture_name, path_attr)
     conn = request.getfixturevalue(fixture_name)
+    columns = ", ".join(f'"{column}"' for column in dataset.required_columns)
+    query = f"SELECT {columns} FROM read_parquet(?) LIMIT 1"
 
-    # Act / Assert
-    assert conn.execute(
+    # Act
+    count = conn.execute(
         "SELECT count(*) FROM read_parquet(?)", (str(parquet_path),)
-    ).fetchone()[0] > 0
-    conn.execute(
-        "SELECT * FROM read_parquet(?) LIMIT 1", (str(parquet_path),)
-    ).fetchall()
+    ).fetchone()[0]
+    rows = conn.execute(query, (str(parquet_path),)).fetchall()
+
+    # Assert
+    assert count > 0
+    assert len(rows) == 1
