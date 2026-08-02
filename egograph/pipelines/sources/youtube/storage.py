@@ -170,12 +170,10 @@ class YouTubeStorage:
         ]
         rows: list[dict[str, Any]] = []
         for year, month in target_months:
-            key = (
-                datasets.BROWSER_HISTORY_PAGE_VIEWS.compacted_partition_key(
-                    self.compacted_path,
-                    year=year,
-                    month=month,
-                )
+            key = datasets.BROWSER_HISTORY_PAGE_VIEWS.compacted_partition_key(
+                self.compacted_path,
+                year=year,
+                month=month,
             )
             try:
                 response = self.s3.get_object(Bucket=self.bucket_name, Key=key)

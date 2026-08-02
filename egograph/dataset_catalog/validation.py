@@ -71,8 +71,7 @@ def validate_parquet_bytes(definition: DatasetDefinition, data: bytes) -> None:
     for column, expected in definition.column_types.items():
         if column not in schema.names:
             raise ValueError(
-                f"invalid_schema: missing_columns: {definition.dataset_id} "
-                f"<{column}>"
+                f"invalid_schema: missing_columns: {definition.dataset_id} <{column}>"
             )
         arrow_type = schema.field(column).type
         actual = arrow_type_to_canonical(arrow_type)
