@@ -36,6 +36,16 @@ def _normalize_path(path: str) -> str:
     return path.rstrip("/") + "/"
 
 
+def _validate_partition(year: int, month: int) -> None:
+    """パーティションキーとして妥当な年月かを検証する。
+
+    Raises:
+        ValueError: year が 1..9999 または month が 1..12 の範囲外の場合
+    """
+    if not 1 <= year <= 9999 or not 1 <= month <= 12:
+        raise ValueError("year must be 1..9999 and month must be 1..12")
+
+
 class SpotifyStorage:
     """Spotifyデータの保存・永続化を管理するクラス。"""
 
@@ -181,7 +191,11 @@ class SpotifyStorage:
 
         Returns:
             保存されたオブジェクトのキー (失敗時はNone)
+
+        Raises:
+            ValueError: year / month が値域外（year: 1..9999, month: 1..12）
         """
+        _validate_partition(year, month)
         unique_id = str(uuid.uuid4())
         key = (
             f"{self.events_path}{dataset.path}/"
@@ -217,6 +231,7 @@ class SpotifyStorage:
             raise ValueError("year and month must be specified together")
 
         if year is not None and month is not None:
+            _validate_partition(year, month)
             key = (
                 f"{self.master_path}{dataset.path}/"
                 f"year={year}/month={month:02d}/{unique_id}.parquet"

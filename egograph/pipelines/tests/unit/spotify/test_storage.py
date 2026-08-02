@@ -248,6 +248,23 @@ class TestSpotifyStorage(unittest.TestCase):
 
         self.mock_s3.put_object.assert_not_called()
 
+    def test_save_parquet_rejects_out_of_range_partition(self):
+        # Arrange: 保存するデータの準備
+        data = [_play_row()]
+
+        # Act / Assert: 不正な年月は拒否される
+        with self.assertRaisesRegex(
+            ValueError, "year must be 1..9999 and month must be 1..12"
+        ):
+            self.storage.save_parquet(
+                data,
+                year=2024,
+                month=13,
+                dataset=datasets.SPOTIFY_PLAYS,
+            )
+
+        self.mock_s3.put_object.assert_not_called()
+
     def test_compact_month_for_events_saves_fixed_key(self):
         data = [_play_row()]
 
