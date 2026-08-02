@@ -181,15 +181,24 @@ def test_run_migrations_rejects_newer_schema_version(conn):
     assert migrations.get_schema_version(conn) == 99
 
 
-def test_apply_migration_skips_versions_applied_by_other_process(conn):
+def test_apply_migration_skips_version_applied_concurrently(tmp_path):
     """並行実行で先行プロセスが適用済みの version はスキップして成功する。"""
-    # Arrange: 後続プロセスが current=0 を読んだ後に先行プロセスが
-    # version 1 を適用した状況を再現する
-    conn.execute("PRAGMA user_version = 1")
+    # Arrange: 共有ファイルDBで2接続を開き、後続側は current=0 を読んだ状態にする
+    db_path = tmp_path / "parallel.sqlite"
+    first = sqlite3.connect(db_path)
+    second = sqlite3.connect(db_path)
+    try:
+        assert migrations.get_schema_version(second) == 0
 
-    # Act
-    migrations._apply_migration(conn, 1)
+        # 先行プロセスが全 migration を適用する
+        migrations.run_migrations(first)
 
-    # Assert
-    assert migrations.get_schema_version(conn) == 1
-    assert not _table_names(conn)
+        # Act: 後続プロセスは排他ロック取得後に適用済みと気づきスキップする
+        migrations._apply_migration(second, 1)
+
+        # Assert
+        assert migrations.get_schema_version(second) == len(migrations.MIGRATIONS)
+        assert set(_BASE_TABLES) <= _table_names(second)
+    finally:
+        first.close()
+        second.close()
