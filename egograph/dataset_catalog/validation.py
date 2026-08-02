@@ -75,8 +75,7 @@ def validate_parquet_bytes(definition: DatasetDefinition, data: bytes) -> None:
             )
         arrow_type = table.schema.field(column).type
         actual = arrow_type_to_canonical(arrow_type)
-        has_nulls = table.column(column).null_count > 0
-        mismatch = type_mismatch(expected, actual, has_nulls=has_nulls)
+        mismatch = type_mismatch(expected, actual)
         if mismatch is not None:
             raise ValueError(
                 f"invalid_schema: {definition.dataset_id} <{column}>: {mismatch}"

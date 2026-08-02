@@ -95,7 +95,7 @@ def test_fixture_parquet_satisfies_catalog_contract(
     for column, expected in dataset.column_types.items():
         field = pq.read_schema(parquet_path).field(column)
         actual = arrow_type_to_canonical(field.type)
-        mismatch = type_mismatch(expected, actual, has_nulls=field.nullable)
+        mismatch = type_mismatch(expected, actual)
         assert mismatch is None, f"{dataset.dataset_id}.{column}: {mismatch}"
 
 

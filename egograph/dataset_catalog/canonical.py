@@ -88,7 +88,7 @@ def duckdb_type_to_canonical(duckdb_type: str) -> str:
     return _DUCKDB_TYPE_MAP.get(normalized, normalized)
 
 
-def type_mismatch(expected: str, actual: str, *, has_nulls: bool) -> str | None:
+def type_mismatch(expected: str, actual: str) -> str | None:
     """canonical 型の差分を返す。許容される場合は None。
 
     - 実型が null（未投入カラム）はどの expected にも許容する
