@@ -77,7 +77,10 @@ def arrow_type_to_canonical(arrow_type: Any) -> str:
         return TIMESTAMP
     if pa.types.is_date(arrow_type):
         return DATE
-    if pa.types.is_list(arrow_type) and pa.types.is_string(arrow_type.value_type):
+    if pa.types.is_list(arrow_type) and (
+        pa.types.is_string(arrow_type.value_type)
+        or pa.types.is_large_string(arrow_type.value_type)
+    ):
         return LIST_STRING
     return str(arrow_type)
 

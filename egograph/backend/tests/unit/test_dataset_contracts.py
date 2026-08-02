@@ -6,6 +6,7 @@ fixture は既存の手書き定義（conftest.py）を維持し、カタログ�
 
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from dataset_catalog import DatasetDefinition, datasets
@@ -68,6 +69,15 @@ FIXTURE_CASES = [
 def _fixture_parquet_path(request, fixture_name: str, path_attr: str) -> Path:
     wrapper = request.getfixturevalue(fixture_name)
     return Path(getattr(wrapper, path_attr))
+
+
+@pytest.mark.parametrize(
+    "arrow_type",
+    [pa.list_(pa.string()), pa.list_(pa.large_string())],
+)
+def test_arrow_list_string_normalizes_to_list_string(arrow_type):
+    """list<string> と list<large_string> は canonical で LIST_STRING に揃う。"""
+    assert arrow_type_to_canonical(arrow_type) == "list<string>"
 
 
 @pytest.mark.parametrize(

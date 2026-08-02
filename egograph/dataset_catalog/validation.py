@@ -46,7 +46,8 @@ def validate_parquet_bytes(definition: DatasetDefinition, data: bytes) -> None:
 
     pandas の内部 dtype に依存せず、バイト列から schema を取得して検証する。
     required_columns / column_types の両方を検証し、アップロード前の検証に
-    使うことを想定している。読み直しは行わない。
+    使うことを想定している。値データの読み込みは行わず footer の schema のみ
+    参照するため、再復号のコストは発生しない。
 
     Args:
         definition: 契約元の DatasetDefinition
@@ -57,8 +58,8 @@ def validate_parquet_bytes(definition: DatasetDefinition, data: bytes) -> None:
             （``invalid_schema: ...``）
     """
     try:
-        table = pq.read_table(io.BytesIO(data))
-        validate_required_columns(definition, table.schema.names)
+        schema = pq.ParquetFile(io.BytesIO(data)).schema_arrow
+        validate_required_columns(definition, schema.names)
     except ValueError:
         raise
     except Exception as exc:
@@ -68,12 +69,12 @@ def validate_parquet_bytes(definition: DatasetDefinition, data: bytes) -> None:
     if not definition.column_types:
         return
     for column, expected in definition.column_types.items():
-        if column not in table.schema.names:
+        if column not in schema.names:
             raise ValueError(
                 f"invalid_schema: missing_columns: {definition.dataset_id} "
                 f"<{column}>"
             )
-        arrow_type = table.schema.field(column).type
+        arrow_type = schema.field(column).type
         actual = arrow_type_to_canonical(arrow_type)
         mismatch = type_mismatch(expected, actual)
         if mismatch is not None:
