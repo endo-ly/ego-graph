@@ -30,7 +30,6 @@ workflow runへの実行時version記録、過去のworkflow定義を完全に�
 - `egograph/pipelines/sources/github/storage.py`
 - `egograph/pipelines/sources/browser_history/storage.py`
 - `egograph/pipelines/sources/youtube/storage.py`
-- `egograph/pipelines/sources/google_activity/storage.py`
 - `egograph/pipelines/sources/google_health/writer.py`
 - `egograph/backend/infrastructure/database/*_queries.py`
 - `egograph/backend/tests/conftest.py`
@@ -76,6 +75,8 @@ validation規則:
 
 - `required_columns`が空または重複している場合は`ValueError`（`invalid_schema: ...`）
 - `column_types`のkeyが`required_columns`に含まれない場合は`ValueError`（`invalid_schema: ...`）。keyのtypoによる契約のドリフトを構造的に防ぐ
+- `column_types`が`required_columns`を網羅しない場合も`ValueError`（`invalid_schema: required_column_type_missing: ...`）。型未定義の必須カラムを許さない（`set(column_types) == set(required_columns)`）
+- `time_column` / `dedupe_key` / `sort_key`が`required_columns`に含まれない場合は`ValueError`（`invalid_schema: <role>_not_required: ...`）。compactionの操作キーが物理カラムとして存在することを保証する
 - `schema_version`は`required_columns` / `column_types`を変更するたびにインクリメントする。変更のない再デプロイでは据え置く
 
 ### 2. 保存側で最低限のschema検証を行う
@@ -117,7 +118,7 @@ schema version 1 -> 現行のデプロイ済みschemaを基準状態として登
 現在の`google_health_sync_cursors`列存在チェックによるmigrationは、version 1のbootstrapへ統合する。
 
 - 空DB: 基準schemaを作成してversion 1を記録してから後続migrationを適用する
-- `user_version=0`の既存DB: `workflow_runs`と`google_health_sync_cursors`の実際の列を確認して基準version 1へ昇格する。既に存在する列へ同じ`ALTER TABLE`を再実行しない。基準列が不足している場合だけ、初回bootstrapで不足列を補う
+- `user_version=0`の既存DB: version 1を適用する。基準schemaのテーブルは`CREATE TABLE IF NOT EXISTS`で欠落分だけ作成し、`google_health_sync_cursors`へは`PRAGMA table_info`で不足するPhase 2列だけ`ALTER TABLE`する。既に存在する列へ同じ`ALTER TABLE`を再実行しない
 - 通常のschema初期化から個別列チェックを削除し、以後の変更は番号付きmigrationに限定する
 
 migration runnerは各migrationを1トランザクションで実行し、途中失敗時はrollbackする。`user_version`の更新も同一トランザクション内で行う。
@@ -175,7 +176,7 @@ schema列の説明文やnullableは、今回の必須契約には含めず、必
 
 1. Spotify / GitHubのmonthly event・master保存
 2. Browser Historyのevent保存
-3. YouTube / Google Activityのevent・snapshot保存
+3. YouTubeのevent・snapshot保存
 4. Google Healthのevent・range replace保存
 
 sourceごとに別validatorを作らず、DatasetDefinitionを受け取る共通関数を利用する。各sourceの既存の戻り値・例外契約は維持し、GitHub ingestだけはデータ整合性の計画に従って失敗を`RuntimeError`へ集約する。
