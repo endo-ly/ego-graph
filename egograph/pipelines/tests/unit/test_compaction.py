@@ -1,14 +1,20 @@
 """Compaction helper tests."""
 
 from datetime import datetime, timezone
+from io import BytesIO
+from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 from dataset_catalog import datasets
+from pipelines.compaction import DatasetCompactionTarget, validate_compaction_targets
 from pipelines.sources.common.compaction import (
     _unify_datetime_columns,
     build_compacted_key,
     compact_records,
     discover_available_months,
+    normalize_dataframe_for_dataset,
+    read_parquet_records_from_prefix,
     resolve_target_months,
 )
 
@@ -80,20 +86,20 @@ class TestUnifyDatetimeColumns:
 
     def test_unifies_mixed_timestamp_str_to_datetime(self):
         """Timestamp と str が混在していても datetime に統一される。"""
-        df = pd.DataFrame({
-            "play_id": ["p1", "p2", "p3"],
-            "played_at_utc": [
-                pd.Timestamp("2024-05-01 10:00:00"),
-                "2024-05-02 11:00:00+00:00",
-                pd.Timestamp("2024-05-01 09:00:00"),
-            ],
-        })
+        df = pd.DataFrame(
+            {
+                "play_id": ["p1", "p2", "p3"],
+                "played_at_utc": [
+                    pd.Timestamp("2024-05-01 10:00:00"),
+                    "2024-05-02 11:00:00+00:00",
+                    pd.Timestamp("2024-05-01 09:00:00"),
+                ],
+            }
+        )
 
         result = _unify_datetime_columns(df)
 
-        assert result["played_at_utc"].dtype.name.startswith(
-            "datetime64[ns, UTC"
-        )
+        assert result["played_at_utc"].dtype.name.startswith("datetime64[ns, UTC")
         assert result.loc[0, "played_at_utc"] == pd.Timestamp(
             "2024-05-01 10:00:00", tz="UTC"
         )
@@ -103,10 +109,12 @@ class TestUnifyDatetimeColumns:
 
     def test_leaves_homogeneous_str_unchanged(self):
         """混在型でなければ型変換しない。"""
-        df = pd.DataFrame({
-            "track_id": ["t1", "t2"],
-            "label": ["a", "b"],
-        })
+        df = pd.DataFrame(
+            {
+                "track_id": ["t1", "t2"],
+                "label": ["a", "b"],
+            }
+        )
 
         result = _unify_datetime_columns(df)
 
@@ -115,13 +123,15 @@ class TestUnifyDatetimeColumns:
 
     def test_leaves_int_column_unchanged(self):
         """整数カラムは無視される。"""
-        df = pd.DataFrame({
-            "id": [1, 2],
-            "played_at_utc": [
-                pd.Timestamp("2024-05-01 10:00:00"),
-                pd.Timestamp("2024-05-02 11:00:00"),
-            ],
-        })
+        df = pd.DataFrame(
+            {
+                "id": [1, 2],
+                "played_at_utc": [
+                    pd.Timestamp("2024-05-01 10:00:00"),
+                    pd.Timestamp("2024-05-02 11:00:00"),
+                ],
+            }
+        )
 
         result = _unify_datetime_columns(df)
 
@@ -129,18 +139,128 @@ class TestUnifyDatetimeColumns:
         assert result["played_at_utc"].dtype.name.startswith("datetime64[ns")
 
 
+@pytest.mark.parametrize(
+    ("dataset", "column"),
+    [
+        (datasets.GITHUB_COMMITS, "committed_at_utc"),
+        (datasets.GITHUB_PULL_REQUESTS, "updated_at_utc"),
+    ],
+)
+def test_normalize_dataframe_for_dataset_converts_legacy_string_timestamp(
+    dataset,
+    column,
+):
+    """既存の文字列日時をcatalog契約のUTC timestampへ変換する。"""
+    # Arrange
+    df = pd.DataFrame({column: ["2026-07-01T12:00:00Z"]})
+
+    # Act
+    result = normalize_dataframe_for_dataset(df, dataset)
+
+    # Assert
+    assert result[column].dtype.name == "datetime64[ns, UTC]"
+    assert result.loc[0, column] == pd.Timestamp("2026-07-01 12:00:00", tz="UTC")
+
+
+def test_normalize_dataframe_for_dataset_converts_explicit_offset_to_utc():
+    """明示されたoffsetを保持せず、UTC instantへ変換する。"""
+    # Arrange
+    df = pd.DataFrame({"committed_at_utc": ["2026-07-01T21:00:00+09:00"]})
+
+    # Act
+    result = normalize_dataframe_for_dataset(df, datasets.GITHUB_COMMITS)
+
+    # Assert
+    assert result.loc[0, "committed_at_utc"] == pd.Timestamp(
+        "2026-07-01 12:00:00", tz="UTC"
+    )
+
+
+def test_normalize_dataframe_for_dataset_rejects_invalid_timestamp():
+    """不正な日時はcompact前にエラーとして扱う。"""
+    # Arrange
+    df = pd.DataFrame({"committed_at_utc": ["not-a-timestamp"]})
+
+    # Act & Assert
+    with pytest.raises(ValueError):
+        normalize_dataframe_for_dataset(df, datasets.GITHUB_COMMITS)
+
+
+def test_normalize_dataframe_for_dataset_rejects_naive_timestamp():
+    """タイムゾーンなし日時をUTCと誤認しない。"""
+    # Arrange
+    df = pd.DataFrame({"committed_at_utc": ["2026-07-01T12:00:00"]})
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="must include a timezone"):
+        normalize_dataframe_for_dataset(df, datasets.GITHUB_COMMITS)
+
+
+def test_read_parquet_records_normalizes_legacy_string_timestamp():
+    """source Parquet読込時にもcatalog契約のtimestampへ変換する。"""
+    # Arrange
+    source_df = pd.DataFrame(
+        {
+            "commit_event_id": ["commit-1"],
+            "committed_at_utc": ["2026-07-01T12:00:00Z"],
+        }
+    )
+    buffer = BytesIO()
+    source_df.to_parquet(buffer, index=False, engine="pyarrow")
+    s3 = MagicMock()
+    paginator = MagicMock()
+    paginator.paginate.return_value = [
+        {"Contents": [{"Key": "events/github/commits/year=2026/month=07/1.parquet"}]}
+    ]
+    s3.get_paginator.return_value = paginator
+    body = MagicMock()
+    body.read.return_value = buffer.getvalue()
+    s3.get_object.return_value = {"Body": body}
+
+    # Act
+    records = read_parquet_records_from_prefix(
+        s3,
+        "test-bucket",
+        "events/github/commits/year=2026/month=07/",
+        dataset=datasets.GITHUB_COMMITS,
+    )
+
+    # Assert
+    assert isinstance(records[0]["committed_at_utc"], pd.Timestamp)
+    assert records[0]["committed_at_utc"] == pd.Timestamp(
+        "2026-07-01 12:00:00", tz="UTC"
+    )
+
+
+def test_validate_compaction_targets_rejects_mixed_providers():
+    """一つのrunに異なるproviderの対象を混在させない。"""
+    # Arrange
+    targets = (
+        DatasetCompactionTarget("github.commits", 2026, 7),
+        DatasetCompactionTarget("spotify.plays", 2026, 7),
+    )
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="same provider"):
+        validate_compaction_targets(targets)
+
+
 class TestCompactRecordsSortCanNowAssumeUnifiedTypes:
     """compact_records は統一済みの型を受け取る前提で動作する。"""
 
     def test_sorts_datetime_column_normally(self):
-        df = pd.DataFrame({
-            "play_id": ["p1", "p2", "p3"],
-            "played_at_utc": pd.to_datetime([
-                "2024-05-01 10:00:00+00:00",
-                "2024-05-02 11:00:00+00:00",
-                "2024-05-01 09:00:00+00:00",
-            ]),
-        })
+        df = pd.DataFrame(
+            {
+                "play_id": ["p1", "p2", "p3"],
+                "played_at_utc": pd.to_datetime(
+                    [
+                        "2024-05-01 10:00:00+00:00",
+                        "2024-05-02 11:00:00+00:00",
+                        "2024-05-01 09:00:00+00:00",
+                    ]
+                ),
+            }
+        )
         records = df.to_dict(orient="records")
 
         result = compact_records(records, dedupe_key="play_id", sort_by="played_at_utc")

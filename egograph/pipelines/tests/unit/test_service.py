@@ -3,6 +3,7 @@
 retry_run, cancel_run, get_step_log などの運用機能を検証する。
 """
 
+from pipelines.compaction import DatasetCompactionTarget
 from pipelines.config import PipelinesConfig
 from pipelines.domain.errors import WorkflowNotFoundError, WorkflowRunNotFoundError
 from pipelines.domain.workflow import StepRunStatus
@@ -50,6 +51,40 @@ def test_retry_run_preserves_original_input(tmp_path):
     retry_run = service.retry_run(original_run.run_id)
 
     assert retry_run.result_summary == original_run.result_summary
+
+
+def test_trigger_compaction_queues_dataset_targets(tmp_path):
+    """manual compaction run は対象datasetをresult_summaryへ保存する。"""
+    service = _make_service(tmp_path)
+    targets = (
+        DatasetCompactionTarget("github.commits", 2026, 7),
+        DatasetCompactionTarget("github.pull_requests", 2026, 7),
+    )
+
+    run = service.trigger_compaction(targets)
+
+    assert run.workflow_id == "github_compact_workflow"
+    assert run.result_summary == {
+        "compaction_targets": [
+            {"dataset_id": "github.commits", "year": 2026, "month": 7},
+            {"dataset_id": "github.pull_requests", "year": 2026, "month": 7},
+        ]
+    }
+
+
+def test_trigger_compaction_rejects_mixed_provider_targets(tmp_path):
+    """providerを跨ぐ対象はprovider lockを保てないため拒否する。"""
+    service = _make_service(tmp_path)
+    targets = (
+        DatasetCompactionTarget("github.commits", 2026, 7),
+        DatasetCompactionTarget("spotify.plays", 2026, 7),
+    )
+
+    try:
+        service.trigger_compaction(targets)
+        raise AssertionError("ValueError was not raised")
+    except ValueError as exc:
+        assert "same provider" in str(exc)
 
 
 def test_retry_run_404_for_unknown_run(tmp_path):

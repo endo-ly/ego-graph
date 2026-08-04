@@ -79,6 +79,23 @@ def get_workflows() -> dict[str, WorkflowDefinition]:
             misfire_policy=MisfirePolicy.COALESCE_LATEST,
         ),
         WorkflowDefinition(
+            workflow_id="spotify_compact_workflow",
+            name="Spotify manual compact workflow",
+            description="Compact explicitly selected Spotify datasets and months",
+            steps=(
+                _inprocess_step(
+                    "run_spotify_compact",
+                    "Run Spotify manual compact",
+                    "pipelines.sources.spotify.pipeline:run_spotify_compact_from_run",
+                    timeout_seconds=1800,
+                ),
+            ),
+            triggers=(),
+            concurrency_key="spotify_ingest_workflow",
+            timeout_seconds=3600,
+            misfire_policy=MisfirePolicy.SKIP_MISFIRE,
+        ),
+        WorkflowDefinition(
             workflow_id="github_ingest_workflow",
             name="GitHub ingest workflow",
             description="Collect and compact GitHub worklog datasets",
@@ -100,6 +117,23 @@ def get_workflows() -> dict[str, WorkflowDefinition]:
             concurrency_key="github_ingest_workflow",
             timeout_seconds=3600,
             misfire_policy=MisfirePolicy.COALESCE_LATEST,
+        ),
+        WorkflowDefinition(
+            workflow_id="github_compact_workflow",
+            name="GitHub manual compact workflow",
+            description="Compact explicitly selected GitHub datasets and months",
+            steps=(
+                _inprocess_step(
+                    "run_github_compact",
+                    "Run GitHub manual compact",
+                    "pipelines.sources.github.pipeline:run_github_compact_from_run",
+                    timeout_seconds=1800,
+                ),
+            ),
+            triggers=(),
+            concurrency_key="github_ingest_workflow",
+            timeout_seconds=3600,
+            misfire_policy=MisfirePolicy.SKIP_MISFIRE,
         ),
         WorkflowDefinition(
             workflow_id="google_activity_ingest_workflow",
@@ -133,6 +167,23 @@ def get_workflows() -> dict[str, WorkflowDefinition]:
                     "run_youtube_compact",
                     "Run YouTube compact",
                     "pipelines.sources.youtube.pipeline:run_youtube_compact",
+                    timeout_seconds=1800,
+                ),
+            ),
+            triggers=(),
+            concurrency_key="youtube_ingest_workflow",
+            timeout_seconds=3600,
+            misfire_policy=MisfirePolicy.SKIP_MISFIRE,
+        ),
+        WorkflowDefinition(
+            workflow_id="youtube_compact_workflow",
+            name="YouTube manual compact workflow",
+            description="Compact explicitly selected YouTube datasets and months",
+            steps=(
+                _inprocess_step(
+                    "run_youtube_compact",
+                    "Run YouTube manual compact",
+                    "pipelines.sources.youtube.pipeline:run_youtube_compact_from_run",
                     timeout_seconds=1800,
                 ),
             ),
@@ -212,6 +263,26 @@ def get_workflows() -> dict[str, WorkflowDefinition]:
                     "run_browser_history_compact",
                     "Run browser history compact for event targets",
                     "pipelines.sources.browser_history.pipeline:compact_from_event_context",
+                    timeout_seconds=1800,
+                ),
+            ),
+            triggers=(),
+            concurrency_key="browser_history_compact_workflow",
+            timeout_seconds=3600,
+            misfire_policy=MisfirePolicy.SKIP_MISFIRE,
+        ),
+        WorkflowDefinition(
+            workflow_id="browser_history_compact_workflow_manual",
+            name="Browser history manual compact workflow",
+            description=(
+                "Compact explicitly selected browser history datasets and months"
+            ),
+            steps=(
+                _inprocess_step(
+                    "run_browser_history_compact_manual",
+                    "Run browser history manual compact",
+                    "pipelines.sources.browser_history.pipeline:"
+                    "run_browser_history_compact_from_run",
                     timeout_seconds=1800,
                 ),
             ),

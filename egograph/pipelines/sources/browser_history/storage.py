@@ -193,6 +193,7 @@ class BrowserHistoryStorage:
             self.s3,
             self.bucket_name,
             source_prefix,
+            dataset=dataset,
         )
         if not records:
             logger.info("No parquet records found for compaction: %s", source_prefix)
@@ -202,6 +203,7 @@ class BrowserHistoryStorage:
             records,
             dedupe_key=dataset.required_dedupe_key(),
             sort_by=dataset.sort_key,
+            dataset=dataset,
         )
         key = build_compacted_key(
             self.compacted_path,

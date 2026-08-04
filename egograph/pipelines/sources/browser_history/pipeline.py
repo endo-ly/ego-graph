@@ -6,6 +6,9 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from dataset_catalog import datasets
+
+from pipelines.compaction import compaction_targets_from_run
 from pipelines.domain.workflow import WorkflowRun
 from pipelines.sources.browser_history.compaction import compact_browser_history_targets
 from pipelines.sources.browser_history.ingest_pipeline import (
@@ -180,6 +183,20 @@ def run_browser_history_compact(
         "operation": "compact",
         "target_months": [f"{year}-{month:02d}" for year, month in target_tuple],
     }
+
+
+def run_browser_history_compact_from_run(run: WorkflowRun) -> dict[str, object]:
+    """manual compaction run の対象datasetとpartitionを復元して実行する。"""
+    targets = compaction_targets_from_run(run)
+    supported_dataset_id = datasets.BROWSER_HISTORY_PAGE_VIEWS.dataset_id
+    if any(target.dataset_id != supported_dataset_id for target in targets):
+        raise ValueError(
+            "invalid_dataset_id: browser history manual compaction supports only "
+            f"{supported_dataset_id}"
+        )
+    return run_browser_history_compact(
+        ((target.year, target.month) for target in targets)
+    )
 
 
 def run_browser_history_compact_maintenance(

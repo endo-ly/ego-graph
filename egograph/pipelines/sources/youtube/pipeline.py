@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from dataset_catalog import datasets
+
+from pipelines.compaction import (
+    DatasetCompactionTarget,
+    compaction_targets_from_run,
+    resolve_run_compaction_targets,
+)
 from pipelines.domain.workflow import WorkflowRun
 from pipelines.sources.common.compaction import resolve_target_months
 from pipelines.sources.common.config import Config
@@ -169,6 +177,7 @@ def run_youtube_compact(
     *,
     year: int | None = None,
     month: int | None = None,
+    targets: Iterable[DatasetCompactionTarget] | None = None,
 ) -> dict[str, object]:
     """YouTube monthly compaction を in-process で実行する。"""
     resolved_config = config or PipelinesSettings.load()
@@ -185,23 +194,36 @@ def run_youtube_compact(
         master_path=r2_conf.master_path,
     )
 
-    target_months = resolve_target_months(year, month)
+    if targets is None:
+        compaction_targets = tuple(
+            DatasetCompactionTarget(
+                dataset_id=datasets.YOUTUBE_WATCH_EVENTS.dataset_id,
+                year=target_year,
+                month=target_month,
+            )
+            for target_year, target_month in resolve_target_months(year, month)
+        )
+    else:
+        compaction_targets = resolve_run_compaction_targets(
+            "youtube",
+            targets=targets,
+        )
     compacted_keys: list[str] = []
     skipped_targets: list[str] = []
     failures: list[str] = []
-    for target_year, target_month in target_months:
+    for target in compaction_targets:
         try:
-            key = storage.compact_month(year=target_year, month=target_month)
+            key = storage.compact_month(year=target.year, month=target.month)
         except Exception:
             logger.exception(
                 "YouTube compaction failed: year=%d month=%02d",
-                target_year,
-                target_month,
+                target.year,
+                target.month,
             )
-            failures.append(f"youtube:{target_year}-{target_month:02d}")
+            failures.append(f"youtube:{target.year}-{target.month:02d}")
             continue
         if key is None:
-            skipped_targets.append(f"youtube:{target_year}-{target_month:02d}")
+            skipped_targets.append(f"youtube:{target.year}-{target.month:02d}")
         else:
             compacted_keys.append(key)
 
@@ -211,7 +233,14 @@ def run_youtube_compact(
     return {
         "provider": "youtube",
         "operation": "compact",
-        "target_months": [f"{y}-{m:02d}" for y, m in target_months],
+        "target_months": sorted(
+            {f"{target.year}-{target.month:02d}" for target in compaction_targets}
+        ),
         "compacted_keys": compacted_keys,
         "skipped_targets": skipped_targets,
     }
+
+
+def run_youtube_compact_from_run(run: WorkflowRun) -> dict[str, object]:
+    """manual compaction run の対象datasetとpartitionを復元して実行する。"""
+    return run_youtube_compact(targets=compaction_targets_from_run(run))

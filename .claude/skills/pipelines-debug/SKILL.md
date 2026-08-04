@@ -67,6 +67,25 @@ curl -s -X POST -H "X-API-Key: ${PIPELINES_API_KEY}" \
   "${API_BASE}/v1/runs/${RUN_ID}/retry" | jq .
 ```
 
+### 7. 指定 dataset の再コンパクト
+
+まず dataset catalog で正式な `dataset_id` を確認し、対象 partition を明示して
+manual compaction run を作成する。`workflow_id` は指定しない。
+
+```bash
+curl -s -H "X-API-Key: ${PIPELINES_API_KEY}" \
+  "${API_BASE}/v1/datasets" | jq .
+
+curl -s -X POST \
+  -H "X-API-Key: ${PIPELINES_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"targets":[{"dataset_id":"github.commits","year":2026,"month":7},{"dataset_id":"github.pull_requests","year":2026,"month":7}]}' \
+  "${API_BASE}/v1/compaction/runs" | jq .
+```
+
+レスポンスの `run_id` を使い、通常の run 詳細・step log・retry APIで実行を追跡する。
+対象は月次 `APPEND_DEDUPE` datasetで、1つのrunには同じproviderのdatasetだけを指定する。
+
 ## API エンドポイント一覧
 
 全エンドポイント（`/v1/health` 除く）に `X-API-Key` ヘッダーが必要。
@@ -74,6 +93,8 @@ curl -s -X POST -H "X-API-Key: ${PIPELINES_API_KEY}" \
 | Method | Path | 説明 |
 |--------|------|------|
 | `GET` | `/v1/health` | ヘルスチェック |
+| `GET` | `/v1/datasets` | dataset catalog 一覧 |
+| `POST` | `/v1/compaction/runs` | 指定dataset partitionのmanual compact run作成 |
 | `GET` | `/v1/workflows` | ワークフロー一覧 |
 | `GET` | `/v1/workflows/{workflow_id}` | ワークフロー詳細 |
 | `GET` | `/v1/workflows/{workflow_id}/runs` | ワークフローの run 一覧 |

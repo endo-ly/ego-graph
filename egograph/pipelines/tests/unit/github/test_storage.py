@@ -526,3 +526,50 @@ class TestGitHubWorklogStorage(unittest.TestCase):
             "compacted/events/github/commits/year=2024/month=01/data.parquet",
         )
         self.assertEqual(key, call_args["Key"])
+
+    def test_compact_month_normalizes_legacy_string_timestamp(self):
+        """既存sourceの文字列日時をtimestamp Parquetへ変換して保存する。"""
+        data = [_commit_row("commit_1", "abc123")]
+        data[0]["committed_at_utc"] = "2026-07-01T12:00:00Z"
+
+        with patch(
+            "pipelines.sources.github.storage.read_parquet_records_from_prefix",
+            return_value=data,
+        ):
+            key = self.storage.compact_month(
+                dataset=datasets.GITHUB_COMMITS,
+                year=2026,
+                month=7,
+            )
+
+        body = self.mock_s3.put_object.call_args.kwargs["Body"]
+        compacted = pd.read_parquet(BytesIO(body))
+        self.assertEqual(
+            key, "compacted/events/github/commits/year=2026/month=07/data.parquet"
+        )
+        self.assertEqual(
+            compacted["committed_at_utc"].dtype.name, "datetime64[ns, UTC]"
+        )
+
+    def test_compact_month_normalizes_legacy_pr_string_timestamp(self):
+        """既存PR sourceの文字列日時をtimestamp Parquetへ変換して保存する。"""
+        data = [_pr_event_row("pr_1", 1)]
+        data[0]["updated_at_utc"] = "2026-07-02T12:00:00Z"
+
+        with patch(
+            "pipelines.sources.github.storage.read_parquet_records_from_prefix",
+            return_value=data,
+        ):
+            key = self.storage.compact_month(
+                dataset=datasets.GITHUB_PULL_REQUESTS,
+                year=2026,
+                month=7,
+            )
+
+        body = self.mock_s3.put_object.call_args.kwargs["Body"]
+        compacted = pd.read_parquet(BytesIO(body))
+        self.assertEqual(
+            key,
+            "compacted/events/github/pull_requests/year=2026/month=07/data.parquet",
+        )
+        self.assertEqual(compacted["updated_at_utc"].dtype.name, "datetime64[ns, UTC]")

@@ -149,6 +149,8 @@ class TestTransformPullRequest:
         assert result["head_ref"] == "feature-branch"
         assert result["labels"] == ["bug"]
         assert result["action"] == "updated"
+        assert isinstance(result["updated_at_utc"], datetime)
+        assert result["updated_at_utc"].tzinfo == timezone.utc
 
     def test_transform_pr_merged(self):
         """マージ済みPRを変換する。"""
@@ -328,6 +330,8 @@ class TestTransformCommit:
         assert result["additions"] == 10
         assert result["deletions"] == 5
         assert result["changed_files_count"] is None
+        assert isinstance(result["committed_at_utc"], datetime)
+        assert result["committed_at_utc"].tzinfo == timezone.utc
 
     def test_transform_commit_with_files_array_sets_changed_files_count(self):
         """files配列がある場合、changed_files_countをファイル数で保持する。"""

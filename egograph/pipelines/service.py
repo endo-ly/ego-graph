@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import cast
 from zoneinfo import ZoneInfo
 
 from pydantic import SecretStr
 
+from pipelines.compaction import (
+    DatasetCompactionTarget,
+    compaction_workflow_id,
+    list_dataset_metadata,
+    validate_compaction_targets,
+)
 from pipelines.config import PipelinesConfig
 from pipelines.domain.errors import WorkflowNotFoundError
 from pipelines.domain.workflow import QueuedReason, TriggerType, WorkflowRun
@@ -168,6 +175,10 @@ class PipelineService:
         """run 一覧を返す。"""
         return self.run_repository.list_runs(workflow_id=workflow_id)
 
+    def list_datasets(self) -> list[dict]:
+        """dataset catalog の公開用メタデータを返す。"""
+        return list_dataset_metadata()
+
     def get_run_detail(self, run_id: str) -> dict:
         """run 詳細と step 一覧を返す。"""
         run = self.run_repository.get_run(run_id)
@@ -195,6 +206,27 @@ class PipelineService:
             trigger_type=TriggerType.MANUAL,
             queued_reason=QueuedReason.MANUAL_REQUEST,
             requested_by=requested_by,
+        )
+
+    def trigger_compaction(
+        self,
+        targets: Iterable[DatasetCompactionTarget],
+        *,
+        requested_by: str = "api",
+    ) -> WorkflowRun:
+        """指定された dataset partition の manual compaction run をqueueへ積む。"""
+        validated_targets = validate_compaction_targets(targets)
+        workflow_id = compaction_workflow_id(validated_targets)
+        return self.run_repository.enqueue_run(
+            workflow_id=workflow_id,
+            trigger_type=TriggerType.MANUAL,
+            queued_reason=QueuedReason.MANUAL_REQUEST,
+            requested_by=requested_by,
+            result_summary={
+                "compaction_targets": [
+                    target.to_dict() for target in validated_targets
+                ],
+            },
         )
 
     def trigger_google_health_ingest(
