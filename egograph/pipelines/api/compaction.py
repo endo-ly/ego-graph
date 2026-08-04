@@ -1,5 +1,7 @@
 """Dataset catalog と manual compaction run のAPI。"""
 
+from typing import Any
+
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
@@ -15,8 +17,8 @@ class CompactionTargetRequest(BaseModel):
     """月次 compaction の対象指定。"""
 
     dataset_id: str = Field(min_length=1)
-    year: int = Field(ge=1, le=9999)
-    month: int = Field(ge=1, le=12)
+    year: int = Field(strict=True, ge=1, le=9999)
+    month: int = Field(strict=True, ge=1, le=12)
 
     def to_target(self) -> DatasetCompactionTarget:
         """domain の compaction target へ変換する。"""
@@ -62,7 +64,7 @@ def list_datasets(
 
 @router.post("/compaction/runs", status_code=201)
 def create_compaction_run(
-    request_body: dict = Body(...),
+    request_body: Any = Body(...),
     _: None = Depends(verify_api_key),
     service: PipelineService = Depends(get_service),
 ) -> dict:

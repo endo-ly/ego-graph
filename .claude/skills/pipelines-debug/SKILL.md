@@ -88,7 +88,9 @@ curl -s -X POST \
 
 ## API エンドポイント一覧
 
-全エンドポイント（`/v1/health` 除く）に `X-API-Key` ヘッダーが必要。
+`PIPELINES_API_KEY` が設定されている環境では、`/v1/health` を除く全エンドポイントに
+`X-API-Key` ヘッダーが必要。`PIPELINES_API_KEY` を設定しないローカル開発環境では、
+認証なしでアクセスできる。
 
 | Method | Path | 説明 |
 |--------|------|------|

@@ -1,5 +1,6 @@
 """Dataset catalog と manual compaction API のテスト。"""
 
+import pytest
 from fastapi.testclient import TestClient
 from pipelines.api.dependencies import verify_api_key
 from pipelines.app import create_app
@@ -26,8 +27,11 @@ def _build_client(tmp_path):
 
 def test_list_datasets_returns_catalog_metadata(tmp_path):
     """dataset一覧はcatalogのIDとcompact対応可否を返す。"""
-    # Arrange & Act
-    with _build_client(tmp_path) as client:
+    # Arrange
+    client = _build_client(tmp_path)
+
+    # Act
+    with client:
         response = client.get("/v1/datasets")
 
     # Assert
@@ -47,9 +51,10 @@ def test_create_compaction_run_queues_selected_datasets(tmp_path):
             {"dataset_id": "github.pull_requests", "year": 2026, "month": 7},
         ]
     }
+    client = _build_client(tmp_path)
 
     # Act
-    with _build_client(tmp_path) as client:
+    with client:
         response = client.post("/v1/compaction/runs", json=payload)
 
     # Assert
@@ -69,9 +74,10 @@ def test_create_compaction_run_rejects_unknown_dataset(tmp_path):
     """catalogにないdataset IDを拒否する。"""
     # Arrange
     payload = {"targets": [{"dataset_id": "unknown.dataset", "year": 2026, "month": 7}]}
+    client = _build_client(tmp_path)
 
     # Act
-    with _build_client(tmp_path) as client:
+    with client:
         response = client.post("/v1/compaction/runs", json=payload)
 
     # Assert
@@ -91,11 +97,47 @@ def test_create_compaction_run_rejects_unsupported_compaction_strategy(tmp_path)
             }
         ]
     }
+    client = _build_client(tmp_path)
 
     # Act
-    with _build_client(tmp_path) as client:
+    with client:
         response = client.post("/v1/compaction/runs", json=payload)
 
     # Assert
     assert response.status_code == 400
     assert response.json()["detail"].startswith("invalid_dataset_id:")
+
+
+@pytest.mark.parametrize("request_body", [[], "not-an-object", 1])
+def test_create_compaction_run_rejects_non_object_body(tmp_path, request_body):
+    """トップレベルの非オブジェクト入力を400へ変換する。"""
+    # Arrange
+    client = _build_client(tmp_path)
+
+    # Act
+    with client:
+        response = client.post("/v1/compaction/runs", json=request_body)
+
+    # Assert
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith("invalid_request:")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("year", "2026"), ("month", 7.0)],
+)
+def test_create_compaction_run_rejects_non_integer_period(field, value, tmp_path):
+    """APIの期間値は厳密な整数だけを受け付ける。"""
+    # Arrange
+    target = {"dataset_id": "github.commits", "year": 2026, "month": 7}
+    target[field] = value
+    client = _build_client(tmp_path)
+
+    # Act
+    with client:
+        response = client.post("/v1/compaction/runs", json={"targets": [target]})
+
+    # Assert
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith(f"invalid_targets.0.{field}:")

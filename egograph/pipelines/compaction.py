@@ -37,8 +37,12 @@ class DatasetCompactionTarget:
     def __post_init__(self) -> None:
         if not self.dataset_id.strip():
             raise ValueError("invalid_dataset_id: dataset_id is required")
+        if type(self.year) is not int:
+            raise ValueError("invalid_year: year must be an integer")
         if not 1 <= self.year <= 9999:
             raise ValueError("invalid_year: year must be 1..9999")
+        if type(self.month) is not int:
+            raise ValueError("invalid_month: month must be an integer")
         if not 1 <= self.month <= 12:
             raise ValueError("invalid_month: month must be 1..12")
 

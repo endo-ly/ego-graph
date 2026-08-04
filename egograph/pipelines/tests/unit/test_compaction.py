@@ -208,6 +208,28 @@ def test_read_parquet_records_normalizes_legacy_string_timestamp():
     )
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("year", True),
+        ("month", False),
+        ("year", 2026.5),
+        ("month", 7.0),
+        ("year", "2026"),
+        ("month", "7"),
+    ],
+)
+def test_dataset_compaction_target_rejects_non_exact_int(field, value):
+    """compaction targetはboolやint以外の期間値を拒否する。"""
+    # Arrange
+    target_values = {"dataset_id": "github.commits", "year": 2026, "month": 7}
+    target_values[field] = value
+
+    # Act & Assert
+    with pytest.raises(ValueError, match=f"invalid_{field}:"):
+        DatasetCompactionTarget(**target_values)
+
+
 def test_validate_compaction_targets_rejects_mixed_providers():
     """一つのrunに異なるproviderの対象を混在させない。"""
     # Arrange
