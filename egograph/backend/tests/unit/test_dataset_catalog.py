@@ -42,9 +42,7 @@ def test_monthly_compaction_datasets_covers_only_append_dedupe_providers():
     assert monthly_compaction_datasets("browser_history") == (
         datasets.BROWSER_HISTORY_PAGE_VIEWS,
     )
-    assert monthly_compaction_datasets("youtube") == (
-        datasets.YOUTUBE_WATCH_EVENTS,
-    )
+    assert monthly_compaction_datasets("youtube") == (datasets.YOUTUBE_WATCH_EVENTS,)
 
 
 def test_monthly_compaction_datasets_excludes_non_append_dedupe_provider():
@@ -68,6 +66,33 @@ def test_monthly_compaction_datasets_derived_in_definition_order():
 def test_browser_history_sort_key_uses_ingestion_time():
     """browser_history の sort_key は ingested_at_utc（run をまたいだ決定的勝者）。"""
     assert datasets.BROWSER_HISTORY_PAGE_VIEWS.sort_key == "ingested_at_utc"
+
+
+@pytest.mark.parametrize(
+    ("dataset", "timestamp_columns"),
+    [
+        (
+            datasets.GITHUB_COMMITS,
+            {"committed_at_utc", "ingested_at_utc"},
+        ),
+        (
+            datasets.GITHUB_PULL_REQUESTS,
+            {
+                "created_at_utc",
+                "updated_at_utc",
+                "closed_at_utc",
+                "merged_at_utc",
+                "ingested_at_utc",
+            },
+        ),
+    ],
+)
+def test_github_catalog_declares_all_event_timestamp_columns(
+    dataset,
+    timestamp_columns,
+):
+    """GitHubイベントの全日時列をcatalogの正規化対象として定義する。"""
+    assert set(dataset.timestamp_columns) == timestamp_columns
 
 
 def test_source_root_selects_by_domain():
@@ -142,9 +167,7 @@ def test_duplicate_dataset_id_fails_fast():
         column_types={"id": "string"},
     )
 
-    with pytest.raises(
-        ValueError, match=r"duplicate_dataset_id: duplicate\.dataset"
-    ):
+    with pytest.raises(ValueError, match=r"duplicate_dataset_id: duplicate\.dataset"):
         _build_datasets_by_id((duplicate_a, duplicate_b))
 
 
@@ -181,6 +204,22 @@ def test_duplicate_required_columns_raises():
         _contract_definition(required_columns=("id", "id"))
 
 
+def test_duplicate_timestamp_columns_raises():
+    """timestamp_columns の重複は拒否する。"""
+    with pytest.raises(ValueError, match="invalid_schema"):
+        _contract_definition(timestamp_columns=("created_at", "created_at"))
+
+
+def test_timestamp_column_type_mismatch_raises():
+    """required schema 内の非timestamp列を日時列として定義できない。"""
+    pattern = (
+        r"invalid_schema: timestamp_column_type_mismatch: "
+        r"test\.contract <id=string>"
+    )
+    with pytest.raises(ValueError, match=pattern):
+        _contract_definition(timestamp_columns=("id",))
+
+
 def test_column_type_key_not_in_required_columns_raises():
     """column_types の key が required_columns に含まれない定義は拒否する。"""
     with pytest.raises(ValueError, match="invalid_schema"):
@@ -213,9 +252,9 @@ def test_all_datasets_have_schema_contracts():
     """全 dataset が schema version と required columns を持つ。"""
     for dataset in ALL_DATASETS:
         assert dataset.schema_version >= 1
-        assert (
-            dataset.required_columns
-        ), f"missing required_columns: {dataset.dataset_id}"
+        assert dataset.required_columns, (
+            f"missing required_columns: {dataset.dataset_id}"
+        )
         assert set(dataset.column_types) == set(dataset.required_columns), (
             f"column_types must cover required_columns exactly: {dataset.dataset_id}"
         )

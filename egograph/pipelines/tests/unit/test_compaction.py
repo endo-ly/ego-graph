@@ -144,6 +144,8 @@ class TestUnifyDatetimeColumns:
     [
         (datasets.GITHUB_COMMITS, "committed_at_utc"),
         (datasets.GITHUB_PULL_REQUESTS, "updated_at_utc"),
+        (datasets.GITHUB_COMMITS, "ingested_at_utc"),
+        (datasets.GITHUB_PULL_REQUESTS, "created_at_utc"),
     ],
 )
 def test_normalize_dataframe_for_dataset_converts_legacy_string_timestamp(
@@ -160,6 +162,70 @@ def test_normalize_dataframe_for_dataset_converts_legacy_string_timestamp(
     # Assert
     assert result[column].dtype.name == "datetime64[ns, UTC]"
     assert result.loc[0, column] == pd.Timestamp("2026-07-01 12:00:00", tz="UTC")
+
+
+@pytest.mark.parametrize(
+    ("dataset", "columns"),
+    [
+        (
+            datasets.GITHUB_COMMITS,
+            ("committed_at_utc", "ingested_at_utc"),
+        ),
+        (
+            datasets.GITHUB_PULL_REQUESTS,
+            (
+                "created_at_utc",
+                "updated_at_utc",
+                "closed_at_utc",
+                "merged_at_utc",
+                "ingested_at_utc",
+            ),
+        ),
+    ],
+)
+def test_normalize_dataframe_for_dataset_converts_all_mixed_timestamp_columns(
+    dataset,
+    columns,
+):
+    """catalogに定義した全日時列のTimestamp/str混在を正規化する。"""
+    # Arrange
+    df = pd.DataFrame(
+        {
+            column: [
+                pd.Timestamp("2026-07-01 12:00:00"),
+                "2026-07-02T12:00:00Z",
+            ]
+            for column in columns
+        }
+    )
+
+    # Act
+    result = normalize_dataframe_for_dataset(df, dataset)
+
+    # Assert
+    for column in columns:
+        assert result[column].dtype.name == "datetime64[ns, UTC]"
+
+
+def test_normalize_dataframe_for_dataset_does_not_convert_unlisted_string_column():
+    """日時列としてcatalogにない文字列列は変換しない。"""
+    # Arrange
+    df = pd.DataFrame(
+        {
+            "title": ["2026-07-01T12:00:00Z", "not-a-timestamp"],
+            "ingested_at_utc": ["2026-07-01T12:00:00Z", "2026-07-02T12:00:00Z"],
+        }
+    )
+
+    # Act
+    result = normalize_dataframe_for_dataset(df, datasets.GITHUB_COMMITS)
+
+    # Assert
+    assert result["title"].dtype == object
+    assert result["title"].tolist() == [
+        "2026-07-01T12:00:00Z",
+        "not-a-timestamp",
+    ]
 
 
 def test_normalize_dataframe_for_dataset_rejects_invalid_timestamp():
@@ -206,6 +272,91 @@ def test_read_parquet_records_normalizes_legacy_string_timestamp():
     assert records[0]["committed_at_utc"] == pd.Timestamp(
         "2026-07-01 12:00:00", tz="UTC"
     )
+
+
+@pytest.mark.parametrize(
+    ("dataset", "id_column", "timestamp_columns"),
+    [
+        (
+            datasets.GITHUB_COMMITS,
+            "commit_event_id",
+            ("committed_at_utc", "ingested_at_utc"),
+        ),
+        (
+            datasets.GITHUB_PULL_REQUESTS,
+            "pr_event_id",
+            (
+                "created_at_utc",
+                "updated_at_utc",
+                "closed_at_utc",
+                "merged_at_utc",
+                "ingested_at_utc",
+            ),
+        ),
+    ],
+)
+def test_read_parquet_records_normalizes_mixed_github_timestamps(
+    dataset,
+    id_column,
+    timestamp_columns,
+):
+    """複数source Parquet間で型が混在するGitHub日時列を正規化する。"""
+    # Arrange
+    source_frames = [
+        pd.DataFrame(
+            {
+                id_column: ["event-1"],
+                **{
+                    column: [pd.Timestamp("2026-07-01 12:00:00")]
+                    for column in timestamp_columns
+                },
+            }
+        ),
+        pd.DataFrame(
+            {
+                id_column: ["event-2"],
+                **{column: ["2026-07-02T12:00:00Z"] for column in timestamp_columns},
+            }
+        ),
+    ]
+    bodies = []
+    for source_frame in source_frames:
+        buffer = BytesIO()
+        source_frame.to_parquet(buffer, index=False, engine="pyarrow")
+        bodies.append(buffer.getvalue())
+
+    s3 = MagicMock()
+    paginator = MagicMock()
+    paginator.paginate.return_value = [
+        {
+            "Contents": [
+                {"Key": "events/github/year=2026/month=07/1.parquet"},
+                {"Key": "events/github/year=2026/month=07/2.parquet"},
+            ]
+        }
+    ]
+    s3.get_paginator.return_value = paginator
+    response_bodies = []
+    for body_bytes in bodies:
+        body = MagicMock()
+        body.read.return_value = body_bytes
+        response_bodies.append({"Body": body})
+    s3.get_object.side_effect = response_bodies
+
+    # Act
+    records = read_parquet_records_from_prefix(
+        s3,
+        "test-bucket",
+        "events/github/year=2026/month=07/",
+        dataset=dataset,
+    )
+
+    # Assert
+    assert len(records) == 2
+    for record in records:
+        for column in timestamp_columns:
+            assert isinstance(record[column], pd.Timestamp)
+            assert record[column].tzinfo is not None
 
 
 @pytest.mark.parametrize(

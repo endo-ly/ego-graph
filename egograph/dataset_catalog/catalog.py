@@ -50,6 +50,9 @@ class DatasetDefinition:
     schema_version: int = 1
     required_columns: tuple[str, ...] = ()
     column_types: dict[str, str] = field(default_factory=dict)
+    # 過去世代のsourceには任意列がない場合があるため、全日時列の一覧は
+    # required schema契約と分離し、存在する場合だけ正規化できるようにする。
+    timestamp_columns: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.path.startswith("/") or self.path.endswith("/"):
@@ -71,6 +74,10 @@ class DatasetDefinition:
             raise ValueError(
                 f"invalid_schema: duplicate_required_columns: {self.dataset_id}"
             )
+        if len(self.timestamp_columns) != len(set(self.timestamp_columns)):
+            raise ValueError(
+                f"invalid_schema: duplicate_timestamp_columns: {self.dataset_id}"
+            )
         missing_column_types = set(self.required_columns) - set(self.column_types)
         if missing_column_types:
             raise ValueError(
@@ -85,8 +92,7 @@ class DatasetDefinition:
         ):
             if column is not None and column not in self.required_columns:
                 raise ValueError(
-                    f"invalid_schema: {role}_not_required: "
-                    f"{self.dataset_id} <{column}>"
+                    f"invalid_schema: {role}_not_required: {self.dataset_id} <{column}>"
                 )
         for column in self.column_types:
             if column not in self.required_columns:
@@ -98,6 +104,13 @@ class DatasetDefinition:
                 raise ValueError(
                     f"invalid_schema: unknown_column_type: "
                     f"{self.dataset_id} <{column}={self.column_types[column]}>"
+                )
+        for column in self.timestamp_columns:
+            canonical_type = self.column_types.get(column)
+            if canonical_type is not None and canonical_type != "timestamp":
+                raise ValueError(
+                    f"invalid_schema: timestamp_column_type_mismatch: "
+                    f"{self.dataset_id} <{column}={canonical_type}>"
                 )
 
     def source_root(self, events_path: str, master_path: str) -> str:
@@ -184,6 +197,7 @@ datasets = SimpleNamespace(
             "track_id": "string",
             "track_name": "string",
         },
+        timestamp_columns=("played_at_utc", "ingested_at_utc"),
     ),
     SPOTIFY_TRACKS=DatasetDefinition(
         dataset_id="spotify.tracks",
@@ -201,6 +215,7 @@ datasets = SimpleNamespace(
             "name": "string",
             "updated_at": "timestamp",
         },
+        timestamp_columns=("updated_at",),
     ),
     SPOTIFY_ARTISTS=DatasetDefinition(
         dataset_id="spotify.artists",
@@ -218,6 +233,7 @@ datasets = SimpleNamespace(
             "name": "string",
             "updated_at": "timestamp",
         },
+        timestamp_columns=("updated_at",),
     ),
     GITHUB_COMMITS=DatasetDefinition(
         dataset_id="github.commits",
@@ -241,6 +257,7 @@ datasets = SimpleNamespace(
             "sha": "string",
             "committed_at_utc": "timestamp",
         },
+        timestamp_columns=("committed_at_utc", "ingested_at_utc"),
     ),
     GITHUB_PULL_REQUESTS=DatasetDefinition(
         dataset_id="github.pull_requests",
@@ -264,6 +281,13 @@ datasets = SimpleNamespace(
             "pr_number": "integer",
             "updated_at_utc": "timestamp",
         },
+        timestamp_columns=(
+            "created_at_utc",
+            "updated_at_utc",
+            "closed_at_utc",
+            "merged_at_utc",
+            "ingested_at_utc",
+        ),
     ),
     GITHUB_REPOSITORIES=DatasetDefinition(
         dataset_id="github.repositories",
@@ -279,6 +303,12 @@ datasets = SimpleNamespace(
             "repo_full_name": "string",
             "updated_at_utc": "timestamp",
         },
+        timestamp_columns=(
+            "created_at_utc",
+            "updated_at_utc",
+            "pushed_at_utc",
+            "summary_updated_at_utc",
+        ),
     ),
     BROWSER_HISTORY_PAGE_VIEWS=DatasetDefinition(
         dataset_id="browser_history.page_views",
@@ -307,6 +337,12 @@ datasets = SimpleNamespace(
             "source_device": "string",
             "ingested_at_utc": "timestamp",
         },
+        timestamp_columns=(
+            "started_at_utc",
+            "ended_at_utc",
+            "synced_at_utc",
+            "ingested_at_utc",
+        ),
     ),
     YOUTUBE_WATCH_EVENTS=DatasetDefinition(
         dataset_id="youtube.watch_events",
@@ -330,6 +366,7 @@ datasets = SimpleNamespace(
             "video_id": "string",
             "source_event_id": "string",
         },
+        timestamp_columns=("watched_at_utc", "ingested_at_utc"),
     ),
     YOUTUBE_VIDEOS=DatasetDefinition(
         dataset_id="youtube.videos",
@@ -345,6 +382,7 @@ datasets = SimpleNamespace(
             "title": "string",
             "updated_at": "timestamp",
         },
+        timestamp_columns=("published_at", "updated_at"),
     ),
     YOUTUBE_CHANNELS=DatasetDefinition(
         dataset_id="youtube.channels",
@@ -360,6 +398,7 @@ datasets = SimpleNamespace(
             "channel_name": "string",
             "updated_at": "timestamp",
         },
+        timestamp_columns=("published_at", "updated_at"),
     ),
     GOOGLE_HEALTH_DAILY_METRICS=DatasetDefinition(
         dataset_id="google_health.daily_metrics",
@@ -376,6 +415,7 @@ datasets = SimpleNamespace(
             "metric_name": "string",
             "value": "float",
         },
+        timestamp_columns=("ingested_at_utc",),
     ),
     GOOGLE_HEALTH_SAMPLES=DatasetDefinition(
         dataset_id="google_health.samples",
@@ -391,6 +431,7 @@ datasets = SimpleNamespace(
             "measured_at_utc": "timestamp",
             "value": "float",
         },
+        timestamp_columns=("measured_at_utc", "ingested_at_utc"),
     ),
     GOOGLE_HEALTH_INTERVALS=DatasetDefinition(
         dataset_id="google_health.intervals",
@@ -406,6 +447,11 @@ datasets = SimpleNamespace(
             "started_at_utc": "timestamp",
             "value": "float",
         },
+        timestamp_columns=(
+            "started_at_utc",
+            "ended_at_utc",
+            "ingested_at_utc",
+        ),
     ),
     GOOGLE_HEALTH_SESSIONS=DatasetDefinition(
         dataset_id="google_health.sessions",
@@ -421,6 +467,11 @@ datasets = SimpleNamespace(
             "session_id": "string",
             "started_at_utc": "timestamp",
         },
+        timestamp_columns=(
+            "started_at_utc",
+            "ended_at_utc",
+            "ingested_at_utc",
+        ),
     ),
 )
 

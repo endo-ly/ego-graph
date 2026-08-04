@@ -23,6 +23,7 @@ def _commit_row(event_id: str, sha: str) -> dict:
         "repo_full_name": "testowner/testrepo",
         "sha": sha,
         "committed_at_utc": datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+        "ingested_at_utc": datetime(2024, 1, 15, 11, 0, tzinfo=UTC),
     }
 
 
@@ -32,7 +33,11 @@ def _pr_event_row(event_id: str, pr_number: int) -> dict:
         "pr_event_id": event_id,
         "repo_full_name": "testowner/testrepo",
         "pr_number": pr_number,
+        "created_at_utc": datetime(2025, 12, 31, tzinfo=UTC),
         "updated_at_utc": datetime(2026, 1, 1, tzinfo=UTC),
+        "closed_at_utc": datetime(2026, 1, 2, tzinfo=UTC),
+        "merged_at_utc": datetime(2026, 1, 3, tzinfo=UTC),
+        "ingested_at_utc": datetime(2026, 1, 4, tzinfo=UTC),
     }
 
 
@@ -592,3 +597,58 @@ def test_compact_month_normalizes_legacy_string_timestamp(
     compacted = pd.read_parquet(BytesIO(body))
     assert key == "compacted/events/github/commits/year=2026/month=07/data.parquet"
     assert compacted["committed_at_utc"].dtype.name == "datetime64[ns, UTC]"
+
+
+def test_compact_month_normalizes_mixed_commit_ingestion_timestamps(
+    github_storage_with_mock_s3,
+):
+    """複数source間で型が混在するCommitの取り込み日時を正規化する。"""
+    storage, mock_s3 = github_storage_with_mock_s3
+    data = [
+        _commit_row("commit_1", "abc123"),
+        _commit_row("commit_2", "def456"),
+    ]
+    data[1]["ingested_at_utc"] = "2026-07-01T12:00:00Z"
+
+    with patch(
+        "pipelines.sources.github.storage.read_parquet_records_from_prefix",
+        return_value=data,
+    ):
+        key = storage.compact_month(
+            dataset=datasets.GITHUB_COMMITS,
+            year=2026,
+            month=7,
+        )
+
+    body = mock_s3.put_object.call_args.kwargs["Body"]
+    compacted = pd.read_parquet(BytesIO(body))
+
+    assert key == "compacted/events/github/commits/year=2026/month=07/data.parquet"
+    assert compacted["ingested_at_utc"].dtype.name == "datetime64[ns, UTC]"
+
+
+def test_compact_month_normalizes_mixed_pr_creation_timestamps(
+    github_storage_with_mock_s3,
+):
+    """複数source間で型が混在するPRの作成日時を正規化する。"""
+    storage, mock_s3 = github_storage_with_mock_s3
+    data = [_pr_event_row("pr_1", 1), _pr_event_row("pr_2", 2)]
+    data[1]["created_at_utc"] = "2026-07-02T12:00:00Z"
+
+    with patch(
+        "pipelines.sources.github.storage.read_parquet_records_from_prefix",
+        return_value=data,
+    ):
+        key = storage.compact_month(
+            dataset=datasets.GITHUB_PULL_REQUESTS,
+            year=2026,
+            month=7,
+        )
+
+    body = mock_s3.put_object.call_args.kwargs["Body"]
+    compacted = pd.read_parquet(BytesIO(body))
+
+    assert key == (
+        "compacted/events/github/pull_requests/year=2026/month=07/data.parquet"
+    )
+    assert compacted["created_at_utc"].dtype.name == "datetime64[ns, UTC]"

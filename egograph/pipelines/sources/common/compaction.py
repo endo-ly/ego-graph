@@ -42,15 +42,22 @@ def normalize_dataframe_for_dataset(
     df: pd.DataFrame,
     dataset: DatasetDefinition,
 ) -> pd.DataFrame:
-    """dataset catalog の timestamp 契約に合わせて DataFrame を正規化する。
+    """dataset catalog の timestamp 列に合わせて DataFrame を正規化する。
 
     既存の source Parquet には日時が文字列で保存された世代があるため、
-    ファイル間で型が混在していなくても catalog の timestamp カラムは必ず
-    UTC aware datetime へ変換する。不正な日時は ``errors='raise'`` で保存前に
-    表面化させる。
+    ファイル間で型が混在していなくても catalog の timestamp 列は必ず UTC
+    aware datetime へ変換する。``timestamp_columns`` には required schema
+    以外の任意列も含められ、列が存在する場合だけ変換する。不正な日時は
+    ``errors='raise'`` で保存前に表面化させる。
     """
-    for column, canonical_type in dataset.column_types.items():
-        if canonical_type != "timestamp" or column not in df.columns:
+    timestamp_columns = set(dataset.timestamp_columns)
+    timestamp_columns.update(
+        column
+        for column, canonical_type in dataset.column_types.items()
+        if canonical_type == "timestamp"
+    )
+    for column in sorted(timestamp_columns):
+        if column not in df.columns:
             continue
         df[column] = pd.to_datetime(
             df[column],

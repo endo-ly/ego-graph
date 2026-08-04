@@ -39,6 +39,7 @@ Python workspace では `backend` と `pipelines` の両方から `dataset_catal
 | `schema_version` | Parquet schema 契約の version。`required_columns` / `column_types` を変更するたびにインクリメント |
 | `required_columns` | Parquet に必ず存在する必須カラム名 |
 | `column_types` | 必須カラムごとの canonical type（key 集合は `required_columns` と完全一致。定義は `__post_init__` で検証） |
+| `timestamp_columns` | source に存在する場合に UTC aware datetime へ正規化する日時カラムの一覧。過去世代で欠落する任意カラムも含められる |
 
 ## Schema 契約（Parquet）
 
@@ -75,9 +76,11 @@ Python workspace では `backend` と `pipelines` の両方から `dataset_catal
 
 各 source storage は「必須カラム確認 → Parquet バイト列生成 → バイト列から型検証 → アップロード」の順で保存する。アップロード後の読み直しは行わない。compaction 出力（`compacted/` 配下）も同様に、アップロード前に `validate_required_columns` + `validate_parquet_bytes` を適用する。
 
-compaction は source Parquet の読み込み時に、catalog で `timestamp` と定義された
-カラムを UTC aware datetime へ正規化する。過去世代で日時が文字列として保存されて
-いても、compacted Parquet は canonical schema で生成される。不正な日時は保存前に
+compaction は source Parquet の読み込み時に、catalog の `timestamp_columns` と
+`column_types` の timestamp 列を UTC aware datetime へ正規化する。過去世代で日時が
+文字列として保存されていても、compacted Parquet は canonical schema で生成される。
+`timestamp_columns` は明示的な列一覧なので、日時ではない文字列列を推測で変換しない。
+過去世代で列自体が欠落している場合はその列をスキップし、不正な日時値は保存前に
 エラーとして扱う。
 
 - 空データ（保存対象なし）は検証をスキップし、既存の `None` / `failed=0` 契約を維持する
@@ -110,7 +113,7 @@ compaction は source Parquet の読み込み時に、catalog で `timestamp` �
 
 - `pipelines.sources.common.compaction`
   - `DatasetDefinition` から compacted key を組み立てる
-  - source Parquet の timestamp カラムを catalog 契約へ正規化する
+  - source Parquet の `timestamp_columns` / timestamp カラムを catalog 契約へ正規化する
 - `pipelines.sources.*.pipeline`
   - provider ごとの monthly compaction 対象を `monthly_compaction_datasets()` から取得する
 - `pipelines.sources.google_health.writer`
