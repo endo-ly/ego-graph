@@ -7,6 +7,7 @@ from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 from botocore.exceptions import ClientError
 from dataset_catalog import datasets
 from pipelines.sources.github.storage import (
@@ -33,6 +34,24 @@ def _pr_event_row(event_id: str, pr_number: int) -> dict:
         "pr_number": pr_number,
         "updated_at_utc": datetime(2026, 1, 1, tzinfo=UTC),
     }
+
+
+@pytest.fixture
+def github_storage_with_mock_s3():
+    """GitHub storageとモックS3を生成するpytest fixture。"""
+    with patch("pipelines.sources.github.storage.boto3") as mock_boto3:
+        mock_s3 = MagicMock()
+        mock_boto3.client.return_value = mock_s3
+        storage = GitHubWorklogStorage(
+            endpoint_url="http://test-endpoint",
+            access_key_id="test-key",
+            secret_access_key="test-secret",
+            bucket_name="test-bucket",
+            raw_path="raw/",
+            events_path="events/",
+            master_path="master/",
+        )
+        yield storage, mock_s3
 
 
 class TestGitHubWorklogStorage(unittest.TestCase):
@@ -526,3 +545,50 @@ class TestGitHubWorklogStorage(unittest.TestCase):
             "compacted/events/github/commits/year=2024/month=01/data.parquet",
         )
         self.assertEqual(key, call_args["Key"])
+
+    def test_compact_month_normalizes_legacy_pr_string_timestamp(self):
+        """既存PR sourceの文字列日時をtimestamp Parquetへ変換して保存する。"""
+        data = [_pr_event_row("pr_1", 1)]
+        data[0]["updated_at_utc"] = "2026-07-02T12:00:00Z"
+
+        with patch(
+            "pipelines.sources.github.storage.read_parquet_records_from_prefix",
+            return_value=data,
+        ):
+            key = self.storage.compact_month(
+                dataset=datasets.GITHUB_PULL_REQUESTS,
+                year=2026,
+                month=7,
+            )
+
+        body = self.mock_s3.put_object.call_args.kwargs["Body"]
+        compacted = pd.read_parquet(BytesIO(body))
+        self.assertEqual(
+            key,
+            "compacted/events/github/pull_requests/year=2026/month=07/data.parquet",
+        )
+        self.assertEqual(compacted["updated_at_utc"].dtype.name, "datetime64[ns, UTC]")
+
+
+def test_compact_month_normalizes_legacy_string_timestamp(
+    github_storage_with_mock_s3,
+):
+    """既存sourceの文字列日時をtimestamp Parquetへ変換して保存する。"""
+    storage, mock_s3 = github_storage_with_mock_s3
+    data = [_commit_row("commit_1", "abc123")]
+    data[0]["committed_at_utc"] = "2026-07-01T12:00:00Z"
+
+    with patch(
+        "pipelines.sources.github.storage.read_parquet_records_from_prefix",
+        return_value=data,
+    ):
+        key = storage.compact_month(
+            dataset=datasets.GITHUB_COMMITS,
+            year=2026,
+            month=7,
+        )
+
+    body = mock_s3.put_object.call_args.kwargs["Body"]
+    compacted = pd.read_parquet(BytesIO(body))
+    assert key == "compacted/events/github/commits/year=2026/month=07/data.parquet"
+    assert compacted["committed_at_utc"].dtype.name == "datetime64[ns, UTC]"

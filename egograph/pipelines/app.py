@@ -4,7 +4,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from pipelines.api import browser_history, google_health, health, runs, workflows
+from pipelines.api import (
+    browser_history,
+    compaction,
+    google_health,
+    health,
+    runs,
+    workflows,
+)
 from pipelines.config import PipelinesConfig
 from pipelines.infrastructure.logging_filters import install_access_log_filters
 from pipelines.service import PipelineService
@@ -33,6 +40,7 @@ def create_app(config: PipelinesConfig | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(workflows.router)
     app.include_router(runs.router)
+    app.include_router(compaction.router)
     app.include_router(browser_history.router)
     app.include_router(google_health.router)
     return app

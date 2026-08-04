@@ -122,6 +122,8 @@ Pipelines Service はポート `8001`（デフォルト）で HTTP API を提供
 | Method | Path | 説明 |
 |--------|------|------|
 | `GET` | `/v1/health` | ヘルスチェック |
+| `GET` | `/v1/datasets` | dataset catalog 一覧 |
+| `POST` | `/v1/compaction/runs` | 指定dataset partitionのmanual compact run作成 |
 | `GET` | `/v1/workflows` | ワークフロー一覧 |
 | `GET` | `/v1/workflows/{workflow_id}` | ワークフロー詳細 |
 | `GET` | `/v1/workflows/{workflow_id}/runs` | 指定ワークフローの run 一覧 |
@@ -152,6 +154,13 @@ curl -H "X-API-Key: $PIPELINES_API_KEY" http://localhost:8001/v1/workflows
 curl -X POST -H "X-API-Key: $PIPELINES_API_KEY" \
   http://localhost:8001/v1/workflows/spotify_ingest_workflow/runs
 
+# GitHubの指定月を再コンパクト（run_idを受け取り、通常のrun APIで追跡）
+curl -X POST \
+  -H "X-API-Key: $PIPELINES_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"targets":[{"dataset_id":"github.commits","year":2026,"month":7},{"dataset_id":"github.pull_requests","year":2026,"month":7}]}' \
+  http://localhost:8001/v1/compaction/runs
+
 # run 詳細取得
 curl -H "X-API-Key: $PIPELINES_API_KEY" \
   http://localhost:8001/v1/runs/<run_id>
@@ -161,7 +170,7 @@ curl -H "X-API-Key: $PIPELINES_API_KEY" \
 
 ```text
 egograph/pipelines/
-├── api/                # FastAPI ルート定義（health, workflows, runs, ingest）
+├── api/                # FastAPI ルート定義（health, datasets, compaction, workflows, runs, ingest）
 ├── domain/             # ドメインモデル（workflow, schedule, errors）
 ├── infrastructure/     # インフラストラクチャ層
 │   ├── db/             # SQLite 接続・マイグレーション

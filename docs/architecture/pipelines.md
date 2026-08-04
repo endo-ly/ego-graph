@@ -349,11 +349,15 @@ Google Health repairはこのrun入力で取得日数をworkflowへ渡す。
 | Workflow | Schedule | Steps |
 |---|---|---|
 | `spotify_ingest_workflow` | 6回/日 (0,4,8,12,16,22 JST) | ingest → compact |
+| `spotify_compact_workflow` | 手動API | 指定dataset・月のcompact |
 | `github_ingest_workflow` | 1回/日 (00:00 JST) | ingest → compact |
+| `github_compact_workflow` | 手動API | 指定dataset・月のcompact |
 | `google_activity_ingest_workflow` | 1回/日 (23:00 JST) | ingest |
+| `youtube_compact_workflow` | 手動API | 指定dataset・月のcompact |
 | `google_health_ingest_workflow` | 3時間ごと / 毎日04:30 / 毎週日曜05:30（`TIMEZONE`基準）+ API手動実行 | repair / Raw JSON・events保存 → compacted範囲置換 |
 | `local_mirror_sync_workflow` | 6時間ごと | sync |
 | `browser_history_compact_workflow` | イベント駆動 | compact |
+| `browser_history_compact_workflow_manual` | 手動API | 指定dataset・月のcompact |
 | `browser_history_compact_maintenance_workflow` | 6時間ごと | compact maintenance |
 
 ---
@@ -508,6 +512,8 @@ uv run python -m pipelines.main serve
 | Method | Path | 説明 |
 |---|---|---|
 | GET | `/v1/health` | ヘルスチェック |
+| GET | `/v1/datasets` | dataset catalog 一覧 |
+| POST | `/v1/compaction/runs` | 指定dataset partitionのmanual compact run作成 |
 | GET | `/v1/workflows` | ワークフロー一覧 |
 | GET | `/v1/workflows/{id}` | ワークフロー詳細 |
 | POST | `/v1/workflows/{id}/runs` | 手動実行 |
@@ -524,6 +530,25 @@ uv run python -m pipelines.main serve
 | DELETE | `/v1/sources/google-health/connection` | Google Health 接続削除 |
 | POST | `/v1/sources/google-health/connection/smoke-test` | Google Health 疎通確認 |
 | POST | `/v1/sources/google-health/runs` | Google Health backfill・期間指定run作成 |
+
+### Manual Compaction API
+
+`workflow_id` は ingest と compact を含む処理単位であり、compact対象の指定には
+dataset catalog の canonical な `dataset_id` を使用する。`/v1/compaction/runs` は
+対象を明示した非同期runをqueueへ積み、実行状態・ログ・retryは通常の `/v1/runs`
+APIで扱う。dataset一覧の取得に `compaction_supported` クエリパラメータは使用しない。
+
+```json
+{
+  "targets": [
+    {"dataset_id": "github.commits", "year": 2026, "month": 7},
+    {"dataset_id": "github.pull_requests", "year": 2026, "month": 7}
+  ]
+}
+```
+
+対象は月次 `APPEND_DEDUPE` datasetに限り、同一run内では同じproviderのdatasetだけを
+指定する。Google Healthのような別compaction strategyはこのAPIの対象外である。
 
 ---
 
@@ -542,9 +567,9 @@ Pipelines Service は Browser Extension からのデータ受信も受け持つ�
 
 Pipelines API は API Key による認証を行う。
 
-- **環境変数**: `PIPELINES_API_KEY` が設定されている場合、リクエストの `X-API-Key` ヘッダーを検証
+- **環境変数**: `PIPELINES_API_KEY` の設定が必須。設定済みのキーを `X-API-Key` ヘッダーで検証
 - **対象**: 全エンドポイント（`/v1/health` を除く）
-- **未設定時**: 認証なしでアクセス可能（ローカル開発用）
+- **未設定時**: 認証なしにはならず、`500 PIPELINES_API_KEY is not configured` を返す
 
 ---
 

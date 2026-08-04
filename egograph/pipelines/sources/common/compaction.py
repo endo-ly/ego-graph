@@ -38,6 +38,29 @@ def _unify_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def normalize_dataframe_for_dataset(
+    df: pd.DataFrame,
+    dataset: DatasetDefinition,
+) -> pd.DataFrame:
+    """dataset catalog の timestamp 契約に合わせて DataFrame を正規化する。
+
+    既存の source Parquet には日時が文字列で保存された世代があるため、
+    ファイル間で型が混在していなくても catalog の timestamp カラムは必ず
+    UTC aware datetime へ変換する。不正な日時は ``errors='raise'`` で保存前に
+    表面化させる。
+    """
+    for column, canonical_type in dataset.column_types.items():
+        if canonical_type != "timestamp" or column not in df.columns:
+            continue
+        df[column] = pd.to_datetime(
+            df[column],
+            errors="raise",
+            utc=True,
+            format="mixed",
+        )
+    return df
+
+
 def build_compacted_key(
     compacted_path: str,
     dataset: DatasetDefinition,
@@ -52,12 +75,15 @@ def compact_records(
     records: list[dict[str, Any]],
     dedupe_key: str,
     sort_by: str | None = None,
+    dataset: DatasetDefinition | None = None,
 ) -> pd.DataFrame:
     """レコードを重複排除して compact する。"""
     if not records:
         return pd.DataFrame()
 
     df = pd.DataFrame(records)
+    if dataset is not None:
+        df = normalize_dataframe_for_dataset(df, dataset)
     if dedupe_key not in df.columns:
         raise ValueError(f"Missing dedupe key column: {dedupe_key}")
 
@@ -105,6 +131,8 @@ def read_parquet_records_from_prefix(
     s3_client: Any,
     bucket_name: str,
     prefix: str,
+    *,
+    dataset: DatasetDefinition | None = None,
 ) -> list[dict[str, Any]]:
     """prefix 配下の parquet object をすべて読み込む。"""
     paginator = s3_client.get_paginator("list_objects_v2")
@@ -121,7 +149,10 @@ def read_parquet_records_from_prefix(
         return []
 
     combined = pd.concat(frames, ignore_index=True)
-    combined = _unify_datetime_columns(combined)
+    if dataset is None:
+        combined = _unify_datetime_columns(combined)
+    else:
+        combined = normalize_dataframe_for_dataset(combined, dataset)
     return combined.to_dict(orient="records")
 
 

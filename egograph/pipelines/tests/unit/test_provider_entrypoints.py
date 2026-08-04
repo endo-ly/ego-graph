@@ -13,7 +13,11 @@ from pipelines.infrastructure.execution.inprocess_executor import (
     InProcessStepExecutor,
 )
 from pipelines.sources.common.config import Config, DuckDBConfig, R2Config
-from pipelines.sources.github.pipeline import run_github_compact, run_github_ingest
+from pipelines.sources.github.pipeline import (
+    run_github_compact,
+    run_github_compact_from_run,
+    run_github_ingest,
+)
 from pipelines.sources.spotify.pipeline import run_spotify_compact, run_spotify_ingest
 from pipelines.sources.youtube.pipeline import run_youtube_ingest
 from pipelines.workflows.registry import get_workflows
@@ -163,6 +167,55 @@ def test_run_github_compact_raises_after_collecting_failures(monkeypatch):
         assert str(exc) == "GitHub compaction failed for: github/pull_requests:2026-04"
     else:
         raise AssertionError("RuntimeError was not raised")
+
+
+def test_run_github_compact_from_run_uses_explicit_dataset_targets(monkeypatch):
+    """manual runの対象dataset・月だけをGitHub storageへ渡す。"""
+    calls = []
+
+    class FakeStorage:
+        def __init__(self, **kwargs):
+            pass
+
+        def compact_month(self, **kwargs):
+            calls.append(kwargs)
+            return "compacted/events/github/commits/year=2026/month=07/data.parquet"
+
+    monkeypatch.setattr(
+        "pipelines.sources.github.pipeline.PipelinesSettings.load",
+        lambda: _config(),
+    )
+    monkeypatch.setattr(
+        "pipelines.sources.github.pipeline.GitHubWorklogStorage",
+        FakeStorage,
+    )
+    run = WorkflowRun(
+        run_id="run-1",
+        workflow_id="github_compact_workflow",
+        trigger_type=TriggerType.MANUAL,
+        queued_reason=QueuedReason.MANUAL_REQUEST,
+        status=WorkflowRunStatus.RUNNING,
+        scheduled_at=None,
+        queued_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
+        started_at=None,
+        finished_at=None,
+        last_error_message=None,
+        requested_by="api",
+        parent_run_id=None,
+        result_summary={
+            "compaction_targets": [
+                {"dataset_id": "github.commits", "year": 2026, "month": 7}
+            ]
+        },
+    )
+
+    result = run_github_compact_from_run(run)
+
+    assert len(calls) == 1
+    assert calls[0]["dataset"].dataset_id == "github.commits"
+    assert calls[0]["year"] == 2026
+    assert calls[0]["month"] == 7
+    assert result["target_months"] == ["2026-07"]
 
 
 def test_all_inprocess_steps_are_importable():

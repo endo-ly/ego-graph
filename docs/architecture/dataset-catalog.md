@@ -1,6 +1,6 @@
 # Dataset Catalog
 
-> 最終更新: 2026-08-01
+> 最終更新: 2026-08-04
 
 Dataset Catalog は、Pipelines が書き込む Parquet dataset と Backend が読み取る Parquet dataset の共有契約である。
 
@@ -75,6 +75,11 @@ Python workspace では `backend` と `pipelines` の両方から `dataset_catal
 
 各 source storage は「必須カラム確認 → Parquet バイト列生成 → バイト列から型検証 → アップロード」の順で保存する。アップロード後の読み直しは行わない。compaction 出力（`compacted/` 配下）も同様に、アップロード前に `validate_required_columns` + `validate_parquet_bytes` を適用する。
 
+compaction は source Parquet の読み込み時に、catalog で `timestamp` と定義された
+カラムを UTC aware datetime へ正規化する。過去世代で日時が文字列として保存されて
+いても、compacted Parquet は canonical schema で生成される。不正な日時は保存前に
+エラーとして扱う。
+
 - 空データ（保存対象なし）は検証をスキップし、既存の `None` / `failed=0` 契約を維持する
 - 検証失敗は `ValueError`（`invalid_schema: ...`）として各 storage の既存の保存失敗契約へ変換する
   - spotify / browser_history / youtube: 保存関数が `None` を返し、pipeline 側で run 失敗扱い
@@ -105,6 +110,7 @@ Python workspace では `backend` と `pipelines` の両方から `dataset_catal
 
 - `pipelines.sources.common.compaction`
   - `DatasetDefinition` から compacted key を組み立てる
+  - source Parquet の timestamp カラムを catalog 契約へ正規化する
 - `pipelines.sources.*.pipeline`
   - provider ごとの monthly compaction 対象を `monthly_compaction_datasets()` から取得する
 - `pipelines.sources.google_health.writer`
