@@ -567,9 +567,9 @@ Pipelines Service は Browser Extension からのデータ受信も受け持つ�
 
 Pipelines API は API Key による認証を行う。
 
-- **環境変数**: `PIPELINES_API_KEY` が設定されている場合、リクエストの `X-API-Key` ヘッダーを検証
+- **環境変数**: `PIPELINES_API_KEY` の設定が必須。設定済みのキーを `X-API-Key` ヘッダーで検証
 - **対象**: 全エンドポイント（`/v1/health` を除く）
-- **未設定時**: 認証なしでアクセス可能（ローカル開発用）
+- **未設定時**: 認証なしにはならず、`500 PIPELINES_API_KEY is not configured` を返す
 
 ---
 

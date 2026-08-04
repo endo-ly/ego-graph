@@ -88,9 +88,9 @@ curl -s -X POST \
 
 ## API エンドポイント一覧
 
-`PIPELINES_API_KEY` が設定されている環境では、`/v1/health` を除く全エンドポイントに
-`X-API-Key` ヘッダーが必要。`PIPELINES_API_KEY` を設定しないローカル開発環境では、
-認証なしでアクセスできる。
+`/v1/health` を除く全エンドポイントでは、`PIPELINES_API_KEY` の設定が必須で、
+設定済みのキーを `X-API-Key` ヘッダーで送る必要がある。未設定時は認証なしにはならず、
+設定不備として `500 PIPELINES_API_KEY is not configured` を返す。
 
 | Method | Path | 説明 |
 |--------|------|------|
