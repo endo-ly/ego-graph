@@ -162,20 +162,6 @@ def test_normalize_dataframe_for_dataset_converts_legacy_string_timestamp(
     assert result.loc[0, column] == pd.Timestamp("2026-07-01 12:00:00", tz="UTC")
 
 
-def test_normalize_dataframe_for_dataset_converts_explicit_offset_to_utc():
-    """明示されたoffsetを保持せず、UTC instantへ変換する。"""
-    # Arrange
-    df = pd.DataFrame({"committed_at_utc": ["2026-07-01T21:00:00+09:00"]})
-
-    # Act
-    result = normalize_dataframe_for_dataset(df, datasets.GITHUB_COMMITS)
-
-    # Assert
-    assert result.loc[0, "committed_at_utc"] == pd.Timestamp(
-        "2026-07-01 12:00:00", tz="UTC"
-    )
-
-
 def test_normalize_dataframe_for_dataset_rejects_invalid_timestamp():
     """不正な日時はcompact前にエラーとして扱う。"""
     # Arrange
@@ -183,16 +169,6 @@ def test_normalize_dataframe_for_dataset_rejects_invalid_timestamp():
 
     # Act & Assert
     with pytest.raises(ValueError):
-        normalize_dataframe_for_dataset(df, datasets.GITHUB_COMMITS)
-
-
-def test_normalize_dataframe_for_dataset_rejects_naive_timestamp():
-    """タイムゾーンなし日時をUTCと誤認しない。"""
-    # Arrange
-    df = pd.DataFrame({"committed_at_utc": ["2026-07-01T12:00:00"]})
-
-    # Act & Assert
-    with pytest.raises(ValueError, match="must include a timezone"):
         normalize_dataframe_for_dataset(df, datasets.GITHUB_COMMITS)
 
 

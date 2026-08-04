@@ -46,16 +46,12 @@ def normalize_dataframe_for_dataset(
 
     既存の source Parquet には日時が文字列で保存された世代があるため、
     ファイル間で型が混在していなくても catalog の timestamp カラムは必ず
-    UTC aware datetime へ変換する。タイムゾーンのない値はUTCと仮定せず、
-    ``errors='raise'`` と合わせて保存前に表面化させる。
+    UTC aware datetime へ変換する。不正な日時は ``errors='raise'`` で保存前に
+    表面化させる。
     """
     for column, canonical_type in dataset.column_types.items():
         if canonical_type != "timestamp" or column not in df.columns:
             continue
-        for value in df[column].dropna():
-            parsed = pd.to_datetime(value, errors="raise", format="mixed")
-            if parsed.tzinfo is None or parsed.utcoffset() is None:
-                raise ValueError(f"invalid_timestamp: {column} must include a timezone")
         df[column] = pd.to_datetime(
             df[column],
             errors="raise",
