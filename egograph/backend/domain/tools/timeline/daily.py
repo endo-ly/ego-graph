@@ -1,8 +1,7 @@
-"""``get_daily_timeline`` MCP ツール。
+"""``get_daily_timeline`` の canonical tool。
 
-REST API と MCP Tool は同じ入力制約、同じ response shape、同じ validation を使う。
-本ツールの ``execute`` が唯一の validation + repository 呼び出しポイントであり、
-REST 側も本ツールを経由して同じロジックを実行する。
+REST API と MCP Tool は同じ入力制約、同じ validation、同じ canonical response を使う。
+MCP のレスポンス表示だけは、呼び出し境界で compact projection を適用する。
 """
 
 import logging
@@ -68,7 +67,8 @@ class GetDailyTimelineTool(ToolBase):
             "複数データソース（Spotify, YouTube, Browser History, GitHub, "
             "Google Health）の観測イベントを1日単位で時刻順に統合した"
             "タイムラインを取得します。Google Health は items には入らず"
-            "daily_summaries に添付されます。"
+            "daily_summaries に添付されます。MCPではmetadata、空値、"
+            "UTC/localの重複を省いたcompact形式で返します。"
         )
 
     @property

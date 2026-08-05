@@ -1,8 +1,4 @@
-"""Daily Timeline API レスポンススキーマ。
-
-REST と MCP で同じ response shape を使うため、本スキーマは MCP 応答の
-契約とも一致する。Pydantic モデルは REST の OpenAPI / 直列化検証に使う。
-"""
+"""Daily Timeline REST API レスポンススキーマ。"""
 
 from datetime import datetime
 from typing import Any
