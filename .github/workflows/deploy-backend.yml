@@ -68,13 +68,7 @@ jobs:
             sudo systemctl restart egograph-backend
             for i in $(seq 1 10); do
               if curl -fsS --connect-timeout 2 --max-time 5 \
-                http://127.0.0.1:8000/health | python3 -c '
-                import json
-                import sys
-
-                payload = json.load(sys.stdin)
-                raise SystemExit(payload.get("status") != "ok")
-              '; then
+                http://127.0.0.1:8000/health | python3 -c 'import json, sys; raise SystemExit(json.load(sys.stdin).get("status") != "ok")'; then
                 echo "Health check passed"
                 exit 0
               fi

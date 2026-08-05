@@ -256,14 +256,14 @@ FastMCP を使用し、ToolRegistry のツールを MCP プロトコルで公開
 
 ### CORS
 
-`CORS_ORIGINS` 環境変数（カンマ区切り）で許可オリジンを指定。ワイルドカード `*` と空要素は開発環境用の設定ミスとして、`BACKEND_ENV=production` では拒否される。
+`CORS_ORIGINS` 環境変数（カンマ区切り）で許可オリジンを指定する。ブラウザからのクロスオリジンアクセスが不要な場合は未設定または空にして、CORSを無効化できる。ワイルドカード `*` と指定内の空要素は、`BACKEND_ENV=production` では拒否される。
 
 ### 本番起動時の設定検証
 
 `BACKEND_ENV` のデフォルトは `development`。`production` を指定すると、FastAPI app の生成前に次を検証する。
 
 - `BACKEND_API_KEY` が空でないこと
-- `CORS_ORIGINS` が明示され、空要素や `*` を含まないこと
+- `CORS_ORIGINS` が未設定または空、あるいは指定する場合に空要素や `*` を含まないこと
 - R2 設定が存在すること
 
 検証に失敗した場合は app を起動せず、設定エラーとして終了する。
@@ -283,7 +283,7 @@ FastMCP を使用し、ToolRegistry のツールを MCP プロトコルで公開
 | `reload` | `BACKEND_RELOAD` | `True` | ホットリロード |
 | `environment` | `BACKEND_ENV` | `development` | 実行環境（`development` / `production`） |
 | `api_key` | `BACKEND_API_KEY` | `None` | API Key（production では必須） |
-| `cors_origins` | `CORS_ORIGINS` | `*` | CORS 許可オリジン |
+| `cors_origins` | `CORS_ORIGINS` | `""` | CORS 許可オリジン（空で無効） |
 | `log_level` | `LOG_LEVEL` | `INFO` | ログレベル |
 | `mcp_allowed_hosts` | `MCP_ALLOWED_HOSTS` | `[]` | MCP Host 許可リスト |
 

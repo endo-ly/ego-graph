@@ -29,7 +29,7 @@ uv run uvicorn egograph.backend.main:create_app --factory --reload --host 127.0.
 
 ローカル開発では `BACKEND_ENV=development`（デフォルト）を使用する。API key なしでも起動でき、`CORS_ORIGINS=*` を許可する。
 
-本番では `BACKEND_ENV=production` を設定する。起動時に `BACKEND_API_KEY`、空要素やワイルドカードを含まない `CORS_ORIGINS`、R2 設定の存在を検証し、不足時は app を起動しない（HTTP 応答は返らない）。
+本番では `BACKEND_ENV=production` を設定する。起動時に `BACKEND_API_KEY` と R2 設定の存在を検証する。ブラウザからのクロスオリジンアクセスが不要な場合は `CORS_ORIGINS` を未設定または空にでき、FEを別オリジンから接続する場合は空要素やワイルドカードを含まないオリジンを指定する。不足時は app を起動しない（HTTP 応答は返らない）。
 
 `/health` と `/v1/health` は readiness endpoint であり、依存サービスが利用可能なら HTTP 200（データ未投入も含む）、起動後の DuckDB・R2 障害なら HTTP 503 を返す。本番設定の不足は起動時に検出されるため、503ではなくプロセス起動失敗として扱う。
 

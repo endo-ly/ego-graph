@@ -179,12 +179,11 @@ sudo install -o root -g root -m 600 /dev/null /etc/egograph/backend.env
 sudoedit /etc/egograph/backend.env
 ```
 
-`/etc/egograph/backend.env` には、デプロイ環境の Secret 管理機能から払い出した値を設定する。`BACKEND_ENV=production` にすると、API key・明示的な CORS・R2 設定が不足した状態では Backend は起動しない。
+`/etc/egograph/backend.env` には、デプロイ環境の Secret 管理機能から払い出した値を設定する。`BACKEND_ENV=production` にすると、API key・R2 設定が不足した状態では Backend は起動しない。ブラウザからのクロスオリジンアクセスが不要な場合は `CORS_ORIGINS` を設定しない。FEを別オリジンから接続する場合だけ、許可するオリジンを指定する。
 
 ```dotenv
 BACKEND_ENV=production
 BACKEND_API_KEY=<random-long-secret>
-CORS_ORIGINS=https://<allowed-origin>
 R2_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=<access-key>
 R2_SECRET_ACCESS_KEY=<secret-key>

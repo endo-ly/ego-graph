@@ -44,7 +44,7 @@ class BackendConfig(BaseSettings):
     api_key: SecretStr | None = Field(None, alias="BACKEND_API_KEY")
 
     # CORS設定
-    cors_origins: str = Field("*", alias="CORS_ORIGINS")  # カンマ区切り
+    cors_origins: str = Field("", alias="CORS_ORIGINS")  # カンマ区切り。空で無効
 
     # ロギング
     log_level: str = Field("INFO", alias="LOG_LEVEL")
@@ -108,12 +108,13 @@ class BackendConfig(BaseSettings):
         """
         if self.api_key is None or not self.api_key.get_secret_value().strip():
             raise ValueError("BACKEND_API_KEY is required for production")
-        origins = [origin.strip() for origin in self.cors_origins.split(",")]
-        if any(not origin or origin == "*" for origin in origins):
-            raise ValueError(
-                "CORS_ORIGINS must be explicitly configured with non-empty origins "
-                "(not '*')"
-            )
+        if self.cors_origins.strip():
+            origins = [origin.strip() for origin in self.cors_origins.split(",")]
+            if any(not origin or origin == "*" for origin in origins):
+                raise ValueError(
+                    "CORS_ORIGINS must contain non-empty origins (or be omitted) "
+                    "and must not contain '*'"
+                )
         if self.r2 is None:
             raise ValueError("R2 configuration is required for production")
 

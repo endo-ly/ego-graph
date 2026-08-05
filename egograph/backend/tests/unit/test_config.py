@@ -23,6 +23,7 @@ class TestBackendConfig:
         assert config.environment == "development"
         assert config.log_level == "INFO"
         assert config.api_key is None
+        assert config.cors_origins == ""
         assert config.r2 is None
 
     def test_custom_values(self):
@@ -148,29 +149,42 @@ class TestBackendConfig:
 
         assert mock_backend_config.api_key.get_secret_value() == api_key
 
+    @pytest.mark.parametrize("cors_origins", ["", " "])
+    def test_validate_for_production_allows_cors_to_be_disabled(
+        self, mock_backend_config, cors_origins
+    ):
+        """CORSを使用しない本番設定を許可する。"""
+        mock_backend_config.cors_origins = cors_origins
+
+        mock_backend_config.validate_for_production()
+
     def test_validate_for_production_wildcard_cors(self, mock_backend_config):
         """ワイルドカードCORSは本番環境で禁止。"""
         mock_backend_config.cors_origins = "*"
 
         with pytest.raises(
             ValueError,
-            match="CORS_ORIGINS must be explicitly configured",
+            match="CORS_ORIGINS must contain non-empty origins",
         ):
             mock_backend_config.validate_for_production()
 
     @pytest.mark.parametrize(
         "cors_origins",
-        ["", " ", "https://app.example.com,,https://admin.example.com"],
+        [
+            ",https://app.example.com",
+            "https://app.example.com,",
+            "https://app.example.com,,https://admin.example.com",
+        ],
     )
-    def test_validate_for_production_rejects_empty_cors_origin(
+    def test_validate_for_production_rejects_empty_cors_origin_entry(
         self, mock_backend_config, cors_origins
     ):
-        """空要素を含むCORS設定を本番環境で拒否する。"""
+        """オリジン指定内の空要素を本番環境で拒否する。"""
         mock_backend_config.cors_origins = cors_origins
 
         with pytest.raises(
             ValueError,
-            match="CORS_ORIGINS must be explicitly configured with non-empty origins",
+            match="CORS_ORIGINS must contain non-empty origins",
         ):
             mock_backend_config.validate_for_production()
 
@@ -188,6 +202,17 @@ class TestBackendConfig:
 
         with pytest.raises(ValueError, match="BACKEND_API_KEY is required"):
             create_app(config=mock_backend_config)
+
+    def test_create_app_allows_production_without_cors_origins(
+        self, mock_backend_config
+    ):
+        """CORSを使用しない本番設定でFastAPIアプリを生成できる。"""
+        mock_backend_config.environment = "production"
+        mock_backend_config.cors_origins = ""
+
+        app = create_app(config=mock_backend_config)
+
+        assert app is not None
 
 
 class TestR2Settings:
