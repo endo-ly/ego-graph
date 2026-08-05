@@ -480,6 +480,9 @@ class TestRestAndMcpContract:
         # generated_at は呼び出しごとに変わるため除外して比較
         rest_body["meta"].pop("generated_at", None)
         tool_body["meta"].pop("generated_at", None)
+        assert "event_id" in rest_body["items"][0]
+        assert "event_ids" in rest_body["correlations"][0]
+        assert "preceded_by_event_id" in rest_body["gaps"][0]
         assert rest_body == tool_body
 
     def test_rest_returns_400_on_invalid_date(self, tmp_path, test_client):
@@ -584,17 +587,18 @@ class TestMcpServerRegistration:
         assert payload["meta"]["format"] == "compact"
         assert set(payload["range"]) == {"start", "end"}
         for item in payload["items"]:
+            assert "event_id" not in item
             assert "metadata" not in item
             assert "started_at" in item
             assert "started_at_utc" not in item
             assert "started_at_local" not in item
             assert "raw_ref" in item
+        for correlation in payload.get("correlations", []):
+            assert "event_ids" not in correlation
         assert set(payload["gaps"][0]) == {
             "gap_id",
             "kind",
             "start",
             "end",
             "duration_minutes",
-            "preceded_by_event_id",
-            "followed_by_event_id",
         }

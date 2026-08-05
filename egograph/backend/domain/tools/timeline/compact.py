@@ -12,6 +12,10 @@ def compact_daily_timeline(response: dict[str, Any]) -> dict[str, Any]:
     compact: dict[str, Any] = dict(response)
     compact["range"] = _compact_range(response.get("range"))
     compact["items"] = [_compact_item(item) for item in response.get("items", [])]
+    compact["correlations"] = [
+        _compact_correlation(correlation)
+        for correlation in response.get("correlations", [])
+    ]
     compact["gaps"] = [_compact_gap(gap) for gap in response.get("gaps", [])]
     compact["meta"] = {
         **(response.get("meta") or {}),
@@ -21,10 +25,9 @@ def compact_daily_timeline(response: dict[str, Any]) -> dict[str, Any]:
 
 
 def _compact_item(item: dict[str, Any]) -> dict[str, Any]:
-    """Timeline item の重複時刻・metadata・空値を省く。"""
+    """Timeline item の重複時刻・metadata・event_id・空値を省く。"""
     return _drop_empty(
         {
-            "event_id": item.get("event_id"),
             "started_at": item.get("started_at_local"),
             "ended_at": item.get("ended_at_local"),
             "source": item.get("source"),
@@ -34,6 +37,18 @@ def _compact_item(item: dict[str, Any]) -> dict[str, Any]:
             "subtitle": item.get("subtitle"),
             "url": item.get("url"),
             "raw_ref": item.get("raw_ref"),
+        }
+    )
+
+
+def _compact_correlation(correlation: dict[str, Any]) -> dict[str, Any]:
+    """Correlation からイベントID参照を省く。"""
+    return _drop_empty(
+        {
+            "correlation_id": correlation.get("correlation_id"),
+            "kind": correlation.get("kind"),
+            "confidence": correlation.get("confidence"),
+            "reason": correlation.get("reason"),
         }
     )
 
@@ -51,7 +66,7 @@ def _compact_range(time_range: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _compact_gap(gap: dict[str, Any]) -> dict[str, Any]:
-    """Gap の UTC/local 重複を省き、local 時刻を返す。"""
+    """Gap の UTC/local 重複とイベントID参照を省き、local 時刻を返す。"""
     return _drop_empty(
         {
             "gap_id": gap.get("gap_id"),
@@ -59,8 +74,6 @@ def _compact_gap(gap: dict[str, Any]) -> dict[str, Any]:
             "start": gap.get("start_local"),
             "end": gap.get("end_local"),
             "duration_minutes": gap.get("duration_minutes"),
-            "preceded_by_event_id": gap.get("preceded_by_event_id"),
-            "followed_by_event_id": gap.get("followed_by_event_id"),
         }
     )
 

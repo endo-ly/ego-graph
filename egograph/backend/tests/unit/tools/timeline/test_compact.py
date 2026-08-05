@@ -3,8 +3,8 @@
 from backend.domain.tools.timeline.compact import compact_daily_timeline
 
 
-def test_compact_daily_timeline_omits_metadata_empty_values_and_duplicate_times():
-    """metadata・空値・UTC/local重複を除き、有効なゼロ値を残す。"""
+def test_compact_daily_timeline_omits_metadata_ids_empty_values_and_duplicate_times():
+    """metadata・イベントID・空値・UTC/local重複を除き、有効なゼロ値を残す。"""
     response = {
         "date": "2026-06-28",
         "timezone": "Asia/Tokyo",
@@ -16,7 +16,7 @@ def test_compact_daily_timeline_omits_metadata_empty_values_and_duplicate_times(
         },
         "items": [
             {
-                "event_id": "spotify:play:p1",
+                "event_id": "spotify:play:sha256-64-chars",
                 "source": "spotify",
                 "kind": "music_play",
                 "started_at_utc": "2026-06-28T00:12:03Z",
@@ -30,7 +30,18 @@ def test_compact_daily_timeline_omits_metadata_empty_values_and_duplicate_times(
                 "metadata": {"track_id": "t1"},
             }
         ],
-        "correlations": [],
+        "correlations": [
+            {
+                "correlation_id": "corr_browser_history_youtube_001",
+                "kind": "same_activity_candidate",
+                "event_ids": [
+                    "browser_history:page_view:sha256-a",
+                    "youtube:watch_event:sha256-b",
+                ],
+                "confidence": 0.95,
+                "reason": "same_youtube_video_url_within_120_seconds",
+            }
+        ],
         "gaps": [
             {
                 "gap_id": "gap_1",
@@ -40,8 +51,8 @@ def test_compact_daily_timeline_omits_metadata_empty_values_and_duplicate_times(
                 "start_local": "2026-06-28T10:00:00+09:00",
                 "end_local": "2026-06-28T12:00:00+09:00",
                 "duration_minutes": 120,
-                "preceded_by_event_id": "spotify:play:p1",
-                "followed_by_event_id": "github:commit:c1",
+                "preceded_by_event_id": "spotify:play:sha256-a",
+                "followed_by_event_id": "github:commit:sha256-b",
             }
         ],
         "daily_summaries": {},
@@ -63,12 +74,19 @@ def test_compact_daily_timeline_omits_metadata_empty_values_and_duplicate_times(
         },
         "items": [
             {
-                "event_id": "spotify:play:p1",
                 "started_at": "2026-06-28T09:12:03+09:00",
                 "source": "spotify",
                 "kind": "music_play",
                 "duration_seconds": 0,
                 "title": "Song",
+            }
+        ],
+        "correlations": [
+            {
+                "correlation_id": "corr_browser_history_youtube_001",
+                "kind": "same_activity_candidate",
+                "confidence": 0.95,
+                "reason": "same_youtube_video_url_within_120_seconds",
             }
         ],
         "gaps": [
@@ -78,8 +96,6 @@ def test_compact_daily_timeline_omits_metadata_empty_values_and_duplicate_times(
                 "start": "2026-06-28T10:00:00+09:00",
                 "end": "2026-06-28T12:00:00+09:00",
                 "duration_minutes": 120,
-                "preceded_by_event_id": "spotify:play:p1",
-                "followed_by_event_id": "github:commit:c1",
             }
         ],
         "coverage": {
@@ -100,11 +116,11 @@ def test_compact_daily_timeline_preserves_raw_ref_when_requested():
     response = {
         "items": [
             {
-                "event_id": "spotify:play:p1",
+                "event_id": "spotify:play:sha256-64-chars",
                 "started_at_local": "2026-06-28T09:12:03+09:00",
                 "raw_ref": {
                     "dataset_id": "spotify.plays",
-                    "record_id": "p1",
+                    "record_id": "sha256-64-chars",
                     "timestamp_column": "played_at_utc",
                 },
                 "metadata": {"track_id": "t1"},
@@ -115,9 +131,10 @@ def test_compact_daily_timeline_preserves_raw_ref_when_requested():
 
     compact = compact_daily_timeline(response)
 
+    assert "event_id" not in compact["items"][0]
     assert compact["items"][0]["raw_ref"] == {
         "dataset_id": "spotify.plays",
-        "record_id": "p1",
+        "record_id": "sha256-64-chars",
         "timestamp_column": "played_at_utc",
     }
     assert "metadata" not in compact["items"][0]
