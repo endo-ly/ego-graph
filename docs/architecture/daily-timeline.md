@@ -2,7 +2,7 @@
 
 > 最終更新: 2026-07-04
 
-Daily Timeline は、複数データソースの観測イベントを1日単位で時刻順に統合し、REST API と MCP Tool の両方から同じ契約で提供する Backend read model である。
+Daily Timeline は、複数データソースの観測イベントを1日単位で時刻順に統合する Backend read model である。REST API は完全形を返し、MCP Tool は同じ意味のデータを AI エージェント向けの compact 表現で返す。
 
 ## 目的
 
@@ -26,7 +26,7 @@ Backend は「事実の整列」と「判断材料の付与」までを責務と
 | REST API | `GET /v1/data/timeline/daily` |
 | MCP Tool | `get_daily_timeline` |
 
-REST API と MCP Tool は同じ入力制約、同じ response shape、同じ validation を使う。どちらか一方だけに存在する項目を作らない。
+REST API と MCP Tool は同じ入力制約、同じ canonical builder、同じ validation を使う。REST API は完全形、MCP Tool は表示上の重複と source 固有 metadata を省いた compact 表現を返す。
 
 公開契約は1日単位に固定する。時間窓指定や週次レビューが必要になった場合でも、この endpoint / tool の意味を広げず、別契約として追加する。
 ただし実装内部は UTC range を入力にした builder として構成し、将来の別契約でも正規化、ソート、correlation、gap 生成のロジックを再利用できるようにする。
@@ -103,6 +103,46 @@ timezone=Asia/Tokyo
 
 ## 出力
 
+### MCP compact 表現
+
+REST API の canonical response は以下の完全形を返す。MCP Tool はこの response を壊さずに構築したあと、呼び出し境界で次の compact 表現へ変換する。
+
+- `items[*].metadata` は返さない
+- `started_at_utc` / `started_at_local` は、要求された timezone の `started_at` に統合する
+- `ended_at_utc` / `ended_at_local` は、値がある場合だけ `ended_at` に統合する
+- `range` と `gaps` の時刻は要求された timezone の local 値だけを返す
+- `null`、空文字、空配列、空オブジェクトは省略する。`0` と `false` は保持する
+- `include_raw_refs=true` の場合の `raw_ref` は保持する
+- 空の配列・オブジェクトになったセクションは省略する
+- `meta.format` は `compact` になる
+
+```json
+{
+  "date": "2026-06-28",
+  "timezone": "Asia/Tokyo",
+  "range": {
+    "start": "2026-06-28T00:00:00+09:00",
+    "end": "2026-06-29T00:00:00+09:00"
+  },
+  "items": [
+    {
+      "event_id": "spotify:play:abc123",
+      "started_at": "2026-06-28T09:12:03+09:00",
+      "source": "spotify",
+      "kind": "music_play",
+      "duration_seconds": 222,
+      "title": "ヨルシカ - だから僕は僕を辞めた"
+    }
+  ],
+  "meta": {
+    "item_count": 183,
+    "truncated": false,
+    "generated_at": "2026-06-28T23:58:10Z",
+    "format": "compact"
+  }
+}
+```
+
 ### トップレベル
 
 ```json
@@ -140,7 +180,7 @@ timezone=Asia/Tokyo
 | `coverage` | source ごとの取得状況 |
 | `meta` | 件数、truncate、生成時刻 |
 
-## Timeline Item
+## REST canonical Timeline Item
 
 ### 共通 shape
 
@@ -371,6 +411,7 @@ backend/
 | Database queries | DuckDB SQL と Parquet path 解決 |
 
 API と MCP で別ロジックを持たない。両方とも同じ Repository / UseCase を呼ぶ。
+ただし、MCP のみ呼び出し境界で compact projection を適用する。
 
 ## 非責務
 
@@ -393,6 +434,6 @@ Daily Timeline では以下を行わない。
 | Unit | Browser History と YouTube の correlation を生成できる |
 | Unit | `gap_minutes` 以上の `no_observed_events_gap` を生成できる |
 | Unit | Google Health を `daily_summaries` に置き、`items` に混ぜない |
-| Integration | REST API と MCP Tool が同じ response shape を返す |
+| Integration | REST API が完全形、MCP Tool が compact 表現を返す |
 | Integration | local parquet root 優先と R2 fallback が既存 path resolver と同じ規則で動く |
 | Contract | `items[*].raw_ref.dataset_id` が Dataset Catalog の `dataset_id` と一致する |

@@ -9,6 +9,7 @@ from mcp.types import CallToolResult, TextContent
 from mcp.types import Tool as MCPTool
 
 from backend.config import BackendConfig
+from backend.domain.tools.timeline.compact import compact_daily_timeline
 from backend.infrastructure.logging.sanitizers import sanitize_exception
 from backend.usecases.tools.factory import build_tool_registry
 
@@ -76,10 +77,22 @@ def create_mcp_server(config: BackendConfig) -> FastMCP:
             content=[
                 TextContent(
                     type="text",
-                    text=json.dumps(result, ensure_ascii=False, default=str),
+                    text=_serialize_tool_result(name, result),
                 )
             ],
             isError=False,
         )
 
     return mcp
+
+
+def _serialize_tool_result(name: str, result: Any) -> str:
+    """ツールごとの MCP 表現を JSON テキストへ直列化する。"""
+    if name == "get_daily_timeline":
+        return json.dumps(
+            compact_daily_timeline(result),
+            ensure_ascii=False,
+            default=str,
+            separators=(",", ":"),
+        )
+    return json.dumps(result, ensure_ascii=False, default=str)

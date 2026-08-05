@@ -441,14 +441,14 @@ class TestBuildDailyTimelineIntegration:
 
 
 # ============================================================
-# REST API と MCP Tool の契約一致
+# REST API と canonical tool の契約一致
 # ============================================================
 
 
 class TestRestAndMcpContract:
-    """REST API と MCP Tool が同じ response shape を返す。"""
+    """REST API と canonical tool が同じ完全形を返す。"""
 
-    def test_rest_and_tool_return_same_shape(self, tmp_path, test_client):
+    def test_rest_and_canonical_tool_return_same_shape(self, tmp_path, test_client):
         local_root = _write_all_sources(tmp_path)
         tool = _build_tool(local_root)
         test_client.app.dependency_overrides[get_daily_timeline_tool] = lambda: tool
@@ -581,3 +581,20 @@ class TestMcpServerRegistration:
         assert payload["date"] == "2026-06-28"
         assert len(payload["items"]) == 5
         assert "google_health" in payload["daily_summaries"]
+        assert payload["meta"]["format"] == "compact"
+        assert set(payload["range"]) == {"start", "end"}
+        for item in payload["items"]:
+            assert "metadata" not in item
+            assert "started_at" in item
+            assert "started_at_utc" not in item
+            assert "started_at_local" not in item
+            assert "raw_ref" in item
+        assert set(payload["gaps"][0]) == {
+            "gap_id",
+            "kind",
+            "start",
+            "end",
+            "duration_minutes",
+            "preceded_by_event_id",
+            "followed_by_event_id",
+        }

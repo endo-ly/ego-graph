@@ -1,8 +1,7 @@
 """Daily Timeline REST API エンドポイント。
 
-REST も MCP も同じ ``GetDailyTimelineTool`` を呼び、同じ validation /
-response shape を共有する。本エンドポイントは query parameter の受け取りと
-HTTP レスポンス生成のみを担う。
+``GetDailyTimelineTool`` の validation と canonical response を利用し、
+query parameter の受け取りと完全形の HTTP レスポンス生成を担う。
 """
 
 import logging

@@ -213,6 +213,26 @@ def test_call_tool_returns_result(mock_backend_config):
     assert json.loads(result.content[0].text) == {"message": "ok", "count": 1}
 
 
+def test_call_tool_keeps_non_timeline_payload_unchanged(mock_backend_config):
+    """Daily Timeline 以外の MCP ツールには compact projection を適用しない。"""
+    tool = MockTool(
+        "other_tool",
+        "Other tool",
+        {"metadata": {"keep": True}, "value": None},
+    )
+    registry = _build_registry(tool)
+
+    with patch("backend.mcp_server.build_tool_registry", return_value=registry):
+        server = create_mcp_server(mock_backend_config)
+
+    result = _run_call_tool(server, "other_tool", {})
+
+    assert json.loads(result.content[0].text) == {
+        "metadata": {"keep": True},
+        "value": None,
+    }
+
+
 def test_call_tool_unknown_raises(mock_backend_config):
     """未知ツール呼び出しはエラー結果になる。"""
     # Arrange: 空のレジストリを準備
