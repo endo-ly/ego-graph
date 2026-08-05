@@ -483,6 +483,8 @@ class TestRestAndMcpContract:
         assert "event_id" in rest_body["items"][0]
         assert "event_ids" in rest_body["correlations"][0]
         assert "preceded_by_event_id" in rest_body["gaps"][0]
+        assert "followed_by_event_id" in rest_body["gaps"][0]
+        assert "followed_by_event_id" in tool_body["gaps"][0]
         assert rest_body == tool_body
 
     def test_rest_returns_400_on_invalid_date(self, tmp_path, test_client):
@@ -593,7 +595,12 @@ class TestMcpServerRegistration:
             assert "started_at_utc" not in item
             assert "started_at_local" not in item
             assert "raw_ref" in item
-        for correlation in payload.get("correlations", []):
+        assert payload["correlations"]
+        for correlation in payload["correlations"]:
+            assert "correlation_id" in correlation
+            assert "kind" in correlation
+            assert "confidence" in correlation
+            assert "reason" in correlation
             assert "event_ids" not in correlation
         assert set(payload["gaps"][0]) == {
             "gap_id",

@@ -26,7 +26,7 @@ Backend は「事実の整列」と「判断材料の付与」までを責務と
 | REST API | `GET /v1/data/timeline/daily` |
 | MCP Tool | `get_daily_timeline` |
 
-REST API と MCP Tool は同じ入力制約、同じ canonical builder、同じ validation を使う。REST API は完全形、MCP Tool は表示上の重複と source 固有 metadata、event_id を省いた compact 表現を返す。
+REST API と MCP Tool は同じ入力制約、同じ canonical builder、同じ validation を使う。REST API は完全形、MCP Tool は表示上の重複と source 固有 metadata、`items[*].event_id`、`correlations[*].event_ids`、`gaps[*].preceded_by_event_id` / `followed_by_event_id` を省いた compact 表現を返す。
 
 公開契約は1日単位に固定する。時間窓指定や週次レビューが必要になった場合でも、この endpoint / tool の意味を広げず、別契約として追加する。
 ただし実装内部は UTC range を入力にした builder として構成し、将来の別契約でも正規化、ソート、correlation、gap 生成のロジックを再利用できるようにする。
@@ -118,7 +118,7 @@ REST API の canonical response は完全形を返す。MCP Tool はこの respo
 - `include_raw_refs=true` の場合の `raw_ref` は保持する
 - `meta.format` は `compact` になる
 
-内部の canonical response と REST API の `event_id` は変更しない。
+内部の canonical response と REST API は、`items[*].event_id`、`correlations[*].event_ids`、`gaps[*].preceded_by_event_id` / `followed_by_event_id` を保持し、変更しない。
 
 ```json
 {
@@ -437,6 +437,6 @@ Daily Timeline では以下を行わない。
 | Unit | Browser History と YouTube の correlation を生成できる |
 | Unit | `gap_minutes` 以上の `no_observed_events_gap` を生成できる |
 | Unit | Google Health を `daily_summaries` に置き、`items` に混ぜない |
-| Integration | REST API が完全形、MCP Tool が event_id を省いた compact 表現を返す |
+| Integration | REST API が完全形、MCP Tool が `items[*].event_id`、`correlations[*].event_ids`、`gaps[*].preceded_by_event_id` / `followed_by_event_id` を省いた compact 表現を返す |
 | Integration | local parquet root 優先と R2 fallback が既存 path resolver と同じ規則で動く |
 | Contract | `items[*].raw_ref.dataset_id` が Dataset Catalog の `dataset_id` と一致する |

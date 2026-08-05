@@ -68,7 +68,9 @@ class GetDailyTimelineTool(ToolBase):
             "Google Health）の観測イベントを1日単位で時刻順に統合した"
             "タイムラインを取得します。Google Health は items には入らず"
             "daily_summaries に添付されます。MCPではmetadata、空値、"
-            "UTC/localの重複、event_idを省いたcompact形式で返します。"
+            "UTC/localの重複、items[*].event_id、correlations[*].event_ids、"
+            "gaps[*].preceded_by_event_id / followed_by_event_idを省いた"
+            "compact形式で返します。"
         )
 
     @property
