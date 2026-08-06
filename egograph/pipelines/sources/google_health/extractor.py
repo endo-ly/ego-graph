@@ -234,10 +234,15 @@ def _build_filter(
         field = f"{data_type.filter_name}.sample_time.physical_time"
         start = local_date_start_rfc3339(date_from, timezone or ZoneInfo("UTC"))
         end = local_date_start_rfc3339(date_to, timezone or ZoneInfo("UTC"))
-    elif data_type.record_kind is RecordKind.SESSION and data_type.name == "sleep":
-        field = "sleep.interval.end_time"
-        start = local_date_start_rfc3339(date_from, timezone or ZoneInfo("UTC"))
-        end = local_date_start_rfc3339(date_to, timezone or ZoneInfo("UTC"))
+    elif data_type.record_kind is RecordKind.SESSION:
+        if data_type.name == "sleep":
+            field = "sleep.interval.end_time"
+            start = local_date_start_rfc3339(date_from, timezone or ZoneInfo("UTC"))
+            end = local_date_start_rfc3339(date_to, timezone or ZoneInfo("UTC"))
+        else:
+            field = f"{data_type.filter_name}.interval.civil_start_time"
+            start = date_from.isoformat()
+            end = date_to.isoformat()
     else:
         field = f"{data_type.filter_name}.interval.start_time"
         start = local_date_start_rfc3339(date_from, timezone or ZoneInfo("UTC"))

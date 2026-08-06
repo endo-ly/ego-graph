@@ -1,6 +1,10 @@
 """Google Health data type registryのテスト。"""
 
-from pipelines.sources.google_health.data_types import DATA_TYPE_BY_NAME, RecordKind
+from pipelines.sources.google_health.data_types import (
+    DATA_TYPE_BY_NAME,
+    FetchStrategy,
+    RecordKind,
+)
 
 
 def test_registry_matches_fitbit_air_target_data_types():
@@ -45,3 +49,13 @@ def test_registry_matches_fitbit_air_target_data_types():
     assert DATA_TYPE_BY_NAME["daily-oxygen-saturation"].record_kind is (
         RecordKind.DAILY
     )
+
+
+def test_activity_level_uses_reconcile_only():
+    """activity-levelは公式仕様でreconcileのみを利用する。"""
+    # Arrange
+    data_type = DATA_TYPE_BY_NAME["activity-level"]
+
+    # Act & Assert
+    assert data_type.fetch_strategy is FetchStrategy.RECONCILE
+    assert not data_type.include_interval_rollup

@@ -11,6 +11,7 @@ from pipelines.infrastructure.db.schema import initialize_schema
 from pipelines.sources.google_health.client import (
     GoogleHealthAPIClient,
     GoogleHealthAuthenticationError,
+    GoogleHealthClientError,
     GoogleHealthRateLimitError,
 )
 from pipelines.sources.google_health.models import ConnectionStatus, OAuthToken
@@ -344,6 +345,46 @@ def test_rate_limit_error_is_classified_after_retries(tmp_path):
         pass
     else:
         raise AssertionError("GoogleHealthRateLimitError was not raised")
+
+
+def test_client_error_preserves_safe_google_diagnostics(tmp_path):
+    """Google APIの4xx本文から構造化された診断情報を保持する。"""
+    # Arrange
+    repository, cipher, connection = _repository_with_token(tmp_path)
+    session = FakeSession(
+        [
+            FakeResponse(
+                {
+                    "error": {
+                        "code": 400,
+                        "status": "INVALID_ARGUMENT",
+                        "message": "Invalid filter for exercise",
+                        "details": [
+                            {
+                                "reason": "INVALID_FILTER",
+                                "metadata": {"token": "must-not-be-stored"},
+                            }
+                        ],
+                    }
+                },
+                status_code=400,
+            )
+        ]
+    )
+    client = GoogleHealthAPIClient(repository, cipher, session=session)
+
+    # Act & Assert
+    with pytest.raises(GoogleHealthClientError) as exc_info:
+        client.list_data_points(connection.connection_id, "exercise")
+
+    summary = str(exc_info.value)
+    assert "google_health_request_failed: status=400" in summary
+    assert "method=GET" in summary
+    assert "dataTypes/exercise/dataPoints" in summary
+    assert "api_status=INVALID_ARGUMENT" in summary
+    assert "reason=INVALID_FILTER" in summary
+    assert "message=Invalid filter for exercise" in summary
+    assert "must-not-be-stored" not in summary
 
 
 def test_refresh_rejection_marks_connection_revoked(tmp_path):

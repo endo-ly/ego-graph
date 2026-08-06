@@ -126,6 +126,43 @@ def test_physical_filter_uses_configured_timezone_boundary():
     )
 
 
+def test_exercise_filter_uses_civil_start_date():
+    """exerciseのsession filterはcivil start timeと日付を使う。"""
+    # Act
+    result = _build_filter(
+        DATA_TYPE_BY_NAME["exercise"],
+        date(2026, 6, 1),
+        date(2026, 6, 2),
+        timezone=ZoneInfo("Asia/Tokyo"),
+    )
+
+    # Assert
+    assert result == (
+        'exercise.interval.civil_start_time >= "2026-06-01" AND '
+        'exercise.interval.civil_start_time < "2026-06-02"'
+    )
+
+
+def test_activity_level_uses_reconcile_without_rollup():
+    """activity-levelはreconcileだけを実行する。"""
+    # Arrange
+    client = FakeClient()
+    extractor = GoogleHealthExtractor(client)
+
+    # Act
+    extractor.extract(
+        connection_id="connection-1",
+        data_type=DATA_TYPE_BY_NAME["activity-level"],
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+    )
+
+    # Assert
+    assert len(client.reconcile_calls) == 2
+    assert not client.interval_rollup_calls
+    assert not client.rollup_calls
+
+
 def test_extract_rejects_empty_or_reversed_range():
     """空または逆転した期間をAPIへ送信しない。"""
     # Arrange

@@ -103,8 +103,6 @@ DATA_TYPES = (
         DataCategory.ACTIVITY,
         RecordKind.INTERVAL,
         "second",
-        fetch_strategy=FetchStrategy.ROLLUP,
-        include_interval_rollup=True,
     ),
     GoogleHealthDataType(
         "sedentary-period",

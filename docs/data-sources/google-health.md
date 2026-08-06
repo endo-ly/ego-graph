@@ -77,6 +77,11 @@ APIレスポンス原本をRaw JSONとして保持し、日次指標、サンプ
 | **必要なスコープ** | Activity and Fitness / Health Metrics and Measurements / Sleep のread-only scope |
 | **期間の日付解釈** | `TIMEZONE`のローカル日付。物理時刻APIにはUTCへ変換して送信 |
 
+取得方式はGoogle Health APIのdata typeごとの対応表に合わせる。`activity-level`は
+`reconcile`のみを使用し、`rollUp`は呼び出さない。`exercise`はsession型のため、
+期間フィルタに`exercise.interval.civil_start_time`とローカル日付を使用する。
+`sleep`だけは終了時刻を対象にするため、`sleep.interval.end_time`と物理時刻を使用する。
+
 ### 3.2 取得対象data type
 
 #### Activity / Fitness

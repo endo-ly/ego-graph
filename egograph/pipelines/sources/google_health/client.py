@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import requests
@@ -48,6 +50,16 @@ class GoogleHealthClientError(GoogleHealthAPIError):
 
 
 _OAUTH_ERROR_SUMMARY_MAX_LENGTH = 500
+_GOOGLE_ERROR_SUMMARY_MAX_LENGTH = 1_000
+_GOOGLE_ERROR_MESSAGE_MAX_LENGTH = 500
+
+# APIのエラーメッセージが、万一リクエスト由来の認証情報を反射した場合に備えて
+# 例外メッセージ・last_error_messageへ保存する前に値を伏せる。
+_GOOGLE_ERROR_SECRET_PATTERN = re.compile(
+    r"(?i)[\"']?(?:authorization|bearer|access[_ -]?token|refresh[_ -]?token|"
+    r"authorization[_ -]?code|client[_ -]?secret|token)[\"']?\s*[:=]\s*"
+    r"[\"']?[^,\s}\"']+"
+)
 
 # OAuth refresh 失敗時に診断情報として使ってよい JSON field の許可リスト。
 # 意図的に限定することで token / code / secret 等の秘密情報混入を防ぐ。
@@ -164,6 +176,66 @@ def _refresh_failure_connection_status(
         if error is not None:
             return _OAUTH_ERROR_CONNECTION_STATUS.get(error, ConnectionStatus.ERROR)
     return ConnectionStatus.ERROR
+
+
+def _safe_google_error_identifier(value: Any) -> str | None:
+    """Google APIの構造化識別子を安全に要約する。"""
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", value):
+        return None
+    return value
+
+
+def _safe_google_error_message(value: Any) -> str | None:
+    """Google APIのエラーメッセージを短く、安全な一行へ変換する。"""
+    if not isinstance(value, str):
+        return None
+    message = " ".join(value.split())
+    if not message:
+        return None
+    message = _GOOGLE_ERROR_SECRET_PATTERN.sub("[REDACTED]", message)
+    return message[:_GOOGLE_ERROR_MESSAGE_MAX_LENGTH]
+
+
+def _google_error_summary(response: Response, *, method: str, url: str) -> str:
+    """Google APIの4xx応答から安全な診断要約を作る。
+
+    レスポンス本文全体やdetailsのmetadataは保存せず、Googleが返す構造化された
+    status / reasonと、短く切り詰めたmessageだけを利用する。URLもquery stringを
+    除いたpathだけを含める。
+    """
+    parts = [
+        f"google_health_request_failed: status={response.status_code}",
+        f"method={method.upper()}",
+        f"path={urlsplit(url).path}",
+    ]
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        api_status = _safe_google_error_identifier(error.get("status"))
+        if api_status is not None:
+            parts.append(f"api_status={api_status}")
+
+        reasons: list[str] = []
+        for field in ("details", "errors"):
+            entries = error.get(field)
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                reason = _safe_google_error_identifier(entry.get("reason"))
+                if reason is not None and reason not in reasons:
+                    reasons.append(reason)
+        if reasons:
+            parts.append(f"reason={','.join(reasons[:3])}")
+
+        message = _safe_google_error_message(error.get("message"))
+        if message is not None:
+            parts.append(f"message={message}")
+    return " ".join(parts)[:_GOOGLE_ERROR_SUMMARY_MAX_LENGTH]
 
 
 class GoogleHealthAPIClient:
@@ -452,7 +524,7 @@ class GoogleHealthAPIClient:
                 last_error = GoogleHealthServerError("google_health_server_error")
             else:
                 raise GoogleHealthClientError(
-                    f"google_health_request_failed: status={response.status_code}"
+                    _google_error_summary(response, method=method, url=url)
                 )
 
             if attempt < self._max_attempts:
