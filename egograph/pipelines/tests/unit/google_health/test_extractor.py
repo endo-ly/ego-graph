@@ -8,6 +8,7 @@ from pipelines.sources.google_health.data_types import DATA_TYPE_BY_NAME
 from pipelines.sources.google_health.extractor import (
     GoogleHealthExtractor,
     _build_filter,
+    _rollup_page_size,
 )
 
 
@@ -59,6 +60,7 @@ def test_extract_follows_pagination_and_collects_daily_rollup():
     )
     assert len(result.payload["reconcileResponses"]) == 2
     assert len(result.payload["dailyRollupResponses"]) == 1
+    assert client.rollup_calls[0][1]["page_size"] == 90
     assert result.record_count == 3
 
 
@@ -91,6 +93,32 @@ def test_short_daily_rollup_is_split_into_fourteen_day_ranges():
     assert [
         (call[1]["date_from"], call[1]["date_to"]) for call in client.rollup_calls
     ] == expected_ranges
+    assert {call[1]["page_size"] for call in client.interval_rollup_calls} == {4032}
+    assert {call[1]["page_size"] for call in client.rollup_calls} == {14}
+
+
+@pytest.mark.parametrize(
+    ("max_days", "window_size_seconds", "expected_page_size"),
+    [
+        (14, 86_400, 14),
+        (90, 86_400, 90),
+        (14, 300, 4_032),
+        (90, 300, 10_000),
+    ],
+)
+def test_rollup_page_size_stays_within_google_query_duration(
+    max_days, window_size_seconds, expected_page_size
+):
+    """rollupの1ページ期間がdata typeごとのAPI上限を超えない。"""
+    # Act
+    page_size = _rollup_page_size(
+        max_days=max_days,
+        window_size_seconds=window_size_seconds,
+    )
+
+    # Assert
+    assert page_size == expected_page_size
+    assert page_size * window_size_seconds <= max_days * 86_400
 
 
 def test_daily_filter_uses_proto_field_name():

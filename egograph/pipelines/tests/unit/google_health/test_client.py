@@ -124,6 +124,7 @@ def test_daily_rollup_sends_closed_open_civil_range(tmp_path):
         "steps",
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 3),
+        page_size=14,
     )
 
     # Assert
@@ -134,6 +135,7 @@ def test_daily_rollup_sends_closed_open_civil_range(tmp_path):
         "day": 1,
     }
     assert body["range"]["end"]["date"]["day"] == 3
+    assert body["pageSize"] == 14
     assert "dataSourceFamily" not in body
 
 
@@ -151,6 +153,7 @@ def test_rollup_sends_physical_range_and_window(tmp_path):
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 3),
         window_size_seconds=300,
+        page_size=4032,
     )
 
     # Assert
@@ -160,6 +163,7 @@ def test_rollup_sends_physical_range_and_window(tmp_path):
         "endTime": "2026-06-03T00:00:00Z",
     }
     assert body["windowSize"] == "300s"
+    assert body["pageSize"] == 4032
     assert "dataSourceFamily" not in body
 
 
@@ -182,6 +186,7 @@ def test_rollup_uses_configured_timezone_boundary(tmp_path):
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 2),
         window_size_seconds=300,
+        page_size=4032,
     )
 
     # Assert

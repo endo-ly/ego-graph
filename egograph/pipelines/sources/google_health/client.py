@@ -313,6 +313,7 @@ class GoogleHealthAPIClient:
         *,
         date_from: date,
         date_to: date,
+        page_size: int,
         page_token: str | None = None,
     ) -> dict[str, Any]:
         """指定civil date範囲の日次rollupを取得する。"""
@@ -324,7 +325,7 @@ class GoogleHealthAPIClient:
                 "end": _civil_midnight(date_to),
             },
             "windowSizeDays": 1,
-            "pageSize": 10_000,
+            "pageSize": page_size,
         }
         if page_token:
             body["pageToken"] = page_token
@@ -344,6 +345,7 @@ class GoogleHealthAPIClient:
         date_from: date,
         date_to: date,
         window_size_seconds: int,
+        page_size: int,
         page_token: str | None = None,
     ) -> dict[str, Any]:
         """指定物理時間範囲を固定windowでrollupする。"""
@@ -355,7 +357,7 @@ class GoogleHealthAPIClient:
                 "endTime": local_date_start_rfc3339(date_to, self._timezone),
             },
             "windowSize": f"{window_size_seconds}s",
-            "pageSize": 10_000,
+            "pageSize": page_size,
         }
         if page_token:
             body["pageToken"] = page_token
