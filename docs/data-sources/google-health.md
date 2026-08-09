@@ -82,6 +82,15 @@ APIレスポンス原本をRaw JSONとして保持し、日次指標、サンプ
 期間フィルタに`exercise.interval.civil_start_time`とローカル日付を使用する。
 `sleep`だけは終了時刻を対象にするため、`sleep.interval.end_time`と物理時刻を使用する。
 
+rollup問い合わせには、Google Health APIのdata typeごとに最大期間の制約がある。
+`calories-in-heart-rate-zone`、`heart-rate`、`active-minutes`、`total-calories`は
+最大14日、それ以外は最大90日である。さらに、1ページで取得する期間は、daily rollupでは
+`windowSizeDays × pageSize`、interval rollupでは`windowSize × pageSize`がそれぞれ最大期間
+以下でなければならない。そのため、Extractorは期間を14日または90日以下へ分割するだけで
+なく、同じ上限に収まるようrollupの`pageSize`を計算する。interval rollupの期間分割は、
+DSTを含むタイムゾーンでもUTC経過時間が上限を超えないようにする。
+reconcileのページサイズはこの制約とは別に管理する。
+
 ### 3.2 取得対象data type
 
 #### Activity / Fitness
