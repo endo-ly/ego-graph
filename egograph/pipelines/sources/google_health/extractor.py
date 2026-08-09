@@ -13,7 +13,10 @@ from pipelines.sources.google_health.data_types import (
     GoogleHealthDataType,
     RecordKind,
 )
-from pipelines.sources.google_health.timezone import local_date_start_rfc3339
+from pipelines.sources.google_health.timezone import (
+    local_date_start_rfc3339,
+    local_date_start_utc,
+)
 
 MAX_PAGE_SIZE = 10_000
 SESSION_PAGE_SIZE = 25
@@ -204,7 +207,12 @@ class GoogleHealthExtractor:
         )
         chunk_start = date_from
         while chunk_start < date_to:
-            chunk_end = min(chunk_start + timedelta(days=max_days), date_to)
+            chunk_end = _interval_rollup_chunk_end(
+                chunk_start=chunk_start,
+                date_to=date_to,
+                max_days=max_days,
+                timezone=self._timezone,
+            )
             page_token: str | None = None
             seen_page_tokens: set[str] = set()
             while True:
@@ -232,6 +240,27 @@ class GoogleHealthExtractor:
 def _max_rollup_days(data_type: GoogleHealthDataType) -> int:
     """data typeごとのrollup問い合わせ上限日数を返す。"""
     return 14 if data_type.name in SHORT_ROLLUP_DATA_TYPES else 90
+
+
+def _interval_rollup_chunk_end(
+    *,
+    chunk_start: date,
+    date_to: date,
+    max_days: int,
+    timezone: ZoneInfo,
+) -> date:
+    """物理時間rollupのUTC経過時間上限を超えない日付境界を返す。"""
+    chunk_end = min(chunk_start + timedelta(days=max_days), date_to)
+    start_utc = local_date_start_utc(chunk_start, timezone)
+    max_duration = timedelta(days=max_days)
+    while (
+        chunk_end > chunk_start
+        and local_date_start_utc(chunk_end, timezone) - start_utc > max_duration
+    ):
+        chunk_end -= timedelta(days=1)
+    if chunk_end == chunk_start:
+        raise ValueError("local date boundary exceeds rollup query duration")
+    return chunk_end
 
 
 def _rollup_page_size(*, max_days: int, window_size_seconds: int) -> int:
