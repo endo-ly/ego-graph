@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -34,6 +33,7 @@ class RawReplayEntry:
     date_from: date
     date_to: date
     run_id: str
+    last_modified: datetime | None = None
 
 
 def replay_google_health_raw(
@@ -50,12 +50,11 @@ def replay_google_health_raw(
     """
     timezone = timezone or writer.timezone
     entries = list_raw_entries(writer)
-    if reset_compacted:
-        writer.reset_compacted()
 
     results: list[dict[str, Any]] = []
-    normalized_by_connection: dict[str, list[dict[str, Any]]] = {}
-    entries_by_connection: dict[str, list[RawReplayEntry]] = {}
+    normalized_entries: list[
+        tuple[RawReplayEntry, dict[str, list[dict[str, Any]]]]
+    ] = []
     for entry in entries:
         raw_payload = _load_raw(writer, entry.key)
         normalized = normalize_google_health_payload(
@@ -67,21 +66,7 @@ def replay_google_health_raw(
         )
         if _raw_point_count(raw_payload) > 0 and not normalized["records"]:
             raise ValueError(f"invalid_raw_google_health_record: {entry.key}")
-        if reset_compacted:
-            _append_normalized(
-                normalized_by_connection.setdefault(entry.connection_id, []),
-                normalized,
-            )
-            entries_by_connection.setdefault(entry.connection_id, []).append(entry)
-        else:
-            writer.save_events(run_id=entry.run_id, records=normalized)
-            writer.compact_range(
-                connection_id=entry.connection_id,
-                selected_data_types=(entry.data_type,),
-                date_from=entry.date_from,
-                date_to=entry.date_to,
-                run_id=entry.run_id,
-            )
+        normalized_entries.append((entry, normalized))
         results.append(
             {
                 "key": entry.key,
@@ -93,20 +78,26 @@ def replay_google_health_raw(
         )
 
     if reset_compacted:
-        for connection_id, rows in normalized_by_connection.items():
-            connection_entries = entries_by_connection[connection_id]
-            replay_run_id = _replay_run_id(connection_entries)
-            records = _deduplicate_normalized(rows)
-            writer.save_events(run_id=replay_run_id, records=records)
-            writer.compact_range(
-                connection_id=connection_id,
-                selected_data_types=tuple(
-                    sorted({entry.data_type for entry in connection_entries})
-                ),
-                date_from=min(entry.date_from for entry in connection_entries),
-                date_to=max(entry.date_to for entry in connection_entries),
-                run_id=replay_run_id,
-            )
+        # 破損Rawが残っている場合でも、検証済みでない状態のcompactedを先に
+        # 削除しない。全entryのnormalizeが成功した後で全面再構築を開始する。
+        writer.reset_compacted()
+
+    # 同じworkflow runのRawは1つのeventsファイルへまとめ、同じrunの全data
+    # typeを1回でcompactする。データ型ごとにsave_events/compactすると、同じ
+    # run_id・同じdataset/monthのParquetを上書きしたり、別data typeのcurrent
+    # 行を重複追加したりするためである。各runをLastModified順にcompactし、
+    # 遅延同期の後続runが先行runの対象範囲を置換する通常workflowを再現する。
+    for batch in _run_batches(normalized_entries):
+        batch_records = _merge_normalized(normalized for _entry, normalized in batch)
+        run_id = batch[0][0].run_id
+        writer.save_events(run_id=run_id, records=batch_records)
+        writer.compact_range(
+            connection_id=batch[0][0].connection_id,
+            selected_data_types=tuple(sorted({entry.data_type for entry, _ in batch})),
+            date_from=min(entry.date_from for entry, _ in batch),
+            date_to=max(entry.date_to for entry, _ in batch),
+            run_id=run_id,
+        )
     return {
         "provider": "google_health",
         "operation": "raw_replay",
@@ -132,6 +123,11 @@ def list_raw_entries(writer: GoogleHealthWriter) -> list[RawReplayEntry]:
                 continue
             values = match.groupdict()
             try:
+                last_modified = item.get("LastModified")
+                if isinstance(last_modified, datetime) and last_modified.tzinfo is None:
+                    last_modified = last_modified.replace(tzinfo=UTC)
+                if not isinstance(last_modified, datetime):
+                    last_modified = None
                 entries.append(
                     RawReplayEntry(
                         key=key,
@@ -140,20 +136,12 @@ def list_raw_entries(writer: GoogleHealthWriter) -> list[RawReplayEntry]:
                         date_from=date.fromisoformat(values["date_from"]),
                         date_to=date.fromisoformat(values["date_to"]),
                         run_id=values["run_id"],
+                        last_modified=last_modified,
                     )
                 )
             except (KeyError, ValueError) as exc:
                 raise ValueError(f"invalid_raw_google_health_key: {key}") from exc
-    return sorted(
-        entries,
-        key=lambda item: (
-            item.connection_id,
-            item.data_type,
-            item.date_from,
-            item.date_to,
-            item.run_id,
-        ),
-    )
+    return sorted(entries, key=_entry_sort_key)
 
 
 def _load_raw(writer: GoogleHealthWriter, key: str) -> dict[str, Any]:
@@ -181,40 +169,49 @@ def _raw_point_count(payload: dict[str, Any]) -> int:
     return count
 
 
-def _append_normalized(
-    rows: list[dict[str, Any]],
-    normalized: dict[str, list[dict[str, Any]]],
-) -> None:
-    """connection単位のreplay用に正規化行を収集する。"""
-    for dataset, dataset_rows in normalized.items():
-        rows.extend({"_dataset": dataset, **row} for row in dataset_rows)
-
-
-def _deduplicate_normalized(
-    rows: list[dict[str, Any]],
-) -> dict[str, list[dict[str, Any]]]:
-    """Rawが重複期間を含む場合もrecord単位で一意にする。"""
-    by_dataset: dict[str, dict[tuple[Any, ...], dict[str, Any]]] = {}
-    for row in rows:
-        dataset = str(row.pop("_dataset"))
-        identity = (
-            row.get("record_id"),
-            row.get("metric_name"),
-            row.get("date"),
-            row.get("measured_at_utc"),
-            row.get("started_at_utc"),
-            row.get("ended_at_utc"),
-            row.get("session_id"),
+def _run_batches(
+    normalized_entries: list[tuple[RawReplayEntry, dict[str, list[dict[str, Any]]]]],
+) -> list[list[tuple[RawReplayEntry, dict[str, list[dict[str, Any]]]]]]:
+    """Rawを元workflow run単位へまとめ、取得保存時刻順に返す。"""
+    grouped: dict[
+        tuple[str, str], list[tuple[RawReplayEntry, dict[str, list[dict[str, Any]]]]]
+    ] = {}
+    for entry, normalized in normalized_entries:
+        grouped.setdefault((entry.connection_id, entry.run_id), []).append(
+            (entry, normalized)
         )
-        by_dataset.setdefault(dataset, {})[identity] = row
-    result = {
-        dataset: list(dataset_rows.values())
-        for dataset, dataset_rows in by_dataset.items()
+    batches = [
+        sorted(batch, key=lambda item: _entry_sort_key(item[0]))
+        for batch in grouped.values()
+    ]
+    return sorted(
+        batches,
+        key=lambda batch: min(_entry_sort_key(entry) for entry, _normalized in batch),
+    )
+
+
+def _merge_normalized(
+    normalized_values: Any,
+) -> dict[str, list[dict[str, Any]]]:
+    """同一workflow runの正規化結果をevents保存用にまとめる。"""
+    result: dict[str, list[dict[str, Any]]] = {
+        "records": [],
+        "daily_metrics": [],
+        "samples": [],
+        "intervals": [],
+        "sessions": [],
     }
-    result["daily_metrics"] = aggregate_daily_metrics(result.get("daily_metrics", []))
+    for normalized in normalized_values:
+        for dataset, rows in normalized.items():
+            result[dataset].extend(rows)
+    result["daily_metrics"] = aggregate_daily_metrics(result["daily_metrics"])
     return result
 
 
-def _replay_run_id(entries: list[RawReplayEntry]) -> str:
-    identity = "|".join(entry.key for entry in entries)
-    return f"raw-replay-{hashlib.sha256(identity.encode()).hexdigest()[:16]}"
+def _entry_sort_key(entry: RawReplayEntry) -> tuple[str, datetime, str]:
+    """Rawの保存時刻を優先し、時刻がないテスト/互換実装はkeyで安定化する。"""
+    return (
+        entry.connection_id,
+        entry.last_modified or datetime.min.replace(tzinfo=UTC),
+        entry.key,
+    )
