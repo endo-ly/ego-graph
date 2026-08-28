@@ -58,9 +58,9 @@ def test_get_daily_summary_pivots_metrics_and_preserves_missing_values(
             },
             {
                 "connection_id": "google-health-primary",
-                "data_type": "future-hrv-source",
+                "data_type": "daily-heart-rate-variability",
                 "date": date(2026, 6, 2),
-                "metric_name": "daily_heart_rate_variability",
+                "metric_name": "daily_hrv",
                 "value": 42.0,
                 "unit": "millisecond",
             },
@@ -160,20 +160,17 @@ def test_get_daily_summary_maps_compacted_metric_names(
         [
             {
                 "connection_id": "google-health-primary",
-                "data_type": "heart_rate_variability",
+                "data_type": "daily-heart-rate-variability",
                 "date": date(2026, 6, 1),
-                "metric_name": (
-                    "daily_heart_rate_variability_average_"
-                    "heart_rate_variability_milliseconds"
-                ),
+                "metric_name": "daily_hrv",
                 "value": 48.0,
                 "unit": "millisecond",
             },
             {
                 "connection_id": "google-health-primary",
-                "data_type": "oxygen_saturation",
+                "data_type": "daily-oxygen-saturation",
                 "date": date(2026, 6, 1),
-                "metric_name": "daily_oxygen_saturation_average_percentage",
+                "metric_name": "daily_oxygen_saturation",
                 "value": 97.0,
                 "unit": "percentage",
             },

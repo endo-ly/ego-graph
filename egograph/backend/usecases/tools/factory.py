@@ -15,6 +15,12 @@ from backend.domain.tools.github.worklog import (
     GetRepositoriesTool,
     GetRepoSummaryStatsTool,
 )
+from backend.domain.tools.google_health.query import (
+    GetGoogleHealthDailyMetricsTool,
+    GetGoogleHealthRecordTool,
+    GetGoogleHealthSessionsTool,
+    GetGoogleHealthTimeseriesTool,
+)
 from backend.domain.tools.google_health.summary import GetGoogleHealthDailySummaryTool
 from backend.domain.tools.spotify.stats import GetListeningStatsTool, GetTopTracksTool
 from backend.domain.tools.timeline.daily import (
@@ -34,6 +40,13 @@ from backend.infrastructure.repositories import (
     SpotifyRepository,
     TimelineRepository,
     YouTubeRepository,
+)
+from backend.usecases.google_health import (
+    GetGoogleHealthDailyMetricsUseCase,
+    GetGoogleHealthDailySummaryUseCase,
+    GetGoogleHealthRecordUseCase,
+    GetGoogleHealthSessionsUseCase,
+    GetGoogleHealthTimeseriesUseCase,
 )
 from backend.usecases.tools.registry import ToolRegistry
 
@@ -79,7 +92,34 @@ def build_tool_registry(
     tool_registry.register(GetYouTubeTopChannelsTool(youtube_repository))
 
     google_health_repository = GoogleHealthRepository(r2_config, tz=effective_tz)
-    tool_registry.register(GetGoogleHealthDailySummaryTool(google_health_repository))
+    tool_registry.register(
+        GetGoogleHealthDailySummaryTool(
+            GetGoogleHealthDailySummaryUseCase(google_health_repository)
+        )
+    )
+    tool_registry.register(
+        GetGoogleHealthDailyMetricsTool(
+            GetGoogleHealthDailyMetricsUseCase(google_health_repository)
+        )
+    )
+    tool_registry.register(
+        GetGoogleHealthTimeseriesTool(
+            GetGoogleHealthTimeseriesUseCase(
+                google_health_repository,
+                timezone=effective_tz,
+            )
+        )
+    )
+    tool_registry.register(
+        GetGoogleHealthSessionsTool(
+            GetGoogleHealthSessionsUseCase(google_health_repository)
+        )
+    )
+    tool_registry.register(
+        GetGoogleHealthRecordTool(
+            GetGoogleHealthRecordUseCase(google_health_repository)
+        )
+    )
 
     # Daily Timeline（複数 source 統合）
     timeline_repository = TimelineRepository(r2_config)
