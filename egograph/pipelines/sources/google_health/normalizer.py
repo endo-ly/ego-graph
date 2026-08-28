@@ -16,6 +16,7 @@ from pipelines.sources.google_health.data_types import (
 from pipelines.sources.google_health.projections import (
     MetricProjection,
     project_data_point,
+    project_rollup_data_point,
 )
 from pipelines.sources.google_health.timezone import local_date
 
@@ -147,7 +148,7 @@ def _normalize_data_point(
             result["daily_metrics"],
             common=common,
             metric_date=metric_date,
-            projections=project_data_point(data_type, payload),
+            projections=project_rollup_data_point(data_type, payload),
         )
         return
 

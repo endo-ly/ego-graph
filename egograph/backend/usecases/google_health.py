@@ -63,7 +63,7 @@ class GetGoogleHealthDailyMetricsUseCase:
 
 
 class GetGoogleHealthTimeseriesUseCase:
-    """Google Healthのsampleを時系列として取得する。"""
+    """Google Healthのsampleまたはintervalを時系列として取得する。"""
 
     def __init__(
         self,
@@ -79,10 +79,13 @@ class GetGoogleHealthTimeseriesUseCase:
         start_at: datetime | str,
         end_at: datetime | str,
         resolution: str = "auto",
+        metric: str | None = None,
     ) -> dict[str, Any]:
-        """時刻範囲と解像度を検証し、rawまたはbucket済み時系列を返す。"""
+        """時刻範囲等を検証し、rawまたはbucket済み時系列を返す。"""
         if not isinstance(data_type, str) or not data_type.strip():
             raise ValueError("invalid_data_type: must not be empty")
+        if metric is not None and (not isinstance(metric, str) or not metric.strip()):
+            raise ValueError("invalid_metric: must not be empty")
         start = _parse_datetime(start_at, "start_at")
         end = _parse_datetime(end_at, "end_at")
         if start >= end:
@@ -91,7 +94,22 @@ class GetGoogleHealthTimeseriesUseCase:
             allowed = ", ".join(sorted(_ALLOWED_RESOLUTIONS))
             raise ValueError(f"invalid_resolution: must be one of: {allowed}")
 
-        raw_rows = self._repository.get_timeseries(data_type, start, end)
+        raw_rows = self._repository.get_timeseries(data_type, start, end, metric)
+        if metric is not None:
+            raw_rows = [
+                row for row in raw_rows if row.get("metric_name") == metric
+            ]
+        available_metrics = sorted(
+            {str(row["metric_name"]) for row in raw_rows if row.get("metric_name")}
+        )
+        if metric is None and len(available_metrics) > 1:
+            raise ValueError(
+                "invalid_metric: data type has multiple metrics; available_metrics: "
+                + ", ".join(available_metrics)
+            )
+        selected_metric = metric or (
+            available_metrics[0] if available_metrics else None
+        )
         if resolution == "raw":
             if len(raw_rows) > MAX_RAW_TIMESERIES_ROWS:
                 raise ValueError(
@@ -101,12 +119,14 @@ class GetGoogleHealthTimeseriesUseCase:
             actual_resolution = "raw"
             series_rows = [_raw_series_row(row, self._timezone) for row in raw_rows]
         else:
-            actual_resolution = (
-                _choose_resolution(start, end) if resolution == "auto" else resolution
-            )
+            if resolution == "auto":
+                actual_resolution, bucket_minutes = _choose_resolution(start, end)
+            else:
+                actual_resolution = resolution
+                bucket_minutes = _RESOLUTION_MINUTES[resolution]
             series_rows = _bucket_series_rows(
                 raw_rows,
-                minutes=_RESOLUTION_MINUTES[actual_resolution],
+                minutes=bucket_minutes,
                 timezone=self._timezone,
             )
 
@@ -114,6 +134,7 @@ class GetGoogleHealthTimeseriesUseCase:
         units = sorted({str(row["unit"]) for row in raw_rows if row.get("unit")})
         return {
             "type": data_type,
+            "metric": selected_metric,
             "unit": units[0] if len(units) == 1 else None,
             "resolution": actual_resolution,
             "stats": _stats(values),
@@ -132,8 +153,13 @@ class GetGoogleHealthTimeseriesUseCase:
 class GetGoogleHealthSessionsUseCase:
     """指定期間のsleep/exercise sessionを取得する。"""
 
-    def __init__(self, repository: GoogleHealthRepositoryProtocol) -> None:
+    def __init__(
+        self,
+        repository: GoogleHealthRepositoryProtocol,
+        timezone: ZoneInfo | None = None,
+    ) -> None:
         self._repository = repository
+        self._timezone = timezone or ZoneInfo("UTC")
 
     def execute(
         self,
@@ -158,8 +184,8 @@ class GetGoogleHealthSessionsUseCase:
                 [
                     row["record_id"],
                     row["data_type"],
-                    _iso_datetime(row["started_at_utc"]),
-                    _iso_datetime(row["ended_at_utc"]),
+                    _iso_datetime(row["started_at_utc"], self._timezone),
+                    _iso_datetime(row["ended_at_utc"], self._timezone),
                     row["duration_seconds"],
                     row["session_type"],
                 ]
@@ -213,12 +239,14 @@ def _parse_datetime(value: datetime | str, field_name: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
-def _choose_resolution(start: datetime, end: datetime) -> str:
+def _choose_resolution(start: datetime, end: datetime) -> tuple[str, int]:
+    """指定期間が最大80 bucket程度になる解像度を選ぶ。"""
     seconds = (end - start).total_seconds()
     for resolution, minutes in _RESOLUTION_MINUTES.items():
-        if seconds / (minutes * 60) <= 80:
-            return resolution
-    return "1h"
+        if math.ceil(seconds / (minutes * 60)) <= 80:
+            return resolution, minutes
+    minutes = max(60, math.ceil(seconds / (80 * 60)))
+    return f"{minutes}m", minutes
 
 
 def _raw_series_row(row: dict[str, Any], timezone: ZoneInfo) -> list[Any]:

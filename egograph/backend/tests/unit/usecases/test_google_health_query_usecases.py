@@ -16,7 +16,7 @@ class FakeGoogleHealthQueryRepository:
     """詳細Query UseCase用のRepository fake。"""
 
     def __init__(self) -> None:
-        self.timeseries_calls: list[tuple[str, datetime, datetime]] = []
+        self.timeseries_calls: list[tuple[str, datetime, datetime, str | None]] = []
 
     def get_daily_metrics(self, start_date, end_date, data_type=None):
         return [
@@ -30,8 +30,8 @@ class FakeGoogleHealthQueryRepository:
             }
         ]
 
-    def get_timeseries(self, data_type, start_at, end_at):
-        self.timeseries_calls.append((data_type, start_at, end_at))
+    def get_timeseries(self, data_type, start_at, end_at, metric=None):
+        self.timeseries_calls.append((data_type, start_at, end_at, metric))
         return [
             {
                 "measured_at_utc": datetime(2026, 6, 1, 0, 0),
@@ -124,6 +124,59 @@ def test_timeseries_aggregates_and_uses_configured_timezone():
     assert repository.timeseries_calls[0][1].tzinfo is UTC
 
 
+def test_timeseries_requires_metric_for_multi_metric_data_type():
+    """複数metricの時系列を混ぜず、metric選択を要求する。"""
+    # Arrange
+    repository = FakeGoogleHealthQueryRepository()
+
+    def get_hrv_timeseries(data_type, start_at, end_at, metric=None):
+        return (
+            [
+                {
+                    "measured_at_utc": datetime(2026, 6, 1),
+                    "metric_name": metric or "rmssd",
+                    "value": 48.0,
+                    "unit": "millisecond",
+                },
+                {
+                    "measured_at_utc": datetime(2026, 6, 1, 0, 1),
+                    "metric_name": "sdnn",
+                    "value": 52.0,
+                    "unit": "millisecond",
+                },
+            ]
+            if metric is None
+            else [
+                {
+                    "measured_at_utc": datetime(2026, 6, 1),
+                    "metric_name": metric,
+                    "value": 48.0,
+                    "unit": "millisecond",
+                }
+            ]
+        )
+
+    repository.get_timeseries = get_hrv_timeseries
+    use_case = GetGoogleHealthTimeseriesUseCase(repository)
+
+    # Act / Assert
+    with pytest.raises(ValueError, match="available metrics|multiple metrics"):
+        use_case.execute(
+            "heart-rate-variability",
+            "2026-06-01T00:00:00Z",
+            "2026-06-01T01:00:00Z",
+        )
+
+    result = use_case.execute(
+        "heart-rate-variability",
+        "2026-06-01T00:00:00Z",
+        "2026-06-01T01:00:00Z",
+        metric="rmssd",
+    )
+    assert result["metric"] == "rmssd"
+    assert result["stats"]["avg"] == 48.0
+
+
 def test_timeseries_raw_limit_is_explicit():
     """rawが上限を超える場合は暗黙truncateせずエラーにする。"""
     # Arrange
@@ -149,11 +202,31 @@ def test_timeseries_raw_limit_is_explicit():
         )
 
 
+def test_timeseries_auto_uses_internal_bucket_for_long_ranges():
+    """長期間のautoは1時間固定にせず80 bucket程度へ調整する。"""
+    # Arrange
+    use_case = GetGoogleHealthTimeseriesUseCase(FakeGoogleHealthQueryRepository())
+
+    # Act
+    result = use_case.execute(
+        "heart-rate",
+        "2026-06-01T00:00:00Z",
+        "2026-06-08T00:00:00Z",
+    )
+
+    # Assert
+    assert result["resolution"] == "126m"
+    assert len(result["series"]["rows"]) <= 80
+
+
 def test_sessions_and_record_keep_drill_down_linkage():
     """一覧のidをrecord detailへ渡せる形で返す。"""
     # Arrange
     repository = FakeGoogleHealthQueryRepository()
-    sessions = GetGoogleHealthSessionsUseCase(repository)
+    sessions = GetGoogleHealthSessionsUseCase(
+        repository,
+        timezone=ZoneInfo("Asia/Tokyo"),
+    )
     record = GetGoogleHealthRecordUseCase(repository)
 
     # Act
@@ -170,6 +243,7 @@ def test_sessions_and_record_keep_drill_down_linkage():
         "session_type",
     ]
     assert session_result["rows"][0][0] == "rec-sleep"
+    assert session_result["rows"][0][2] == "2026-06-01T08:00:00+09:00"
     assert record_result == {
         "id": "rec-sleep",
         "type": "sleep",

@@ -112,7 +112,10 @@ def build_tool_registry(
     )
     tool_registry.register(
         GetGoogleHealthSessionsTool(
-            GetGoogleHealthSessionsUseCase(google_health_repository)
+            GetGoogleHealthSessionsUseCase(
+                google_health_repository,
+                timezone=effective_tz,
+            )
         )
     )
     tool_registry.register(

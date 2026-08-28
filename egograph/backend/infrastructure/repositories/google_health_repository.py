@@ -65,8 +65,9 @@ class GoogleHealthRepository:
         data_type: str,
         start_at: datetime,
         end_at: datetime,
+        metric: str | None = None,
     ) -> list[dict[str, Any]]:
-        """指定data typeの時系列sampleを取得する。"""
+        """指定data typeの時系列sampleまたはintervalを取得する。"""
         if start_at.tzinfo is None or end_at.tzinfo is None:
             raise ValueError("invalid_timeseries: timestamps must include timezone")
         start_utc = start_at.astimezone(timezone.utc)
@@ -80,6 +81,7 @@ class GoogleHealthRepository:
                 data_type=data_type,
                 start_at_utc=start_utc.replace(tzinfo=None),
                 end_at_utc=end_utc.replace(tzinfo=None),
+                metric=metric,
             )
 
     def get_sessions(

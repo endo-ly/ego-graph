@@ -73,6 +73,7 @@ def get_timeseries_endpoint(
     data_type: str = Query(..., description="Google Health data type"),
     start_at: str = Query(..., description="開始日時（ISO-8601、timezone必須）"),
     end_at: str = Query(..., description="終了日時（ISO-8601、timezone必須）"),
+    metric: str | None = Query(None, description="metric（複数metric型では必須）"),
     resolution: str = Query(
         "auto",
         description="解像度（auto/raw/5m/15m/30m/1h）",
@@ -81,9 +82,9 @@ def get_timeseries_endpoint(
         get_google_health_timeseries_use_case
     ),
 ) -> dict:
-    """sample時系列を取得する。"""
+    """sampleまたはinterval時系列を取得する。"""
     try:
-        return use_case.execute(data_type, start_at, end_at, resolution)
+        return use_case.execute(data_type, start_at, end_at, resolution, metric)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

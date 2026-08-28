@@ -171,10 +171,11 @@ def get_google_health_timeseries_use_case(
 
 
 def get_google_health_sessions_use_case(
+    config: BackendConfig = Depends(get_config),
     repository: GoogleHealthRepository = Depends(get_google_health_repository),
 ) -> GetGoogleHealthSessionsUseCase:
     """Google Health session取得UseCaseを構築する。"""
-    return GetGoogleHealthSessionsUseCase(repository)
+    return GetGoogleHealthSessionsUseCase(repository, timezone=config.timezone)
 
 
 def get_google_health_record_use_case(

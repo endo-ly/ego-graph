@@ -40,7 +40,7 @@ class GetGoogleHealthDailyMetricsTool(ToolBase):
 
 
 class GetGoogleHealthTimeseriesTool(ToolBase):
-    """Google Health sample時系列を取得する。"""
+    """Google Health sampleまたはinterval時系列を取得する。"""
 
     def __init__(self, use_case: GetGoogleHealthTimeseriesUseCase) -> None:
         self._use_case = use_case
@@ -51,7 +51,7 @@ class GetGoogleHealthTimeseriesTool(ToolBase):
 
     @property
     def description(self) -> str:
-        return "Google Healthの心拍などのsampleをrawまたは集約時系列で取得します。"
+        return "Google Healthのsampleまたはintervalをrawまたは集約時系列で取得します。"
 
     @property
     def input_schema(self) -> dict[str, Any]:
@@ -61,6 +61,10 @@ class GetGoogleHealthTimeseriesTool(ToolBase):
                 "data_type": {"type": "string", "description": "例: heart-rate"},
                 "start_at": {"type": "string", "format": "date-time"},
                 "end_at": {"type": "string", "format": "date-time"},
+                "metric": {
+                    "type": "string",
+                    "description": "metric（複数metric型では必須。例: rmssd）",
+                },
                 "resolution": {
                     "type": "string",
                     "enum": ["auto", "raw", "5m", "15m", "30m", "1h"],
@@ -76,9 +80,16 @@ class GetGoogleHealthTimeseriesTool(ToolBase):
         start_at: str,
         end_at: str,
         resolution: str = "auto",
+        metric: str | None = None,
     ) -> dict[str, Any]:
-        """sample時系列を取得する。"""
-        return self._use_case.execute(data_type, start_at, end_at, resolution)
+        """sampleまたはinterval時系列を取得する。"""
+        return self._use_case.execute(
+            data_type,
+            start_at,
+            end_at,
+            resolution,
+            metric,
+        )
 
 
 class GetGoogleHealthSessionsTool(ToolBase):

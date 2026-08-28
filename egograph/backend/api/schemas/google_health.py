@@ -48,10 +48,11 @@ class GoogleHealthTimeseriesHighlights(BaseModel):
 
 
 class GoogleHealthTimeseriesResponse(BaseModel):
-    """Google Health sample時系列。"""
+    """Google Health sample/interval時系列。"""
 
     type: str
-    unit: str | None
+    metric: str | None = None
+    unit: str | None = None
     resolution: str
     stats: GoogleHealthTimeseriesStats
     series: GoogleHealthColumnarResponse

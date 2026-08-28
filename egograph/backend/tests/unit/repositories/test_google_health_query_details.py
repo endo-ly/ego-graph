@@ -2,12 +2,15 @@
 
 from datetime import date, datetime
 from pathlib import Path
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+from dataset_catalog import datasets
 
 from backend.infrastructure.database.google_health_queries import (
     GoogleHealthQueryParams,
+    _resolve_all_paths,
     get_daily_metrics,
     get_record,
     get_sessions,
@@ -61,6 +64,21 @@ def test_detail_queries_filter_and_return_full_record(
                 "measured_at_utc": datetime(2026, 6, 1, 0, 1),
                 "value": 70.0,
                 "unit": "beats_per_minute",
+            }
+        ],
+    )
+    _write_dataset(
+        tmp_path,
+        "intervals",
+        [
+            {
+                "record_id": "rec-steps",
+                "data_type": "steps",
+                "metric_name": "steps",
+                "started_at_utc": datetime(2026, 6, 1, 0, 2),
+                "ended_at_utc": datetime(2026, 6, 1, 0, 5),
+                "value": 120.0,
+                "unit": "count",
             }
         ],
     )
@@ -121,12 +139,57 @@ def test_detail_queries_filter_and_return_full_record(
         start_at_utc=datetime(2026, 6, 1),
         end_at_utc=datetime(2026, 6, 2),
     )
+    intervals = get_timeseries_rows(
+        params,
+        data_type="steps",
+        start_at_utc=datetime(2026, 6, 1),
+        end_at_utc=datetime(2026, 6, 2),
+    )
     sessions = get_sessions(params, data_type="sleep")
-    record = get_record(params, "rec-1")
+    record_path = (
+        tmp_path
+        / "compacted"
+        / "events"
+        / "google_health"
+        / "records"
+        / "year=2026"
+        / "month=06"
+        / "data.parquet"
+    )
+    with patch(
+        "backend.infrastructure.database.google_health_queries._resolve_all_paths",
+        return_value=[str(record_path)],
+    ):
+        record = get_record(params, "rec-1")
 
     # Assert
     assert daily[0]["metric_name"] == "steps"
     assert len(samples) == 1
+    assert intervals[0]["measured_at_utc"] == datetime(2026, 6, 1, 0, 2)
     assert sessions[0]["record_id"] == "rec-sleep"
     assert record is not None
     assert record["payload_json"] == '{"beatsPerMinute":70,"future":true}'
+
+
+def test_record_paths_always_use_r2_glob_even_when_local_mirror_exists(
+    mock_r2_config,
+    tmp_path,
+    duckdb_conn,
+):
+    """全件record lookupは不完全なLocal mirrorを使わない。"""
+    mock_r2_config.local_parquet_root = str(tmp_path)
+    params = GoogleHealthQueryParams(
+        conn=duckdb_conn,
+        r2_config=mock_r2_config,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 1),
+        utc_start=datetime(2026, 6, 1),
+        utc_end=datetime(2026, 6, 2),
+        tz_name="UTC",
+    )
+
+    result = _resolve_all_paths(params, datasets.GOOGLE_HEALTH_RECORDS)
+
+    assert result == [
+        "s3://test-bucket/compacted/events/google_health/records/**/*.parquet"
+    ]

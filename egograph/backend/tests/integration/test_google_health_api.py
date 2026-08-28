@@ -59,11 +59,11 @@ class FakeGoogleHealthRepository:
             }
         ]
 
-    def get_timeseries(self, data_type, start_at, end_at):
+    def get_timeseries(self, data_type, start_at, end_at, metric=None):
         return [
             {
                 "measured_at_utc": start_at.replace(tzinfo=None),
-                "metric_name": "heart_rate",
+                "metric_name": metric or "heart_rate",
                 "value": 72.0,
                 "unit": "bpm",
             }
@@ -165,7 +165,8 @@ def test_detail_apis_use_the_same_query_usecases(test_client):
     )
     timeseries = test_client.get(
         "/v1/data/google-health/timeseries?data_type=heart-rate&"
-        "start_at=2026-06-01T00:00:00Z&end_at=2026-06-01T01:00:00Z&resolution=raw",
+        "start_at=2026-06-01T00:00:00Z&end_at=2026-06-01T01:00:00Z&"
+        "resolution=raw&metric=heart_rate",
         headers=headers,
     )
     sessions = test_client.get(
@@ -183,6 +184,7 @@ def test_detail_apis_use_the_same_query_usecases(test_client):
     assert daily_metrics.json()["columns"] == ["date", "metric", "value", "unit"]
     assert timeseries.status_code == 200
     assert timeseries.json()["series"]["columns"] == ["time", "value"]
+    assert timeseries.json()["metric"] == "heart_rate"
     assert sessions.status_code == 200
     assert sessions.json()["rows"][0][0] == "rec-sleep"
     assert record.status_code == 200

@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from dataset_catalog import DatasetDefinition, datasets
+from pipelines.sources.google_health.data_types import DATA_TYPE_BY_NAME, RecordKind
 
 from backend.config import R2Config
 from backend.infrastructure.database.parquet_paths import (
-    COMPACTED_ROOT,
     build_dataset_glob,
     build_partition_paths,
 )
@@ -139,23 +139,43 @@ def get_timeseries_rows(
     data_type: str,
     start_at_utc: datetime,
     end_at_utc: datetime,
+    metric: str | None = None,
 ) -> list[dict[str, Any]]:
-    """指定data typeの生サンプルを時刻順で返す。"""
-    paths = _resolve_partition_paths(params, datasets.GOOGLE_HEALTH_SAMPLES)
+    """指定data typeのsampleまたはintervalを時刻順で返す。"""
+    dataset, time_column = _timeseries_dataset(data_type)
+    paths = _resolve_partition_paths(params, dataset)
     if not paths:
         return []
-    return _rows(
-        params.conn.execute(
-            """
-            SELECT measured_at_utc, metric_name, value, unit
-            FROM read_parquet(?, union_by_name = true)
-            WHERE data_type = ?
-              AND measured_at_utc >= ?
-              AND measured_at_utc < ?
-            ORDER BY measured_at_utc ASC, metric_name ASC
-            """,
-            (paths, data_type, start_at_utc, end_at_utc),
+    sql = f"""
+        SELECT {time_column} AS measured_at_utc, metric_name, value, unit
+        FROM read_parquet(?, union_by_name = true)
+        WHERE data_type = ?
+          AND {time_column} >= ?
+          AND {time_column} < ?
+    """
+    query_params: list[Any] = [paths, data_type, start_at_utc, end_at_utc]
+    if metric is not None:
+        sql += " AND metric_name = ?"
+        query_params.append(metric)
+    sql += f" ORDER BY {time_column} ASC, metric_name ASC"
+    return _rows(params.conn.execute(sql, tuple(query_params)))
+
+
+def _timeseries_dataset(
+    data_type: str,
+) -> tuple[DatasetDefinition, str]:
+    """Registryからdata typeのProjection datasetと時刻列を解決する。"""
+    definition = DATA_TYPE_BY_NAME.get(data_type)
+    if definition is None:
+        raise ValueError(
+            f"invalid_data_type: unsupported Google Health data type: {data_type}"
         )
+    if definition.record_kind is RecordKind.SAMPLE:
+        return datasets.GOOGLE_HEALTH_SAMPLES, "measured_at_utc"
+    if definition.record_kind is RecordKind.INTERVAL:
+        return datasets.GOOGLE_HEALTH_INTERVALS, "started_at_utc"
+    raise ValueError(
+        f"invalid_data_type: data type has no timeseries projection: {data_type}"
     )
 
 
@@ -201,12 +221,8 @@ def _resolve_all_paths(
     dataset: DatasetDefinition,
 ) -> list[str]:
     """dataset全体検索用のParquet pathを解決する。"""
-    if params.r2_config.local_parquet_root:
-        root = Path(params.r2_config.local_parquet_root) / dataset.compacted_prefix(
-            COMPACTED_ROOT
-        )
-        paths = [str(path) for path in root.glob("**/*.parquet")]
-        return sorted(paths)
+    # Local mirrorは完全性を保証しないため、期間なしのrecord lookupは常に
+    # 正本のR2 globを使う。
     return [build_dataset_glob(params.r2_config, dataset)]
 
 

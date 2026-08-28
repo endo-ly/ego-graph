@@ -44,6 +44,107 @@ def project_data_point(
     return []
 
 
+def project_rollup_data_point(
+    data_type: GoogleHealthDataType,
+    payload: dict[str, Any],
+) -> list[MetricProjection]:
+    """DailyRollup の専用payloadを分析用 metric へ変換する。
+
+    DailyRollup は通常の DataPoint と同じ data type 名を使うが、payload の
+    value 型は別の ``*RollupValue`` である。record kindだけで分岐すると
+    interval/sample用のフィールドを誤って読むため、response kindを専用の
+    Projection関数で扱う。
+    """
+    if data_type.name == "active-minutes":
+        values = payload.get("activeMinutesRollupByActivityLevel")
+        if not isinstance(values, list):
+            return []
+        return [
+            _metric(f"active_minutes_{_snake_case(level)}", number, "minute")
+            for item in values
+            if isinstance(item, dict)
+            if isinstance(level := item.get("activityLevel"), str)
+            if (number := _number(item.get("activeMinutesSum"))) is not None
+        ]
+
+    if data_type.name == "active-zone-minutes":
+        fields = (
+            ("sumInFatBurnHeartZone", "active_zone_minutes_fat_burn"),
+            ("sumInCardioHeartZone", "active_zone_minutes_cardio"),
+            ("sumInPeakHeartZone", "active_zone_minutes_peak"),
+        )
+        return [
+            _metric(metric_name, number, "minute")
+            for field, metric_name in fields
+            if (number := _number(payload.get(field))) is not None
+        ]
+
+    if data_type.name == "calories-in-heart-rate-zone":
+        values = payload.get("caloriesInHeartRateZones")
+        if not isinstance(values, list):
+            return []
+        return [
+            _metric(
+                f"calories_in_heart_rate_zone_{_snake_case(zone)}",
+                number,
+                "kilocalorie",
+            )
+            for item in values
+            if isinstance(item, dict)
+            if isinstance(zone := item.get("heartRateZone"), str)
+            if (number := _number(item.get("kcal"))) is not None
+        ]
+
+    if data_type.name == "time-in-heart-rate-zone":
+        values = payload.get("timeInHeartRateZones")
+        if not isinstance(values, list):
+            return []
+        return [
+            _metric(
+                f"time_in_heart_rate_zone_{_snake_case(zone)}",
+                seconds,
+                "second",
+            )
+            for item in values
+            if isinstance(item, dict)
+            if isinstance(zone := item.get("heartRateZone"), str)
+            if (seconds := _duration_seconds(item.get("duration"))) is not None
+        ]
+
+    rollup_fields: dict[str, tuple[tuple[str, str, str], ...]] = {
+        "steps": (("countSum", "steps", "count"),),
+        "distance": (("millimetersSum", "distance", "millimeter"),),
+        "active-energy-burned": (("kcalSum", "active_energy_burned", "kilocalorie"),),
+        "floors": (("countSum", "floors", "count"),),
+        "altitude": (("gainMillimetersSum", "altitude", "millimeter"),),
+        "swim-lengths-data": (("strokeCountSum", "swim_lengths", "count"),),
+        "sedentary-period": (("durationSum", "sedentary_period", "second"),),
+        "total-calories": (("kcalSum", "total_calories", "kilocalorie"),),
+        "heart-rate": (
+            ("beatsPerMinuteAvg", "heart_rate_avg", "beats_per_minute"),
+            ("beatsPerMinuteMin", "heart_rate_min", "beats_per_minute"),
+            ("beatsPerMinuteMax", "heart_rate_max", "beats_per_minute"),
+        ),
+        "run-vo2-max": (
+            ("rateAvg", "run_vo2_max_avg", "milliliter_per_kilogram_per_minute"),
+            ("rateMin", "run_vo2_max_min", "milliliter_per_kilogram_per_minute"),
+            ("rateMax", "run_vo2_max_max", "milliliter_per_kilogram_per_minute"),
+        ),
+    }
+    fields = rollup_fields.get(data_type.name, ())
+    result = []
+    for field, metric_name, unit in fields:
+        raw_value = payload.get(field)
+        value = (
+            _duration_seconds(raw_value)
+            if data_type.name == "sedentary-period"
+            else _number(raw_value)
+        )
+        if value is not None:
+            result.append(_metric(metric_name, value, unit))
+    return result
+
+
 def _project_sample(
     data_type: str,
     payload: dict[str, Any],
@@ -417,6 +518,15 @@ def _number(value: Any) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def _duration_seconds(value: Any) -> float | None:
+    """Google protobuf Durationを秒の数値へ変換する。"""
+    if isinstance(value, dict):
+        seconds = _number(value.get("seconds"))
+        nanos = _number(value.get("nanos")) or 0.0
+        return seconds + nanos / 1_000_000_000 if seconds is not None else None
+    return _number(value)
 
 
 def _snake_case(value: str) -> str:

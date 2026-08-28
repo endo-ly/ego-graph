@@ -29,8 +29,9 @@ class GoogleHealthRepositoryProtocol(Protocol):
         data_type: str,
         start_at: datetime,
         end_at: datetime,
+        metric: str | None = None,
     ) -> list[dict[str, Any]]:
-        """指定data typeの生サンプルを取得する。"""
+        """指定data typeの生sampleまたはintervalを取得する。"""
         ...
 
     def get_sessions(
