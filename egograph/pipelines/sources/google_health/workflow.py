@@ -75,6 +75,7 @@ def _execute_google_health_ingest(
         )
 
     records: dict[str, list[dict]] = {
+        "records": [],
         "daily_metrics": [],
         "samples": [],
         "intervals": [],
@@ -108,7 +109,7 @@ def _execute_google_health_ingest(
                 raw_ref=raw_ref,
                 timezone=dependencies.timezone,
             )
-            normalized_count = sum(len(rows) for rows in normalized.values())
+            normalized_count = len(normalized["records"])
             if extracted.record_count > 0 and normalized_count == 0:
                 raise ValueError("google_health_normalization_produced_no_records")
             for dataset, rows in normalized.items():

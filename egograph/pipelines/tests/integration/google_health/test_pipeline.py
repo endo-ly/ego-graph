@@ -173,7 +173,7 @@ def test_ingest_saves_raw_all_parquet_kinds_and_sync_state(
     tmp_path,
     monkeypatch,
 ):
-    """1 runでRaw、4 Parquet、data type別sync結果を保存する。"""
+    """1 runでRaw、5 Parquet、data type別sync結果を保存する。"""
     # Arrange
     conn = connect(tmp_path / "state.sqlite3")
     initialize_schema(conn)
@@ -219,7 +219,7 @@ def test_ingest_saves_raw_all_parquet_kinds_and_sync_state(
     assert compact_result["status"] == "succeeded"
     raw_keys = [key for key in memory_s3.objects if key.startswith("raw/")]
     assert len(raw_keys) == 3
-    for dataset in ("daily_metrics", "samples", "intervals"):
+    for dataset in ("records", "daily_metrics", "samples", "intervals"):
         event_key = (
             f"events/google_health/{dataset}/year=2026/month=06/"
             "f62ef091-9372-4e14-b129-55729525bd78.parquet"

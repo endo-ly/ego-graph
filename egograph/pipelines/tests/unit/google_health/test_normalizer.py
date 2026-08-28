@@ -184,6 +184,42 @@ def test_normalizes_physical_rollup_and_averages_respiratory_daily():
     assert daily[0]["value"] == 14
 
 
+def test_hrv_data_point_creates_one_record_and_two_projection_metrics():
+    """複数の既知数値を持つDataPointを欠落なく保存する。"""
+    # Arrange
+    payload = {
+        "reconcileResponses": [
+            {
+                "dataPoints": [
+                    {
+                        "dataPointName": "hrv-1",
+                        "heartRateVariability": {
+                            "sampleTime": {"physicalTime": "2026-06-01T01:02:03Z"},
+                            "rootMeanSquareOfSuccessiveDifferencesMilliseconds": 48.3,
+                            "standardDeviationMilliseconds": 52.1,
+                            "unknownField": {"preserved": True},
+                        },
+                    }
+                ]
+            }
+        ]
+    }
+
+    # Act
+    result = normalize_google_health_payload(
+        connection_id="connection-1",
+        data_type=DATA_TYPE_BY_NAME["heart-rate-variability"],
+        payload=payload,
+        raw_ref="raw/google_health/hrv.json",
+    )
+
+    # Assert
+    assert len(result["records"]) == 1
+    assert {row["metric_name"] for row in result["samples"]} == {"rmssd", "sdnn"}
+    assert '"unknownField":{"preserved":true}' in result["records"][0]["payload_json"]
+    assert result["samples"][0]["record_id"] == result["samples"][1]["record_id"]
+
+
 def test_normalizes_categorical_and_duration_only_intervals():
     """数値を持たないintervalをlevelまたは継続秒へ変換する。"""
     # Arrange & Act
@@ -214,6 +250,36 @@ def test_normalizes_categorical_and_duration_only_intervals():
     # Assert
     assert activity_level["intervals"][0]["value"] == 3
     assert sedentary["intervals"][0]["value"] == 600
+
+
+def test_interval_projection_keeps_multiple_activity_level_metrics():
+    """1つのintervalに含まれる活動レベル別metricをすべて保存する。"""
+    # Arrange & Act
+    result = _normalize(
+        "active-minutes",
+        {
+            "activeMinutes": {
+                "interval": {
+                    "startTime": "2026-06-01T00:00:00Z",
+                    "endTime": "2026-06-01T01:00:00Z",
+                },
+                "activeMinutesByActivityLevel": [
+                    {"activityLevel": "LIGHT", "activeMinutes": "12"},
+                    {"activityLevel": "MODERATE", "activeMinutes": "8"},
+                ],
+            }
+        },
+    )
+
+    # Assert
+    assert len(result["records"]) == 1
+    assert {(row["metric_name"], row["value"]) for row in result["intervals"]} == {
+        ("active_minutes_light", 12.0),
+        ("active_minutes_moderate", 8.0),
+    }
+    assert {row["record_id"] for row in result["intervals"]} == {
+        result["records"][0]["record_id"]
+    }
 
 
 def test_skips_records_with_invalid_date_or_datetime():

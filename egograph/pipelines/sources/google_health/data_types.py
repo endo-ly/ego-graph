@@ -222,6 +222,18 @@ DATA_TYPES = (
         "breaths_per_minute",
     ),
     GoogleHealthDataType(
+        "respiratory-rate",
+        DataCategory.HEALTH_METRICS,
+        RecordKind.SAMPLE,
+        "breaths_per_minute",
+    ),
+    GoogleHealthDataType(
+        "skin-temperature",
+        DataCategory.HEALTH_METRICS,
+        RecordKind.SAMPLE,
+        "celsius",
+    ),
+    GoogleHealthDataType(
         "daily-respiratory-rate",
         DataCategory.HEALTH_METRICS,
         RecordKind.DAILY,
