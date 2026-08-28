@@ -80,6 +80,9 @@ egograph/backend/
 timeseriesの`resolution`は`auto`（既定）、`raw`、`5m`、`15m`、`30m`、`1h`を指定できる。
 `heart-rate-variability`のような複数metric型では`metric`を必須とし、異なるmetricを混在させない。
 `auto`は期間に応じて内部bucket幅を調整し、最大80点程度へ収める。
+timeseriesはdata type registryの集約方式に従う。心拍・HRVなどの`gauge`はbucketごとの
+`avg/min/max`、歩数・距離・消費カロリー・活動時間などの`sum`はbucketごとの合計を返し、
+後者のseries列は`["time", "sum"]`となる。
 `raw`の返却上限は1,000行で、超過時はエラーを返す。絶対時刻を提供する場合は、他のデータソースと同様にUTC保存値を`TIMEZONE`へ変換して返す。
 
 ## Parquet データソースの選択

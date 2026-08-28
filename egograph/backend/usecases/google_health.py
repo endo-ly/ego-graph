@@ -9,6 +9,11 @@ from statistics import mean
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from pipelines.sources.google_health.data_types import (
+    DATA_TYPE_BY_NAME,
+    TimeseriesAggregation,
+)
+
 from backend.domain.repositories.google_health import GoogleHealthRepositoryProtocol
 from backend.validators import validate_date_range
 
@@ -110,6 +115,7 @@ class GetGoogleHealthTimeseriesUseCase:
         selected_metric = metric or (
             available_metrics[0] if available_metrics else None
         )
+        aggregation = _timeseries_aggregation(data_type)
         if resolution == "raw":
             if len(raw_rows) > MAX_RAW_TIMESERIES_ROWS:
                 raise ValueError(
@@ -128,22 +134,24 @@ class GetGoogleHealthTimeseriesUseCase:
                 raw_rows,
                 minutes=bucket_minutes,
                 timezone=self._timezone,
+                aggregation=aggregation,
             )
 
         values = [float(row["value"]) for row in raw_rows]
         units = sorted({str(row["unit"]) for row in raw_rows if row.get("unit")})
+        series_columns = (
+            ["time", "value"]
+            if actual_resolution == "raw"
+            else _bucket_columns(aggregation)
+        )
         return {
             "type": data_type,
             "metric": selected_metric,
             "unit": units[0] if len(units) == 1 else None,
             "resolution": actual_resolution,
-            "stats": _stats(values),
+            "stats": _stats(values, aggregation),
             "series": {
-                "columns": (
-                    ["time", "value"]
-                    if actual_resolution == "raw"
-                    else ["time", "avg", "min", "max"]
-                ),
+                "columns": series_columns,
                 "rows": series_rows,
             },
             "highlights": _highlights(raw_rows, self._timezone),
@@ -261,6 +269,7 @@ def _bucket_series_rows(
     *,
     minutes: int,
     timezone: ZoneInfo,
+    aggregation: TimeseriesAggregation,
 ) -> list[list[Any]]:
     bucket_seconds = minutes * 60
     grouped: dict[tuple[datetime, str, str], list[float]] = {}
@@ -271,15 +280,50 @@ def _bucket_series_rows(
         bucket = datetime.fromtimestamp(bucket_epoch, tz=timezone)
         key = (bucket, str(row["metric_name"]), str(row["unit"]))
         grouped.setdefault(key, []).append(float(row["value"]))
-    return [
-        [_iso_datetime(bucket, timezone), mean(values), min(values), max(values)]
-        for (bucket, _metric_name, _unit), values in sorted(grouped.items())
-    ]
+    result = []
+    for (bucket, _metric_name, _unit), values in sorted(grouped.items()):
+        if aggregation is TimeseriesAggregation.SUM:
+            result.append([_iso_datetime(bucket, timezone), sum(values)])
+        else:
+            result.append(
+                [
+                    _iso_datetime(bucket, timezone),
+                    mean(values),
+                    min(values),
+                    max(values),
+                ]
+            )
+    return result
 
 
-def _stats(values: list[float]) -> dict[str, float | None]:
+def _timeseries_aggregation(data_type: str) -> TimeseriesAggregation:
+    """Registryからtimeseriesの集約方式を解決する。"""
+    definition = DATA_TYPE_BY_NAME.get(data_type)
+    return (
+        definition.timeseries_aggregation
+        if definition is not None
+        else TimeseriesAggregation.GAUGE
+    )
+
+
+def _bucket_columns(aggregation: TimeseriesAggregation) -> list[str]:
+    if aggregation is TimeseriesAggregation.SUM:
+        return ["time", "sum"]
+    return ["time", "avg", "min", "max"]
+
+
+def _stats(
+    values: list[float],
+    aggregation: TimeseriesAggregation,
+) -> dict[str, float | None]:
     if not values:
-        return {"avg": None, "min": None, "max": None}
+        return (
+            {"sum": None}
+            if aggregation is TimeseriesAggregation.SUM
+            else {"avg": None, "min": None, "max": None}
+        )
+    if aggregation is TimeseriesAggregation.SUM:
+        return {"sum": sum(values)}
     return {"avg": mean(values), "min": min(values), "max": max(values)}
 
 

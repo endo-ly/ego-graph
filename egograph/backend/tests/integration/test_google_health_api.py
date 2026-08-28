@@ -197,6 +197,49 @@ def test_detail_apis_use_the_same_query_usecases(test_client):
     }
 
 
+def test_interval_timeseries_api_returns_sum_semantics(test_client):
+    """加算量intervalのREST結果がbucket合計を返す。"""
+    # Arrange
+    repository = FakeGoogleHealthRepository()
+
+    def get_steps_timeseries(data_type, start_at, end_at, metric=None):
+        return [
+            {
+                "measured_at_utc": start_at.replace(tzinfo=None),
+                "metric_name": "steps",
+                "value": 100.0,
+                "unit": "count",
+            },
+            {
+                "measured_at_utc": start_at.replace(tzinfo=None).replace(minute=10),
+                "metric_name": "steps",
+                "value": 200.0,
+                "unit": "count",
+            },
+        ]
+
+    repository.get_timeseries = get_steps_timeseries
+    test_client.app.dependency_overrides[get_google_health_timeseries_use_case] = (
+        lambda: GetGoogleHealthTimeseriesUseCase(repository)
+    )
+
+    # Act
+    response = test_client.get(
+        "/v1/data/google-health/timeseries?data_type=steps&"
+        "start_at=2026-06-01T00:00:00Z&end_at=2026-06-01T00:30:00Z&"
+        "resolution=30m",
+        headers={"X-API-Key": "test-backend-key"},
+    )
+
+    # Assert
+    assert response.status_code == 200
+    assert response.json()["stats"]["sum"] == 300.0
+    assert response.json()["series"]["columns"] == ["time", "sum"]
+    assert response.json()["series"]["rows"] == [
+        ["2026-06-01T00:00:00+00:00", 300.0]
+    ]
+
+
 def test_mcp_google_health_tool_returns_json(mock_backend_config):
     """MCP経由でGoogle Health日次サマリをJSONとして返す。"""
     payload = [

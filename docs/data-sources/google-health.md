@@ -339,6 +339,10 @@ timeseriesはdata type registryのrecord kindに従って`sample`または`inter
 `heart-rate-variability`のように複数metricを持つdata typeでは`metric=rmssd`のように
 metricを指定し、異なるmetricを同じ統計・bucketへ混ぜない。`auto`は期間に応じて
 内部bucket幅を調整し、最大80点程度へ収める。
+timeseriesの集約方式はdata type registryで定義する。心拍・HRV・酸素飽和度などの
+測定値は`gauge`としてbucketごとに`avg/min/max`を返し、歩数・距離・消費カロリー・
+活動時間などの加算量は`sum`としてbucketごとの合計を返す。加算量のseries列は
+`["time", "sum"]`となる。
 record detailだけが`payload_json`をJSON objectとして復元し、DataPoint payloadの完全情報を返す。
 
 `google_health_daily_summary`相当のDuckDBクエリは、ローカル日付として保存された`daily_metrics.date`をそのまま日付軸として使う。

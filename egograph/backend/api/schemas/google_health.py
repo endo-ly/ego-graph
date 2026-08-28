@@ -34,6 +34,7 @@ class GoogleHealthColumnarResponse(BaseModel):
 class GoogleHealthTimeseriesStats(BaseModel):
     """時系列の基本統計。"""
 
+    sum: float | None = None
     avg: float | None = None
     min: float | None = None
     max: float | None = None

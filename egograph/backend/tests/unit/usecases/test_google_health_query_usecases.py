@@ -124,6 +124,46 @@ def test_timeseries_aggregates_and_uses_configured_timezone():
     assert repository.timeseries_calls[0][1].tzinfo is UTC
 
 
+def test_interval_timeseries_sums_additive_values_per_bucket():
+    """加算量intervalはbucketごとの合計として返す。"""
+    # Arrange
+    repository = FakeGoogleHealthQueryRepository()
+    repository.get_timeseries = lambda *args: [
+        {
+            "measured_at_utc": datetime(2026, 6, 1, 0, 0),
+            "metric_name": "steps",
+            "value": 100.0,
+            "unit": "count",
+        },
+        {
+            "measured_at_utc": datetime(2026, 6, 1, 0, 10),
+            "metric_name": "steps",
+            "value": 200.0,
+            "unit": "count",
+        },
+        {
+            "measured_at_utc": datetime(2026, 6, 1, 0, 20),
+            "metric_name": "steps",
+            "value": 300.0,
+            "unit": "count",
+        },
+    ]
+    use_case = GetGoogleHealthTimeseriesUseCase(repository)
+
+    # Act
+    result = use_case.execute(
+        "steps",
+        "2026-06-01T00:00:00Z",
+        "2026-06-01T00:30:00Z",
+        "30m",
+    )
+
+    # Assert
+    assert result["stats"] == {"sum": 600.0}
+    assert result["series"]["columns"] == ["time", "sum"]
+    assert result["series"]["rows"] == [["2026-06-01T00:00:00+00:00", 600.0]]
+
+
 def test_timeseries_requires_metric_for_multi_metric_data_type():
     """複数metricの時系列を混ぜず、metric選択を要求する。"""
     # Arrange
