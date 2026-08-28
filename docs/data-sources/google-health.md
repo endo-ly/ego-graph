@@ -329,12 +329,16 @@ s3://egograph/
 |---|---|---|
 | `GET /v1/data/google-health/daily-summary` | `get_google_health_daily_summary` | 日次概要 |
 | `GET /v1/data/google-health/daily-metrics` | `get_google_health_daily_metrics` | 任意の日次metric |
-| `GET /v1/data/google-health/timeseries` | `get_google_health_timeseries` | sampleの推移・特徴 |
+| `GET /v1/data/google-health/timeseries` | `get_google_health_timeseries` | sample / intervalの推移・特徴 |
 | `GET /v1/data/google-health/sessions` | `get_google_health_sessions` | sleep / exercise |
 | `GET /v1/data/google-health/records/{record_id}` | `get_google_health_record` | DataPoint完全情報 |
 
 日次metricとsessionの一覧は`columns`と`rows`のcolumnar形式、timeseriesは標準では
 `auto` bucket、必要時だけ`raw`を返す。`raw`は最大1000行で、超過時は明示エラーにする。
+timeseriesはdata type registryのrecord kindに従って`sample`または`interval`を検索する。
+`heart-rate-variability`のように複数metricを持つdata typeでは`metric=rmssd`のように
+metricを指定し、異なるmetricを同じ統計・bucketへ混ぜない。`auto`は期間に応じて
+内部bucket幅を調整し、最大80点程度へ収める。
 record detailだけが`payload_json`をJSON objectとして復元し、DataPoint payloadの完全情報を返す。
 
 `google_health_daily_summary`相当のDuckDBクエリは、ローカル日付として保存された`daily_metrics.date`をそのまま日付軸として使う。
@@ -805,6 +809,23 @@ runの`status`は`succeeded`、`partial_failed`、`failed`のいずれかにな�
 `result_summary.data_types`でdata typeごとの`success`、`no_data`、`failed`、件数、処理秒数、エラーを確認する。
 同じ情報のうち`data_type`、`status`、`record_count`、`duration_seconds`は運用ログにも出力される。
 token、Raw JSON本文、Raw保存先はログへ出力しない。
+
+#### Raw JSONからcompactedを再構築する
+
+NormalizerやProjectionの修正後に、保存済みRawからGoogle Healthだけを再構築できる。
+本番の初回full-fidelity切り替えでは、既存のGoogle Health compactedを削除してから
+再生成する次のコマンドを実行する。
+
+```bash
+cd /opt/egograph/repo
+uv run python -m pipelines.main google-health raw-replay --reset-compacted --json
+```
+
+この処理は実行前に全Rawを読み込み・normalizeして検証し、検証成功後にのみ
+compactedを削除する。RawはS3の`LastModified`順、同一workflow runはまとめて
+処理するため、後日のrepair runが同じ期間を補完した場合も、古い値を加算せず
+通常の`compact_range`と同じ範囲置換になる。実行後は結果の`raw_count`と代表的な
+`daily_metrics`、`samples`、`intervals`、`sessions`、`records`の件数を確認する。
 
 #### SQLiteの同期状態を確認する
 

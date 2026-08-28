@@ -68,7 +68,7 @@ egograph/backend/
 | MCP | `get_google_health_daily_summary` | RESTと同じ日次健康サマリ |
 | REST | `GET /v1/data/google-health/daily-metrics` | 日次Projectionをmetric単位で取得 |
 | MCP | `get_google_health_daily_metrics` | RESTと同じ日次metric |
-| REST | `GET /v1/data/google-health/timeseries` | sampleの統計・bucket・特徴的な変化 |
+| REST | `GET /v1/data/google-health/timeseries` | sample / intervalの統計・bucket・特徴的な変化 |
 | MCP | `get_google_health_timeseries` | RESTと同じ時系列結果 |
 | REST | `GET /v1/data/google-health/sessions` | sleep / exercise session一覧 |
 | MCP | `get_google_health_sessions` | RESTと同じsession一覧 |
@@ -78,6 +78,8 @@ egograph/backend/
 `start_date`と`end_date`は`TIMEZONE`のローカル日付として両端を含む。
 日次指標の`date`はローカル日付として保存済みのため変換せず、欠損値は`null`として返す。
 timeseriesの`resolution`は`auto`（既定）、`raw`、`5m`、`15m`、`30m`、`1h`を指定できる。
+`heart-rate-variability`のような複数metric型では`metric`を必須とし、異なるmetricを混在させない。
+`auto`は期間に応じて内部bucket幅を調整し、最大80点程度へ収める。
 `raw`の返却上限は1,000行で、超過時はエラーを返す。絶対時刻を提供する場合は、他のデータソースと同様にUTC保存値を`TIMEZONE`へ変換して返す。
 
 ## Parquet データソースの選択

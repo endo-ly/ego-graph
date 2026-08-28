@@ -86,7 +86,13 @@ curl http://127.0.0.1:8001/v1/health
 cd /opt/egograph/repo
 uv run python -m pipelines.main workflow list --json
 uv run python -m pipelines.main run list --json
+uv run python -m pipelines.main google-health raw-replay --reset-compacted --json
 ```
+
+`google-health raw-replay`は保存済みGoogle Health Rawからcompacted Datasetを再構築する
+保守コマンドである。`--reset-compacted`を付けると、全Rawの検証後にGoogle Healthの
+compactedだけを削除し、S3 `LastModified`順に再生成する。初回full-fidelity切り替えや
+Normalizer修正後に使用し、実行後は代表的なQuery結果を確認する。
 
 ### Browser History 拡張機能
 
