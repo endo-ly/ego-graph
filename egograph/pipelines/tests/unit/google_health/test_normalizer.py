@@ -304,6 +304,7 @@ def test_interval_projection_keeps_multiple_activity_level_metrics():
             {
                 ("active_minutes_light", 12.0),
                 ("active_minutes_vigorous", 8.0),
+                ("active_minutes", 20.0),
             },
         ),
         (
@@ -317,6 +318,7 @@ def test_interval_projection_keeps_multiple_activity_level_metrics():
                 ("active_zone_minutes_fat_burn", 10.0),
                 ("active_zone_minutes_cardio", 20.0),
                 ("active_zone_minutes_peak", 5.0),
+                ("active_zone_minutes", 35.0),
             },
         ),
         (

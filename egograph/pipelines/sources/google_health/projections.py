@@ -59,13 +59,22 @@ def project_rollup_data_point(
         values = payload.get("activeMinutesRollupByActivityLevel")
         if not isinstance(values, list):
             return []
-        return [
+        projections = [
             _metric(f"active_minutes_{_snake_case(level)}", number, "minute")
             for item in values
             if isinstance(item, dict)
             if isinstance(level := item.get("activityLevel"), str)
             if (number := _number(item.get("activeMinutesSum"))) is not None
         ]
+        if projections:
+            projections.append(
+                _metric(
+                    "active_minutes",
+                    sum(item.value for item in projections),
+                    "minute",
+                )
+            )
+        return projections
 
     if data_type.name == "active-zone-minutes":
         fields = (
@@ -73,11 +82,20 @@ def project_rollup_data_point(
             ("sumInCardioHeartZone", "active_zone_minutes_cardio"),
             ("sumInPeakHeartZone", "active_zone_minutes_peak"),
         )
-        return [
+        projections = [
             _metric(metric_name, number, "minute")
             for field, metric_name in fields
             if (number := _number(payload.get(field))) is not None
         ]
+        if projections:
+            projections.append(
+                _metric(
+                    "active_zone_minutes",
+                    sum(item.value for item in projections),
+                    "minute",
+                )
+            )
+        return projections
 
     if data_type.name == "calories-in-heart-rate-zone":
         values = payload.get("caloriesInHeartRateZones")
