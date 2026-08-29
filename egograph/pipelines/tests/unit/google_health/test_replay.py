@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 from botocore.exceptions import ClientError
 from pipelines.maintenance.progress import ProgressReporter
+from pipelines.sources.google_health import replay as replay_module
 from pipelines.sources.google_health.replay import replay_google_health_raw
 from pipelines.sources.google_health.writer import GoogleHealthWriter
 
@@ -168,6 +169,48 @@ def test_replay_rebuilds_new_datasets_and_is_idempotent():
     assert len(rows) == 1
     assert rows.iloc[0]["value"] == 72.0
     assert any("archive/google_health/" in key for key in memory_s3.objects)
+
+
+def test_replay_removes_stale_event_when_projection_becomes_empty(monkeypatch):
+    """再Replayで空になったprojectionの古いeventを削除する。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    writer.save_raw(
+        connection_id="connection-1",
+        data_type="heart-rate",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+        run_id="run-1",
+        payload=_heart_rate_payload(72, "2026-06-01T01:00:00Z"),
+    )
+    replay_google_health_raw(writer, reset_compacted=True)
+    samples_prefix = "events/google_health/samples/year=2026/month=06/"
+    samples_compacted_key = (
+        "compacted/events/google_health/samples/year=2026/month=06/data.parquet"
+    )
+    assert any(key.startswith(samples_prefix) for key in memory_s3.objects)
+    assert samples_compacted_key in memory_s3.objects
+
+    original_normalize = replay_module.normalize_google_health_payload
+
+    def normalize_without_samples(**kwargs):
+        normalized = original_normalize(**kwargs)
+        normalized["samples"] = []
+        return normalized
+
+    monkeypatch.setattr(
+        replay_module,
+        "normalize_google_health_payload",
+        normalize_without_samples,
+    )
+
+    # Act
+    replay_google_health_raw(writer, reset_compacted=True)
+
+    # Assert
+    assert not any(key.startswith(samples_prefix) for key in memory_s3.objects)
+    assert samples_compacted_key not in memory_s3.objects
 
 
 def test_replay_replaces_delayed_rollup_values_in_raw_save_order():
@@ -411,7 +454,12 @@ def test_replay_normalizes_one_entry_at_a_time_and_uses_deterministic_event_ids(
     progress = RecordingProgress()
     events: list[str] = []
     writer.reset_compacted = Mock(side_effect=lambda **_: events.append("reset"))
-    writer.save_events = Mock(side_effect=lambda **kwargs: events.append("save"))
+
+    def record_save(**kwargs):
+        events.append("save")
+        return []
+
+    writer.save_events = Mock(side_effect=record_save)
 
     def record_compact(**kwargs):
         events.append("compact")
@@ -459,7 +507,7 @@ def test_replay_compacts_only_datasets_a_data_type_can_generate():
         run_id="run-1",
         payload=_heart_rate_payload(72, "2026-06-01T01:00:00Z"),
     )
-    writer.save_events = Mock()
+    writer.save_events = Mock(return_value=[])
     writer.compact_range = Mock(return_value=[])
 
     # Act
@@ -488,7 +536,7 @@ def test_replay_compacts_empty_normalization_to_replace_no_data():
         run_id="run-empty",
         payload={"reconcileResponses": []},
     )
-    writer.save_events = Mock()
+    writer.save_events = Mock(return_value=[])
     writer.compact_range = Mock(return_value=[])
 
     # Act
@@ -553,7 +601,7 @@ def test_partial_replay_uses_semantic_session_target_date(
             ]
         },
     )
-    writer.save_events = Mock()
+    writer.save_events = Mock(return_value=[])
     writer.compact_range = Mock(return_value=[])
 
     # Act

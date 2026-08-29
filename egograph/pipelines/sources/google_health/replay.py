@@ -123,16 +123,19 @@ def replay_google_health_raw(
         )
         event_id = replay_event_id(entry)
         if entry_dataset_ids:
-            writer.save_events(
-                run_id=event_id,
-                records=normalized,
-                selected_dataset_ids=entry_dataset_ids,
-            )
             compact_from = entry.date_from
             compact_to = entry.date_to
             if date_from is not None and date_to is not None:
                 compact_from = max(compact_from, date_from)
                 compact_to = min(compact_to, date_to)
+            writer.replace_events(
+                run_id=event_id,
+                records=normalized,
+                selected_data_types=(entry.data_type,),
+                date_from=compact_from,
+                date_to=compact_to,
+                selected_dataset_ids=entry_dataset_ids,
+            )
             compacted_keys = writer.compact_range(
                 connection_id=entry.connection_id,
                 selected_data_types=(entry.data_type,),

@@ -127,6 +127,42 @@ class GoogleHealthWriter:
                 saved_keys.append(key)
         return saved_keys
 
+    def replace_events(
+        self,
+        *,
+        run_id: str,
+        records: dict[str, list[dict[str, Any]]],
+        selected_data_types: tuple[str, ...],
+        date_from: date,
+        date_to: date,
+        selected_dataset_ids: tuple[str, ...] | None = None,
+    ) -> list[str]:
+        """deterministicなevent IDの正規化結果を置換する。
+
+        Raw replayでは同じRaw keyから同じevent IDを生成するため、今回の
+        正規化結果に行がないDatasetの既存eventも削除する。先に現行行の
+        保存とschema検証を完了し、保存されなかった対象partitionだけを
+        削除することで、空結果でも古いeventが再利用されないようにする。
+        """
+        saved_keys = self.save_events(
+            run_id=run_id,
+            records=records,
+            selected_dataset_ids=selected_dataset_ids,
+        )
+        saved_key_set = set(saved_keys)
+        for dataset in _selected_datasets(selected_dataset_ids):
+            for year, month in _target_event_months(
+                _dataset_name(dataset),
+                selected_data_types=selected_data_types,
+                date_from=date_from,
+                date_to=date_to,
+                timezone=self.timezone,
+            ):
+                event_key = self._event_key(dataset, year, month, run_id)
+                if event_key not in saved_key_set:
+                    self._delete_if_exists(event_key)
+        return saved_keys
+
     def compact_range(
         self,
         *,
@@ -141,24 +177,13 @@ class GoogleHealthWriter:
         compacted_keys: list[str] = []
         for dataset in _selected_datasets(selected_dataset_ids):
             dataset_name = _dataset_name(dataset)
-            months = set(
-                _target_months(
-                    dataset_name,
-                    date_from=date_from,
-                    date_to=date_to,
-                    timezone=self.timezone,
-                )
-            )
-            if (
-                dataset is datasets.GOOGLE_HEALTH_SESSIONS
-                and "sleep" in selected_data_types
+            for year, month in _target_event_months(
+                dataset_name,
+                selected_data_types=selected_data_types,
+                date_from=date_from,
+                date_to=date_to,
+                timezone=self.timezone,
             ):
-                sleep_start = local_date_start_utc(
-                    date_from - timedelta(days=1),
-                    self.timezone,
-                )
-                months.add((sleep_start.year, sleep_start.month))
-            for year, month in sorted(months):
                 compacted_key = self._compacted_key(dataset, year, month)
                 existing = self._load_parquet(compacted_key)
                 retained = _retain_outside_target(
@@ -316,6 +341,29 @@ def _target_months(
             if current.month == 12
             else date(current.year, current.month + 1, 1)
         )
+
+
+def _target_event_months(
+    dataset_name: str,
+    *,
+    selected_data_types: tuple[str, ...],
+    date_from: date,
+    date_to: date,
+    timezone: ZoneInfo,
+) -> tuple[tuple[int, int], ...]:
+    """event保存・compactionで共有する対象partition月を返す。"""
+    months = set(
+        _target_months(
+            dataset_name,
+            date_from=date_from,
+            date_to=date_to,
+            timezone=timezone,
+        )
+    )
+    if dataset_name == "sessions" and "sleep" in selected_data_types:
+        sleep_start = local_date_start_utc(date_from - timedelta(days=1), timezone)
+        months.add((sleep_start.year, sleep_start.month))
+    return tuple(sorted(months))
 
 
 def _normalize_path(path: str) -> str:
