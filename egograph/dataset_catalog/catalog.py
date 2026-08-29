@@ -172,6 +172,12 @@ class DatasetDefinition:
             f"year={year}/month={month:02d}/data.parquet"
         )
 
+    def compacted_snapshot_key(self, compacted_root: str) -> str:
+        """snapshot dataset の固定 compacted key を組み立てる。"""
+        if not self.snapshot_file_name:
+            raise ValueError(f"snapshot_file_name_required: {self.dataset_id}")
+        return f"{self.compacted_prefix(compacted_root)}{self.snapshot_file_name}"
+
 
 def _normalize_path(path: str) -> str:
     return path.rstrip("/") + "/"
@@ -594,23 +600,16 @@ datasets = SimpleNamespace(
 )
 
 
-ALL_DATASETS = (
-    datasets.SPOTIFY_PLAYS,
-    datasets.SPOTIFY_TRACKS,
-    datasets.SPOTIFY_ARTISTS,
-    datasets.GITHUB_COMMITS,
-    datasets.GITHUB_PULL_REQUESTS,
-    datasets.GITHUB_REPOSITORIES,
-    datasets.BROWSER_HISTORY_PAGE_VIEWS,
-    datasets.YOUTUBE_WATCH_EVENTS,
-    datasets.YOUTUBE_VIDEOS,
-    datasets.YOUTUBE_CHANNELS,
-    datasets.GOOGLE_HEALTH_DAILY_METRICS,
-    datasets.GOOGLE_HEALTH_SAMPLES,
-    datasets.GOOGLE_HEALTH_INTERVALS,
-    datasets.GOOGLE_HEALTH_SESSIONS,
-    datasets.GOOGLE_HEALTH_RECORDS,
-)
+def iter_datasets() -> tuple[DatasetDefinition, ...]:
+    """名前付きnamespaceからDatasetDefinitionをCatalog順に列挙する。"""
+    return tuple(
+        item
+        for item in vars(datasets).values()
+        if isinstance(item, DatasetDefinition)
+    )
+
+
+ALL_DATASETS = iter_datasets()
 
 
 def _build_datasets_by_id(

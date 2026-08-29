@@ -8,6 +8,7 @@ from typing import Any
 
 import pandas as pd
 from dataset_catalog import DatasetDefinition
+from dataset_catalog.validation import validate_parquet_bytes, validate_required_columns
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,26 @@ def dataframe_to_parquet_bytes(df: pd.DataFrame) -> bytes:
     df.to_parquet(buffer, index=False, engine="pyarrow")
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def write_compacted_parquet(
+    s3_client: Any,
+    bucket_name: str,
+    key: str,
+    dataframe: pd.DataFrame,
+    dataset: DatasetDefinition,
+) -> str:
+    """schema検証済みのcompact DataFrameをR2へ保存する。"""
+    validate_required_columns(dataset, dataframe.columns)
+    body = dataframe_to_parquet_bytes(dataframe)
+    validate_parquet_bytes(dataset, body)
+    s3_client.put_object(
+        Bucket=bucket_name,
+        Key=key,
+        Body=body,
+        ContentType="application/octet-stream",
+    )
+    return key
 
 
 def resolve_target_months(

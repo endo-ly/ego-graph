@@ -7,10 +7,12 @@ import json
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import boto3
 import uvicorn
 
 from pipelines.app import create_app
 from pipelines.config import PipelinesConfig
+from pipelines.maintenance.recompact import RecompactRequest, RecompactService
 from pipelines.service import PipelineService
 from pipelines.sources.common.config import R2Config
 from pipelines.sources.common.settings import PipelinesSettings
@@ -80,6 +82,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     raw_replay_parser.add_argument("--json", action="store_true")
 
+    recompact_parser = subparsers.add_parser(
+        "recompact",
+        help="Dataset Catalogのsourceからcompacted Datasetを再構築する",
+    )
+    recompact_parser.add_argument("--provider")
+    recompact_parser.add_argument("--dataset", dest="dataset_id")
+    recompact_parser.add_argument("--year", type=int)
+    recompact_parser.add_argument("--month", type=int)
+    recompact_parser.add_argument("--prune", action="store_true")
+    recompact_parser.add_argument("--json", action="store_true")
+
     run_parser = subparsers.add_parser("run")
     run_sub = run_parser.add_subparsers(dest="run_command", required=True)
     run_list_parser = run_sub.add_parser("list")
@@ -130,6 +143,45 @@ def main() -> None:
             ),
             args.json,
         )
+        return
+
+    if args.command == "recompact":
+        r2_config = _load_r2_config()
+        config = PipelinesConfig()
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=r2_config.endpoint_url,
+            aws_access_key_id=r2_config.access_key_id,
+            aws_secret_access_key=r2_config.secret_access_key.get_secret_value(),
+            region_name="auto",
+        )
+        google_health_writer = GoogleHealthWriter(
+            endpoint_url=r2_config.endpoint_url,
+            access_key_id=r2_config.access_key_id,
+            secret_access_key=r2_config.secret_access_key.get_secret_value(),
+            bucket_name=r2_config.bucket_name,
+            raw_path=r2_config.raw_path,
+            events_path=r2_config.events_path,
+            timezone=ZoneInfo(config.timezone),
+        )
+        result = RecompactService(
+            s3_client=s3_client,
+            bucket_name=r2_config.bucket_name,
+            events_path=r2_config.events_path,
+            master_path=r2_config.master_path,
+            google_health_writer=google_health_writer,
+        ).run(
+            RecompactRequest(
+                provider=args.provider,
+                dataset_id=args.dataset_id,
+                year=args.year,
+                month=args.month,
+                prune=args.prune,
+            )
+        )
+        _emit(result.to_dict(), args.json)
+        if result.failed:
+            raise SystemExit(1)
         return
 
     service = PipelineService.create(config)
