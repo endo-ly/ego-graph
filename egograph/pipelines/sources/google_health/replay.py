@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from dataset_catalog import datasets
+
+from pipelines.maintenance.progress import (
+    ProgressReporter,
+    StderrProgressReporter,
+)
 from pipelines.sources.google_health.data_types import DATA_TYPE_BY_NAME
 from pipelines.sources.google_health.normalizer import (
     aggregate_daily_metrics,
     normalize_google_health_payload,
 )
+from pipelines.sources.google_health.timezone import projection_row_local_date
 from pipelines.sources.google_health.writer import GoogleHealthWriter
 
 _RAW_KEY_PATTERN = re.compile(
@@ -41,70 +50,135 @@ def replay_google_health_raw(
     *,
     timezone: ZoneInfo | None = None,
     reset_compacted: bool = False,
+    selected_dataset_ids: tuple[str, ...] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    progress: ProgressReporter | None = None,
 ) -> dict[str, Any]:
     """Raw JSONを新Normalizerで再処理し、eventsとcompactedを再生成する。
 
     ``reset_compacted`` は新世代へ全面切り替えするときだけ明示的に指定する。
     falseの場合は対象Rawの期間だけrange replaceするため、部分的な再構築にも
     利用できる。
+
+    正規化結果は1 Raw Entryの処理中だけ保持する。日付範囲やDatasetを指定した
+    部分再構築では、対象外のRawを読み飛ばし、対象外のprojectionを保存しない。
     """
     timezone = timezone or writer.timezone
-    entries = list_raw_entries(writer)
+    progress = progress or StderrProgressReporter()
+    selected_dataset_ids = _validate_dataset_selection(selected_dataset_ids)
+    if (date_from is None) != (date_to is None):
+        raise ValueError("invalid_date_range: date_from and date_to are required")
+    if date_from is not None and date_to is not None and date_from >= date_to:
+        raise ValueError("invalid_date_range: date_from must be before date_to")
 
-    results: list[dict[str, Any]] = []
-    normalized_entries: list[
-        tuple[RawReplayEntry, dict[str, list[dict[str, Any]]]]
-    ] = []
-    for entry in entries:
+    entries = list_raw_entries(writer)
+    entries = [
+        entry
+        for entry in entries
+        if _entry_overlaps(entry, date_from=date_from, date_to=date_to)
+    ]
+    started_at = time.monotonic()
+
+    validated_record_count = 0
+    for index, entry in enumerate(entries, start=1):
         raw_payload = _load_raw(writer, entry.key)
-        normalized = normalize_google_health_payload(
-            connection_id=entry.connection_id,
-            data_type=DATA_TYPE_BY_NAME[entry.data_type],
-            payload=raw_payload,
-            raw_ref=entry.key,
+        normalized = _normalize_entry(
+            entry,
+            raw_payload,
             timezone=timezone,
         )
         if _raw_point_count(raw_payload) > 0 and not normalized["records"]:
             raise ValueError(f"invalid_raw_google_health_record: {entry.key}")
-        normalized_entries.append((entry, normalized))
-        results.append(
-            {
-                "key": entry.key,
-                "connection_id": entry.connection_id,
-                "data_type": entry.data_type,
-                "run_id": entry.run_id,
-                "record_count": len(normalized["records"]),
-            }
-        )
+        validated_record_count += len(normalized["records"])
+        progress.report("validate", index, len(entries), entry.data_type)
+        del normalized, raw_payload
 
     if reset_compacted:
         # 破損Rawが残っている場合でも、検証済みでない状態のcompactedを先に
         # 削除しない。全entryのnormalizeが成功した後で全面再構築を開始する。
-        writer.reset_compacted()
+        writer.reset_compacted(selected_dataset_ids=selected_dataset_ids)
 
-    # 同じworkflow runのRawは1つのeventsファイルへまとめ、同じrunの全data
-    # typeを1回でcompactする。データ型ごとにsave_events/compactすると、同じ
-    # run_id・同じdataset/monthのParquetを上書きしたり、別data typeのcurrent
-    # 行を重複追加したりするためである。各runをLastModified順にcompactし、
-    # 遅延同期の後続runが先行runの対象範囲を置換する通常workflowを再現する。
-    for batch in _run_batches(normalized_entries):
-        batch_records = _merge_normalized(normalized for _entry, normalized in batch)
-        run_id = batch[0][0].run_id
-        writer.save_events(run_id=run_id, records=batch_records)
-        writer.compact_range(
-            connection_id=batch[0][0].connection_id,
-            selected_data_types=tuple(sorted({entry.data_type for entry, _ in batch})),
-            date_from=min(entry.date_from for entry, _ in batch),
-            date_to=max(entry.date_to for entry, _ in batch),
-            run_id=run_id,
+    replayed_record_count = 0
+    compacted_partition_keys = {
+        dataset_id: set() for dataset_id in selected_dataset_ids
+    }
+    for index, entry in enumerate(entries, start=1):
+        raw_payload = _load_raw(writer, entry.key)
+        normalized = _normalize_entry(
+            entry,
+            raw_payload,
+            timezone=timezone,
         )
+        entry_dataset_ids = _selected_entry_dataset_ids(
+            entry.data_type,
+            selected_dataset_ids,
+        )
+        normalized = _select_normalized_rows(
+            normalized,
+            selected_dataset_ids=entry_dataset_ids,
+            timezone=timezone,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        event_id = replay_event_id(entry)
+        if entry_dataset_ids:
+            compact_from = entry.date_from
+            compact_to = entry.date_to
+            if date_from is not None and date_to is not None:
+                compact_from = max(compact_from, date_from)
+                compact_to = min(compact_to, date_to)
+            writer.replace_events(
+                run_id=event_id,
+                records=normalized,
+                selected_data_types=(entry.data_type,),
+                date_from=compact_from,
+                date_to=compact_to,
+                selected_dataset_ids=entry_dataset_ids,
+            )
+            compacted_keys = writer.compact_range(
+                connection_id=entry.connection_id,
+                selected_data_types=(entry.data_type,),
+                date_from=compact_from,
+                date_to=compact_to,
+                run_id=event_id,
+                selected_dataset_ids=entry_dataset_ids,
+            )
+            for key in compacted_keys:
+                for dataset in _google_health_datasets():
+                    if (
+                        dataset.dataset_id in entry_dataset_ids
+                        and key.startswith(
+                            dataset.compacted_prefix(writer.compacted_path)
+                        )
+                    ):
+                        compacted_partition_keys[dataset.dataset_id].add(key)
+                        break
+            replayed_record_count += sum(len(rows) for rows in normalized.values())
+        progress.report("replay", index, len(entries), entry.data_type)
+        del normalized, raw_payload
+
     return {
         "provider": "google_health",
         "operation": "raw_replay",
         "status": "succeeded",
-        "raw_count": len(results),
-        "results": results,
+        "raw_count": len(entries),
+        "validated_count": len(entries),
+        "validated_record_count": validated_record_count,
+        "replayed_count": len(entries),
+        "record_count": replayed_record_count,
+        "compacted_partition_counts": {
+            dataset_id: len(keys)
+            for dataset_id, keys in compacted_partition_keys.items()
+        },
+        "duration_seconds": round(time.monotonic() - started_at, 3),
     }
+
+
+def replay_event_id(entry: RawReplayEntry) -> str:
+    """Raw keyから再現可能なevents run IDを生成する。"""
+    digest = hashlib.sha256(entry.key.encode("utf-8")).hexdigest()
+    return f"raw-replay-{digest}"
 
 
 def list_raw_entries(writer: GoogleHealthWriter) -> list[RawReplayEntry]:
@@ -169,43 +243,109 @@ def _raw_point_count(payload: dict[str, Any]) -> int:
     return count
 
 
-def _run_batches(
-    normalized_entries: list[tuple[RawReplayEntry, dict[str, list[dict[str, Any]]]]],
-) -> list[list[tuple[RawReplayEntry, dict[str, list[dict[str, Any]]]]]]:
-    """Rawを元workflow run単位へまとめ、取得保存時刻順に返す。"""
-    grouped: dict[
-        tuple[str, str], list[tuple[RawReplayEntry, dict[str, list[dict[str, Any]]]]]
-    ] = {}
-    for entry, normalized in normalized_entries:
-        grouped.setdefault((entry.connection_id, entry.run_id), []).append(
-            (entry, normalized)
+def _normalize_entry(
+    entry: RawReplayEntry,
+    raw_payload: dict[str, Any],
+    *,
+    timezone: ZoneInfo,
+) -> dict[str, list[dict[str, Any]]]:
+    """1 Raw Entryを正規化する。"""
+    normalized = normalize_google_health_payload(
+        connection_id=entry.connection_id,
+        data_type=DATA_TYPE_BY_NAME[entry.data_type],
+        payload=raw_payload,
+        raw_ref=entry.key,
+        timezone=timezone,
+    )
+    normalized["daily_metrics"] = aggregate_daily_metrics(
+        normalized["daily_metrics"]
+    )
+    return normalized
+
+
+def _validate_dataset_selection(
+    selected_dataset_ids: tuple[str, ...] | None,
+) -> tuple[str, ...]:
+    """Google Health projectionの選択を検証する。"""
+    all_ids = tuple(dataset.dataset_id for dataset in _google_health_datasets())
+    if selected_dataset_ids is None:
+        return all_ids
+    normalized = tuple(dict.fromkeys(selected_dataset_ids))
+    unknown = [dataset_id for dataset_id in normalized if dataset_id not in all_ids]
+    if unknown:
+        raise ValueError(
+            "invalid_dataset_id: unknown Google Health dataset: "
+            f"{', '.join(unknown)}"
         )
-    batches = [
-        sorted(batch, key=lambda item: _entry_sort_key(item[0]))
-        for batch in grouped.values()
-    ]
-    return sorted(
-        batches,
-        key=lambda batch: min(_entry_sort_key(entry) for entry, _normalized in batch),
+    if not normalized:
+        raise ValueError("invalid_dataset_id: at least one dataset is required")
+    return normalized
+
+
+def _google_health_datasets():
+    return (
+        datasets.GOOGLE_HEALTH_RECORDS,
+        datasets.GOOGLE_HEALTH_DAILY_METRICS,
+        datasets.GOOGLE_HEALTH_SAMPLES,
+        datasets.GOOGLE_HEALTH_INTERVALS,
+        datasets.GOOGLE_HEALTH_SESSIONS,
     )
 
 
-def _merge_normalized(
-    normalized_values: Any,
+def _selected_entry_dataset_ids(
+    data_type_name: str,
+    selected_dataset_ids: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Raw Entryが生成し得るselected Datasetだけを返す。"""
+    data_type = DATA_TYPE_BY_NAME[data_type_name]
+    possible_names = set(data_type.projection_dataset_names)
+    return tuple(
+        dataset_id
+        for dataset_id in selected_dataset_ids
+        if dataset_id.split(".", 1)[1] in possible_names
+    )
+
+
+def _select_normalized_rows(
+    normalized: dict[str, list[dict[str, Any]]],
+    *,
+    selected_dataset_ids: tuple[str, ...],
+    timezone: ZoneInfo,
+    date_from: date | None,
+    date_to: date | None,
 ) -> dict[str, list[dict[str, Any]]]:
-    """同一workflow runの正規化結果をevents保存用にまとめる。"""
-    result: dict[str, list[dict[str, Any]]] = {
-        "records": [],
-        "daily_metrics": [],
-        "samples": [],
-        "intervals": [],
-        "sessions": [],
+    """選択されたprojectionと日付範囲だけを返す。"""
+    selected_names = {
+        dataset_id.split(".", 1)[1] for dataset_id in selected_dataset_ids
     }
-    for normalized in normalized_values:
-        for dataset, rows in normalized.items():
-            result[dataset].extend(rows)
-    result["daily_metrics"] = aggregate_daily_metrics(result["daily_metrics"])
+    result: dict[str, list[dict[str, Any]]] = {}
+    for dataset_name, rows in normalized.items():
+        if dataset_name not in selected_names:
+            result[dataset_name] = []
+            continue
+        if date_from is None or date_to is None:
+            result[dataset_name] = rows
+            continue
+        result[dataset_name] = [
+            row
+            for row in rows
+            if date_from
+            <= projection_row_local_date(dataset_name, row, timezone)
+            < date_to
+        ]
     return result
+
+
+def _entry_overlaps(
+    entry: RawReplayEntry,
+    *,
+    date_from: date | None,
+    date_to: date | None,
+) -> bool:
+    """Raw Entryが指定日付範囲と重なるか返す。"""
+    if date_from is None or date_to is None:
+        return True
+    return entry.date_from < date_to and entry.date_to > date_from
 
 
 def _entry_sort_key(entry: RawReplayEntry) -> tuple[str, datetime, str]:

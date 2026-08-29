@@ -280,6 +280,100 @@ def test_sleep_uses_end_date_for_range_and_start_date_for_partition():
     assert event_key in memory_s3.objects
 
 
+@pytest.mark.parametrize(
+    ("data_type", "started_at", "ended_at", "expected_current"),
+    [
+        (
+            "exercise",
+            datetime(2026, 7, 31, 23, 30, tzinfo=UTC),
+            datetime(2026, 8, 1, 0, 30, tzinfo=UTC),
+            False,
+        ),
+        (
+            "exercise",
+            datetime(2026, 8, 31, 23, 30, tzinfo=UTC),
+            datetime(2026, 9, 1, 0, 30, tzinfo=UTC),
+            True,
+        ),
+        (
+            "sleep",
+            datetime(2026, 7, 31, 23, 30, tzinfo=UTC),
+            datetime(2026, 8, 1, 7, 30, tzinfo=UTC),
+            True,
+        ),
+    ],
+)
+def test_compact_range_uses_semantic_session_target_date(
+    data_type,
+    started_at,
+    ended_at,
+    expected_current,
+):
+    """sessionのrange replace日をsleepは終了、exerciseは開始で判定する。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    month = started_at.month
+    event_key = (
+        "events/google_health/sessions/year=2026/"
+        f"month={month:02d}/run-1.parquet"
+    )
+    compacted_key = (
+        "compacted/events/google_health/sessions/year=2026/"
+        f"month={month:02d}/data.parquet"
+    )
+    _put_parquet(
+        memory_s3,
+        compacted_key,
+        [
+            _session_row(
+                record_id="old",
+                session_id="old",
+                data_type=data_type,
+                session_type=data_type,
+                started_at_utc=started_at,
+                ended_at_utc=ended_at,
+            )
+        ],
+    )
+    _put_parquet(
+        memory_s3,
+        event_key,
+        [
+            _session_row(
+                record_id="current",
+                session_id="current",
+                data_type=data_type,
+                session_type=data_type,
+                started_at_utc=started_at,
+                ended_at_utc=ended_at,
+            )
+        ],
+    )
+
+    # Act
+    writer.compact_range(
+        connection_id="google-health-primary",
+        selected_data_types=(data_type,),
+        date_from=date(2026, 8, 1),
+        date_to=date(2026, 9, 1),
+        run_id="run-1",
+    )
+
+    # Assert
+    rows = (
+        pd.read_parquet(BytesIO(memory_s3.objects[compacted_key]))
+        .to_dict(orient="records")
+        if compacted_key in memory_s3.objects
+        else []
+    )
+    record_ids = {row["record_id"] for row in rows}
+    if expected_current:
+        assert record_ids == {"current"}
+    else:
+        assert record_ids == {"old"}
+
+
 def test_save_events_raises_without_upload_on_validation_failure():
     """契約違反イベントは検証エラーとなりアップロードされない。"""
     # Arrange

@@ -12,6 +12,7 @@ from dataset_catalog.catalog import (
     PartitionPolicy,
     datasets,
     get_dataset,
+    iter_datasets,
     monthly_compaction_datasets,
 )
 
@@ -24,5 +25,6 @@ __all__ = [
     "PartitionPolicy",
     "datasets",
     "get_dataset",
+    "iter_datasets",
     "monthly_compaction_datasets",
 ]

@@ -373,7 +373,8 @@ data typeごとに個別テーブルを増やさず、Daily / Sample / Interval 
 同一期間を再取得した場合は、選択したdata typeの対象期間だけを月partition内で置換する。
 同じ月に保存されている他のdata typeと対象期間外の行は保持する。
 `compact_range`は`connection_id`と`data_type`が一致し、`date_from <= row_date < date_to`となる行だけを置換する。
-sessionの`data_type`が`sleep`の場合、対象日には`started_at_utc`ではなく`ended_at_utc`を使用する。
+sessionの対象日は、`data_type`が`sleep`の場合は`ended_at_utc`、それ以外（`exercise`）は
+`started_at_utc`を使用する。この規則は通常compactとRaw replayの両方で共有する。
 取得ごとにeventsへ`{uuid}.parquet`を追加し、compact処理で対象期間を反映したcompactedの`data.parquet`を再生成する。
 events側の`{run_id}.parquet`は削除せず、削除対象になるのは置換後に空となったcompactedファイルだけである。
 Google Health側の遅延同期や後日補完を取り込みながら、重複レコードを残さない。
@@ -826,10 +827,20 @@ uv run python -m pipelines.main google-health raw-replay --reset-compacted --jso
 ```
 
 この処理は実行前に全Rawを読み込み・normalizeして検証し、検証成功後にのみ
-compactedを削除する。RawはS3の`LastModified`順、同一workflow runはまとめて
-処理するため、後日のrepair runが同じ期間を補完した場合も、古い値を加算せず
-通常の`compact_range`と同じ範囲置換になる。実行後は結果の`raw_count`と代表的な
+compactedを削除する。RawはS3の`LastModified`順に、Raw Entry単位で決定的な
+event IDを使って処理するため、同じworkflow runに複数data typeがあってもevents
+ファイルを上書きしない。後日のrepair runが同じ期間を補完した場合も、古い値を加算せず
+通常の`compact_range`と同じ範囲置換になる。日次metricは通常ingestと同じくRaw Entry単位で
+集約してから保存する。実行中の正規化結果は1 Raw Entry分だけ保持し、進捗はstderrへ出力する。実行後は結果の`raw_count`と代表的な
 `daily_metrics`、`samples`、`intervals`、`sessions`、`records`の件数を確認する。
+
+Google Healthを含む全DatasetのcompactedをCatalogから再構築する場合は、汎用の
+`recompact`を使用する。Google Healthの`RANGE_REPLACE`だけはRaw JSONを完全な
+rebuild sourceとして扱う専用adapterへ委譲される。
+
+```bash
+uv run python -m pipelines.main recompact --provider google_health --json
+```
 
 #### SQLiteの同期状態を確認する
 

@@ -35,7 +35,7 @@ Python workspace では `backend` と `pipelines` の両方から `dataset_catal
 | `time_column` | 期間抽出・partition 判定の基準列（events なら event time、master なら updated_at） |
 | `dedupe_key` | append-dedupe compaction の一意キー |
 | `sort_key` | 重複時に残す行を決める順序列。dedupe_key と従属関係にある値は決定性を失うため注意 |
-| `snapshot_file_name` | snapshot dataset の固定ファイル名 |
+| `snapshot_file_name` | snapshot dataset の固定 source / compacted ファイル名 |
 | `schema_version` | Parquet schema 契約の version。`required_columns` / `column_types` を変更するたびにインクリメント |
 | `required_columns` | Parquet に必ず存在する必須カラム名 |
 | `column_types` | 必須カラムごとの canonical type（key 集合は `required_columns` と完全一致。定義は `__post_init__` で検証） |
