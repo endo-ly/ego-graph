@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
+import pytest
 from pipelines.sources.google_health.data_types import DATA_TYPE_BY_NAME
 from pipelines.sources.google_health.normalizer import (
     aggregate_daily_metrics,
@@ -184,6 +185,42 @@ def test_normalizes_physical_rollup_and_averages_respiratory_daily():
     assert daily[0]["value"] == 14
 
 
+def test_hrv_data_point_creates_one_record_and_two_projection_metrics():
+    """複数の既知数値を持つDataPointを欠落なく保存する。"""
+    # Arrange
+    payload = {
+        "reconcileResponses": [
+            {
+                "dataPoints": [
+                    {
+                        "dataPointName": "hrv-1",
+                        "heartRateVariability": {
+                            "sampleTime": {"physicalTime": "2026-06-01T01:02:03Z"},
+                            "rootMeanSquareOfSuccessiveDifferencesMilliseconds": 48.3,
+                            "standardDeviationMilliseconds": 52.1,
+                            "unknownField": {"preserved": True},
+                        },
+                    }
+                ]
+            }
+        ]
+    }
+
+    # Act
+    result = normalize_google_health_payload(
+        connection_id="connection-1",
+        data_type=DATA_TYPE_BY_NAME["heart-rate-variability"],
+        payload=payload,
+        raw_ref="raw/google_health/hrv.json",
+    )
+
+    # Assert
+    assert len(result["records"]) == 1
+    assert {row["metric_name"] for row in result["samples"]} == {"rmssd", "sdnn"}
+    assert '"unknownField":{"preserved":true}' in result["records"][0]["payload_json"]
+    assert result["samples"][0]["record_id"] == result["samples"][1]["record_id"]
+
+
 def test_normalizes_categorical_and_duration_only_intervals():
     """数値を持たないintervalをlevelまたは継続秒へ変換する。"""
     # Arrange & Act
@@ -214,6 +251,169 @@ def test_normalizes_categorical_and_duration_only_intervals():
     # Assert
     assert activity_level["intervals"][0]["value"] == 3
     assert sedentary["intervals"][0]["value"] == 600
+
+
+def test_interval_projection_keeps_multiple_activity_level_metrics():
+    """1つのintervalに含まれる活動レベル別metricをすべて保存する。"""
+    # Arrange & Act
+    result = _normalize(
+        "active-minutes",
+        {
+            "activeMinutes": {
+                "interval": {
+                    "startTime": "2026-06-01T00:00:00Z",
+                    "endTime": "2026-06-01T01:00:00Z",
+                },
+                "activeMinutesByActivityLevel": [
+                    {"activityLevel": "LIGHT", "activeMinutes": "12"},
+                    {"activityLevel": "MODERATE", "activeMinutes": "8"},
+                ],
+            }
+        },
+    )
+
+    # Assert
+    assert len(result["records"]) == 1
+    assert {(row["metric_name"], row["value"]) for row in result["intervals"]} == {
+        ("active_minutes_light", 12.0),
+        ("active_minutes_moderate", 8.0),
+    }
+    assert {row["record_id"] for row in result["intervals"]} == {
+        result["records"][0]["record_id"]
+    }
+
+
+@pytest.mark.parametrize(
+    "data_type,payload,expected_metrics",
+    [
+        ("steps", {"countSum": 1000}, {("steps", 1000.0)}),
+        ("distance", {"millimetersSum": 2500}, {("distance", 2500.0)}),
+        (
+            "active-energy-burned",
+            {"kcalSum": 42.5},
+            {("active_energy_burned", 42.5)},
+        ),
+        (
+            "active-minutes",
+            {
+                "activeMinutesRollupByActivityLevel": [
+                    {"activityLevel": "LIGHT", "activeMinutesSum": 12},
+                    {"activityLevel": "VIGOROUS", "activeMinutesSum": 8},
+                ]
+            },
+            {
+                ("active_minutes_light", 12.0),
+                ("active_minutes_vigorous", 8.0),
+                ("active_minutes", 20.0),
+            },
+        ),
+        (
+            "active-zone-minutes",
+            {
+                "sumInFatBurnHeartZone": 10,
+                "sumInCardioHeartZone": 20,
+                "sumInPeakHeartZone": 5,
+            },
+            {
+                ("active_zone_minutes_fat_burn", 10.0),
+                ("active_zone_minutes_cardio", 20.0),
+                ("active_zone_minutes_peak", 5.0),
+                ("active_zone_minutes", 35.0),
+            },
+        ),
+        (
+            "sedentary-period",
+            {"durationSum": "90s"},
+            {("sedentary_period", 90.0)},
+        ),
+        (
+            "time-in-heart-rate-zone",
+            {
+                "timeInHeartRateZones": [
+                    {"heartRateZone": "LIGHT", "duration": "60s"},
+                    {"heartRateZone": "CARDIO", "duration": "120s"},
+                ]
+            },
+            {
+                ("time_in_heart_rate_zone_light", 60.0),
+                ("time_in_heart_rate_zone_cardio", 120.0),
+            },
+        ),
+        ("floors", {"countSum": 3}, {("floors", 3.0)}),
+        ("altitude", {"gainMillimetersSum": 400}, {("altitude", 400.0)}),
+        (
+            "swim-lengths-data",
+            {"strokeCountSum": 50},
+            {("swim_lengths", 50.0)},
+        ),
+        (
+            "run-vo2-max",
+            {"rateAvg": 42.0, "rateMin": 40.0, "rateMax": 44.0},
+            {
+                ("run_vo2_max_avg", 42.0),
+                ("run_vo2_max_min", 40.0),
+                ("run_vo2_max_max", 44.0),
+            },
+        ),
+        (
+            "heart-rate",
+            {
+                "beatsPerMinuteAvg": 72.0,
+                "beatsPerMinuteMin": 60.0,
+                "beatsPerMinuteMax": 90.0,
+            },
+            {
+                ("heart_rate_avg", 72.0),
+                ("heart_rate_min", 60.0),
+                ("heart_rate_max", 90.0),
+            },
+        ),
+        (
+            "calories-in-heart-rate-zone",
+            {
+                "caloriesInHeartRateZones": [
+                    {"heartRateZone": "CARDIO", "kcal": 30.0},
+                    {"heartRateZone": "PEAK", "kcal": 10.0},
+                ]
+            },
+            {
+                ("calories_in_heart_rate_zone_cardio", 30.0),
+                ("calories_in_heart_rate_zone_peak", 10.0),
+            },
+        ),
+        (
+            "total-calories",
+            {"kcalSum": 1800.0},
+            {("total_calories", 1800.0)},
+        ),
+    ],
+)
+def test_daily_rollup_uses_rollup_value_projection(
+    data_type,
+    payload,
+    expected_metrics,
+):
+    """全DailyRollup対応data typeを専用RollupValueとして射影する。"""
+    # Arrange
+    data_type_definition = DATA_TYPE_BY_NAME[data_type]
+    point = {
+        "civilStartTime": {"date": {"year": 2026, "month": 6, "day": 1}},
+        data_type_definition.payload_name: payload,
+    }
+
+    # Act
+    result = normalize_google_health_payload(
+        connection_id="connection-1",
+        data_type=data_type_definition,
+        payload={"dailyRollupResponses": [{"rollupDataPoints": [point]}]},
+        raw_ref="raw/google_health/rollup.json",
+    )
+
+    # Assert
+    assert len(result["records"]) == 1
+    assert {
+        (row["metric_name"], row["value"]) for row in result["daily_metrics"]
+    } == expected_metrics
 
 
 def test_skips_records_with_invalid_date_or_datetime():

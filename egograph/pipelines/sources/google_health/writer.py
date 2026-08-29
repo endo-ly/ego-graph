@@ -27,6 +27,7 @@ from pipelines.sources.google_health.timezone import (
 )
 
 GOOGLE_HEALTH_DATASETS = (
+    datasets.GOOGLE_HEALTH_RECORDS,
     datasets.GOOGLE_HEALTH_DAILY_METRICS,
     datasets.GOOGLE_HEALTH_SAMPLES,
     datasets.GOOGLE_HEALTH_INTERVALS,
@@ -180,6 +181,24 @@ class GoogleHealthWriter:
                 compacted_keys.append(compacted_key)
         return compacted_keys
 
+    def reset_compacted(self) -> int:
+        """Google Healthのcompacted Datasetを全削除する。
+
+        Raw replayで新世代のcompactedを作り直す前にだけ使用する。eventsと
+        Raw JSONは削除せず、Google Health Dataset以外にも触れない。
+        """
+        deleted = 0
+        for dataset in GOOGLE_HEALTH_DATASETS:
+            prefix = dataset.compacted_prefix(self.compacted_path)
+            paginator = self.s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
+                for item in page.get("Contents", []):
+                    key = item.get("Key")
+                    if isinstance(key, str):
+                        self.s3.delete_object(Bucket=self.bucket_name, Key=key)
+                        deleted += 1
+        return deleted
+
     def _event_key(
         self,
         dataset: DatasetDefinition,
@@ -279,7 +298,7 @@ def _target_date(
     date_column: str,
     timezone: ZoneInfo,
 ) -> date:
-    if date_column == "date":
+    if date_column in {"date", "record_date"}:
         return _as_date(value)
     timestamp = pd.Timestamp(value)
     if timestamp.tzinfo is None:
@@ -294,7 +313,7 @@ def _target_months(
     date_to: date,
     timezone: ZoneInfo,
 ):
-    if dataset == "daily_metrics":
+    if dataset in {"daily_metrics", "records"}:
         current = date(date_from.year, date_from.month, 1)
         limit = date_to
     else:

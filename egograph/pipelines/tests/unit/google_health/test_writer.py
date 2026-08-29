@@ -52,10 +52,16 @@ def _put_parquet(memory_s3, key, rows):
 def _sample_row(**overrides) -> dict:
     """schema 契約を満たす google_health.samples 行。"""
     row = {
+        "record_id": "rec-sample-1",
         "connection_id": "google-health-primary",
         "data_type": "heart-rate",
+        "metric_name": "heart_rate",
         "measured_at_utc": datetime(2026, 6, 1, tzinfo=UTC),
         "value": 75.0,
+        "unit": "beats_per_minute",
+        "device_family": "fitbit_air",
+        "raw_ref": "raw/google_health/example.json",
+        "ingested_at_utc": datetime(2026, 6, 4, tzinfo=UTC),
     }
     row.update(overrides)
     return row
@@ -64,12 +70,17 @@ def _sample_row(**overrides) -> dict:
 def _session_row(**overrides) -> dict:
     """schema 契約を満たす google_health.sessions 行。"""
     row = {
+        "record_id": "rec-session-1",
         "connection_id": "google-health-primary",
         "data_type": "sleep",
         "session_id": "session-1",
         "started_at_utc": datetime(2026, 5, 31, 23, tzinfo=UTC),
         "ended_at_utc": datetime(2026, 6, 1, 7, tzinfo=UTC),
         "duration_seconds": 28800,
+        "session_type": "sleep",
+        "device_family": "fitbit_air",
+        "raw_ref": "raw/google_health/example.json",
+        "ingested_at_utc": datetime(2026, 6, 4, tzinfo=UTC),
     }
     row.update(overrides)
     return row
@@ -109,16 +120,7 @@ def test_save_events_adds_run_file_without_deleting_existing_files():
     # Act
     saved_keys = writer.save_events(
         run_id="run-1",
-        records={
-            "samples": [
-                {
-                    "connection_id": "google-health-primary",
-                    "data_type": "heart-rate",
-                    "measured_at_utc": datetime(2026, 6, 1, tzinfo=UTC),
-                    "value": 75.0,
-                }
-            ]
-        },
+        records={"samples": [_sample_row()]},
     )
 
     # Assert
@@ -141,30 +143,21 @@ def test_compact_range_replaces_only_selected_data_type():
         memory_s3,
         compacted_key,
         [
-            {
-                "connection_id": "google-health-primary",
-                "data_type": "heart-rate",
-                "measured_at_utc": datetime(2026, 6, 1, tzinfo=UTC),
-                "value": 70.0,
-            },
-            {
-                "connection_id": "google-health-primary",
-                "data_type": "oxygen-saturation",
-                "measured_at_utc": datetime(2026, 6, 1, tzinfo=UTC),
-                "value": 95.0,
-            },
+            _sample_row(value=70.0),
+            _sample_row(
+                record_id="rec-sample-2",
+                data_type="oxygen-saturation",
+                metric_name="oxygen_saturation",
+                unit="percent",
+                value=95.0,
+            ),
         ],
     )
     _put_parquet(
         memory_s3,
         event_key,
         [
-            {
-                "connection_id": "google-health-primary",
-                "data_type": "heart-rate",
-                "measured_at_utc": datetime(2026, 6, 1, 2, tzinfo=UTC),
-                "value": 75.0,
-            }
+            _sample_row(measured_at_utc=datetime(2026, 6, 1, 2, tzinfo=UTC)),
         ],
     )
 
@@ -203,14 +196,7 @@ def test_compact_range_removes_no_data_range_without_deleting_events():
     _put_parquet(
         memory_s3,
         compacted_key,
-        [
-            {
-                "connection_id": "google-health-primary",
-                "data_type": "heart-rate",
-                "measured_at_utc": datetime(2026, 6, 1, tzinfo=UTC),
-                "value": 70.0,
-            }
-        ],
+        [_sample_row(value=70.0)],
     )
     memory_s3.objects[unrelated_event_key] = b"existing"
 
@@ -240,14 +226,7 @@ def test_compact_range_reads_utc_month_crossed_by_local_date():
     _put_parquet(
         memory_s3,
         event_key,
-        [
-            {
-                "connection_id": "google-health-primary",
-                "data_type": "heart-rate",
-                "measured_at_utc": datetime(2026, 5, 31, 15, 30, tzinfo=UTC),
-                "value": 75.0,
-            }
-        ],
+        [_sample_row(measured_at_utc=datetime(2026, 5, 31, 15, 30, tzinfo=UTC))],
     )
 
     # Act

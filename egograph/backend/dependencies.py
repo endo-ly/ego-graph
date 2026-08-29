@@ -28,7 +28,13 @@ from backend.infrastructure.repositories.timeline_repository import (
     TimelineRepository,
 )
 from backend.infrastructure.repositories.youtube_repository import YouTubeRepository
-from backend.usecases.google_health import GetGoogleHealthDailySummaryUseCase
+from backend.usecases.google_health import (
+    GetGoogleHealthDailyMetricsUseCase,
+    GetGoogleHealthDailySummaryUseCase,
+    GetGoogleHealthRecordUseCase,
+    GetGoogleHealthSessionsUseCase,
+    GetGoogleHealthTimeseriesUseCase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +153,36 @@ def get_google_health_daily_summary_use_case(
 ) -> GetGoogleHealthDailySummaryUseCase:
     """Google Health日次サマリ取得UseCaseを構築する。"""
     return GetGoogleHealthDailySummaryUseCase(repository)
+
+
+def get_google_health_daily_metrics_use_case(
+    repository: GoogleHealthRepository = Depends(get_google_health_repository),
+) -> GetGoogleHealthDailyMetricsUseCase:
+    """Google Health日次Projection取得UseCaseを構築する。"""
+    return GetGoogleHealthDailyMetricsUseCase(repository)
+
+
+def get_google_health_timeseries_use_case(
+    config: BackendConfig = Depends(get_config),
+    repository: GoogleHealthRepository = Depends(get_google_health_repository),
+) -> GetGoogleHealthTimeseriesUseCase:
+    """Google Health時系列取得UseCaseを構築する。"""
+    return GetGoogleHealthTimeseriesUseCase(repository, timezone=config.timezone)
+
+
+def get_google_health_sessions_use_case(
+    config: BackendConfig = Depends(get_config),
+    repository: GoogleHealthRepository = Depends(get_google_health_repository),
+) -> GetGoogleHealthSessionsUseCase:
+    """Google Health session取得UseCaseを構築する。"""
+    return GetGoogleHealthSessionsUseCase(repository, timezone=config.timezone)
+
+
+def get_google_health_record_use_case(
+    repository: GoogleHealthRepository = Depends(get_google_health_repository),
+) -> GetGoogleHealthRecordUseCase:
+    """Google Health完全保存record取得UseCaseを構築する。"""
+    return GetGoogleHealthRecordUseCase(repository)
 
 
 def get_timeline_repository(

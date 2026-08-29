@@ -1,17 +1,16 @@
-"""Google Health日次サマリ取得ツール。"""
+"""Google Health日次サマリMCPツール。"""
 
 from typing import Any
 
 from backend.domain.models.tool import ToolBase
-from backend.domain.repositories.google_health import GoogleHealthRepositoryProtocol
-from backend.validators import validate_date_range
+from backend.usecases.google_health import GetGoogleHealthDailySummaryUseCase
 
 
 class GetGoogleHealthDailySummaryTool(ToolBase):
     """指定期間の日次健康サマリを取得する。"""
 
-    def __init__(self, repository: GoogleHealthRepositoryProtocol) -> None:
-        self.repository = repository
+    def __init__(self, use_case: GetGoogleHealthDailySummaryUseCase) -> None:
+        self._use_case = use_case
 
     @property
     def name(self) -> str:
@@ -43,11 +42,6 @@ class GetGoogleHealthDailySummaryTool(ToolBase):
             "required": ["start_date", "end_date"],
         }
 
-    def execute(
-        self,
-        start_date: str,
-        end_date: str,
-    ) -> list[dict[str, Any]]:
+    def execute(self, start_date: str, end_date: str) -> list[dict[str, Any]]:
         """指定期間の日次健康サマリを取得する。"""
-        start, end = validate_date_range(start_date, end_date)
-        return self.repository.get_daily_summary(start, end)
+        return self._use_case.execute(start_date, end_date)

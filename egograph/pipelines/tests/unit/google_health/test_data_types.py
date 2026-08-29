@@ -8,7 +8,7 @@ from pipelines.sources.google_health.data_types import (
 
 
 def test_registry_matches_fitbit_air_target_data_types():
-    """計画で定義した28 data typeだけを取得対象にする。"""
+    """計画で定義した30 data typeだけを取得対象にする。"""
     # Arrange
     expected = {
         "steps",
@@ -36,6 +36,8 @@ def test_registry_matches_fitbit_air_target_data_types():
         "oxygen-saturation",
         "daily-oxygen-saturation",
         "respiratory-rate-sleep-summary",
+        "respiratory-rate",
+        "skin-temperature",
         "daily-respiratory-rate",
         "daily-sleep-temperature-derivations",
         "sleep",

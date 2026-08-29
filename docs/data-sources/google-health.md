@@ -22,7 +22,7 @@
 ### 1.2 概要説明
 
 Google Health API v4 を通じて、Google Fitbit Air 由来の活動、睡眠、心拍、回復指標を収集する。
-APIレスポンス原本をRaw JSONとして保持し、日次指標、サンプル、区間、セッションの4種類へ正規化してParquetへ保存する。
+APIレスポンス原本をRaw JSONとして保持し、DataPoint単位の完全保存recordと、日次指標、サンプル、区間、セッションの4種類のProjectionへ正規化してParquetへ保存する。
 
 主な分析対象は次のとおり。
 
@@ -49,7 +49,7 @@ APIレスポンス原本をRaw JSONとして保持し、日次指標、サンプ
          ↓
 [Normalizer: Daily / Sample / Interval / Session]
          ↓
-[Storage: R2 eventsへ{uuid}.parquet保存]
+[Storage: R2 eventsへrecords + Projectionの{uuid}.parquet保存]
          ↓
 [Compact: 対象期間を統合・置換]
          ↓
@@ -127,6 +127,8 @@ reconcileのページサイズはこの制約とは別に管理する。
 | `oxygen-saturation` | sample |
 | `daily-oxygen-saturation` | daily |
 | `respiratory-rate-sleep-summary` | sample, daily |
+| `respiratory-rate` | sample |
+| `skin-temperature` | sample |
 | `daily-respiratory-rate` | daily |
 | `daily-sleep-temperature-derivations` | daily |
 
@@ -180,6 +182,7 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 
 | 列名 | 型 | 説明 | 変換元 |
 |---|---|---|---|
+| `record_id` | VARCHAR | 完全保存recordへの参照 | システム生成 |
 | `connection_id` | VARCHAR | 接続識別子 | SQLite connection |
 | `data_type` | VARCHAR | Google Health data type | API path |
 | `date` | DATE | 指標のローカル日付 | `{dataType}.date` / `civilStartTime` |
@@ -194,6 +197,7 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 
 | 列名 | 型 | 説明 | 変換元 |
 |---|---|---|---|
+| `record_id` | VARCHAR | 完全保存recordへの参照 | システム生成 |
 | `connection_id` | VARCHAR | 接続識別子 | SQLite connection |
 | `data_type` | VARCHAR | Google Health data type | API path |
 | `measured_at_utc` | TIMESTAMP | 測定時刻 | `{dataType}.sampleTime.physicalTime`（欠落時は`{dataType}.instantTime`） |
@@ -207,6 +211,7 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 
 | 列名 | 型 | 説明 | 変換元 |
 |---|---|---|---|
+| `record_id` | VARCHAR | 完全保存recordへの参照 | システム生成 |
 | `connection_id` | VARCHAR | 接続識別子 | SQLite connection |
 | `data_type` | VARCHAR | Google Health data type | API path |
 | `started_at_utc` | TIMESTAMP | 区間開始時刻 | `interval.startTime` |
@@ -221,6 +226,7 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 
 | 列名 | 型 | 説明 | 変換元 |
 |---|---|---|---|
+| `record_id` | VARCHAR | 完全保存recordへの参照 | システム生成 |
 | `connection_id` | VARCHAR | 接続識別子 | SQLite connection |
 | `data_type` | VARCHAR | `sleep`または`exercise` | API path |
 | `session_id` | VARCHAR | セッション識別子 | `name` |
@@ -232,10 +238,31 @@ Google Health APIの`DataPoint`はdata typeごとの値をunionとして保持�
 | `raw_ref` | VARCHAR | Raw JSON保存先 | システム生成 |
 | `ingested_at_utc` | TIMESTAMP | 取り込み時刻 | システム生成 |
 
-### 4.5 パーティション
+### 4.5 `google_health_records`
+
+DataPointのData Type固有payloadを欠落なく保持する正本Dataset。Projectionにまだない
+フィールドや、sleep stage・exercise splitなどの詳細はここから再生成できる。
+
+| 列名 | 型 | 説明 | 変換元 |
+|---|---|---|---|
+| `record_id` | VARCHAR | EgoGraph内の決定的な一意ID | connection / data type / 時刻 / payload |
+| `source_record_id` | VARCHAR NULL | Google APIの`name`または`dataPointName` | API DataPoint |
+| `connection_id` | VARCHAR | 接続識別子 | SQLite connection |
+| `data_type` | VARCHAR | Google Health data type | API path |
+| `record_kind` | VARCHAR | `daily` / `sample` / `interval` / `session` | data type定義 |
+| `record_date` | DATE | Query・range replace用のローカル日付 | kindごとの規則 |
+| `payload_json` | VARCHAR | canonical JSON化したData Type payload | API DataPoint |
+| `device_family` | VARCHAR | `fitbit_air`または`unknown` | `dataOrigin` |
+| `raw_ref` | VARCHAR | Raw JSON保存先 | システム生成 |
+| `ingested_at_utc` | TIMESTAMP | 取り込み時刻 | システム生成 |
+
+`payload_json`は`ensure_ascii=False`、キー順・separator固定で保存する。`record_id`は
+Pythonの実行ごとに変わる`hash()`を使わず、同じ入力から同じ値になるSHA-256由来のIDを使う。
+
+### 4.6 パーティション
 
 - **パーティションキー**: `year`, `month`
-- **基準日**: dailyはローカル`date`、sampleは`measured_at_utc`、interval/sessionは`started_at_utc`
+- **基準日**: dailyはローカル`date`、recordは`record_date`、sampleは`measured_at_utc`、intervalは`started_at_utc`、exercise sessionは`started_at_utc`、sleep sessionは`ended_at_utc`
 - **再取得**: compacted内の対象期間を置換する
 - **時刻partition**: sample / interval / sessionの`year` / `month`はUTC基準
 - **理由**: 保存時刻をUTCへ統一し、期間指定クエリのpartition pruningと再取得時の重複を防ぐ
@@ -255,12 +282,12 @@ s3://egograph/
   │               └── to={to}/
   │                   └── run_id={run_id}.json
   ├── events/google_health/
-  │   └── {daily_metrics|samples|intervals|sessions}/
+  │   └── {records|daily_metrics|samples|intervals|sessions}/
   │       └── year=YYYY/
   │           └── month=MM/
   │               └── {uuid}.parquet
   └── compacted/events/google_health/
-      └── {daily_metrics|samples|intervals|sessions}/
+      └── {records|daily_metrics|samples|intervals|sessions}/
           └── year=YYYY/
               └── month=MM/
                   └── data.parquet
@@ -271,6 +298,7 @@ s3://egograph/
 ### 5.2 保存パス例
 
 - **Raw**: `s3://egograph/raw/google_health/connection_id=google-health-primary/data_type=steps/from=2026-06-01/to=2026-06-10/run_id={run_id}.json`
+- **Record**: `s3://egograph/events/google_health/records/year=2026/month=06/{uuid}.parquet`
 - **Daily**: `s3://egograph/events/google_health/daily_metrics/year=2026/month=06/{uuid}.parquet`
 - **Sample**: `s3://egograph/events/google_health/samples/year=2026/month=06/{uuid}.parquet`
 - **Interval**: `s3://egograph/events/google_health/intervals/year=2026/month=06/{uuid}.parquet`
@@ -294,6 +322,28 @@ s3://egograph/
 |---|---|---|
 | REST API | `GET /v1/data/google-health/daily-summary` | `start_date`と`end_date`を含むローカル日付範囲 |
 | MCP | `get_google_health_daily_summary` | REST APIと同じローカル日付範囲 |
+
+詳細Queryは次の5種類をRESTとMCPで共通のUseCaseから提供する。
+
+| REST | MCP | 用途 |
+|---|---|---|
+| `GET /v1/data/google-health/daily-summary` | `get_google_health_daily_summary` | 日次概要 |
+| `GET /v1/data/google-health/daily-metrics` | `get_google_health_daily_metrics` | 任意の日次metric |
+| `GET /v1/data/google-health/timeseries` | `get_google_health_timeseries` | sample / intervalの推移・特徴 |
+| `GET /v1/data/google-health/sessions` | `get_google_health_sessions` | sleep / exercise |
+| `GET /v1/data/google-health/records/{record_id}` | `get_google_health_record` | DataPoint完全情報 |
+
+日次metricとsessionの一覧は`columns`と`rows`のcolumnar形式、timeseriesは標準では
+`auto` bucket、必要時だけ`raw`を返す。`raw`は最大1000行で、超過時は明示エラーにする。
+timeseriesはdata type registryのrecord kindに従って`sample`または`interval`を検索する。
+`heart-rate-variability`のように複数metricを持つdata typeでは`metric=rmssd`のように
+metricを指定し、異なるmetricを同じ統計・bucketへ混ぜない。`auto`は期間に応じて
+内部bucket幅を調整し、最大80点程度へ収める。
+timeseriesの集約方式はdata type registryで定義する。心拍・HRV・酸素飽和度などの
+測定値は`gauge`としてbucketごとに`avg/min/max`を返し、歩数・距離・消費カロリー・
+活動時間などの加算量は`sum`としてbucketごとの合計を返す。加算量のseries列は
+`["time", "sum"]`となる。
+record detailだけが`payload_json`をJSON objectとして復元し、DataPoint payloadの完全情報を返す。
 
 `google_health_daily_summary`相当のDuckDBクエリは、ローカル日付として保存された`daily_metrics.date`をそのまま日付軸として使う。
 この日次サマリは時刻列を返さないため、レスポンス生成時のタイムゾーン変換は発生しない。
@@ -370,7 +420,7 @@ APIの`from` / `to`は`TIMEZONE`のローカル日付として扱う。
 
 ### 11.3 将来拡張
 
-- 日次サマリ以外のsample / interval / session参照API
+- sleep stage / exercise split専用Projection
 - 健康指標の可視化Dashboard
 
 ---
@@ -399,8 +449,10 @@ APIの`from` / `to`は`TIMEZONE`のローカル日付として扱う。
 
 ```json
 {
+  "record_id": "rec_<sha256>",
   "connection_id": "google-health-primary",
   "data_type": "heart-rate",
+  "metric_name": "heart_rate",
   "measured_at_utc": "2026-06-10T00:15:00Z",
   "value": 72,
   "unit": "beats_per_minute",
@@ -419,20 +471,21 @@ APIの`from` / `to`は`TIMEZONE`のローカル日付として扱う。
 - [x] OAuth接続、token暗号化保存、token refresh
 - [x] 対象data typeの取得とpagination
 - [x] Raw JSON保存
-- [x] Daily / Sample / Interval / Session正規化
+- [x] records + Daily / Sample / Interval / Session Projection正規化
 - [x] events保存とcompactedの月partition範囲置換
+- [x] Raw JSONからのfull-fidelity replay
 - [x] data type単位の同期状態保存
 - [x] backfill / range / data type指定run API
 - [x] same-day / daily / weekly repair Scheduler
 - [x] DuckDB日次サマリ
-- [x] REST API / MCP提供
+- [x] daily metrics / timeseries / sessions / record detailのREST API / MCP提供
 - [x] run観測と入力を保持したretry
 - [x] 単体テスト・統合テスト
 - [x] DuckDBマウント
 
 ### 未実装機能
 
-- [ ] sample / interval / sessionの専用参照API
+- [ ] sleep stage / exercise split専用Projection
 
 ---
 
@@ -760,6 +813,23 @@ runの`status`は`succeeded`、`partial_failed`、`failed`のいずれかにな�
 `result_summary.data_types`でdata typeごとの`success`、`no_data`、`failed`、件数、処理秒数、エラーを確認する。
 同じ情報のうち`data_type`、`status`、`record_count`、`duration_seconds`は運用ログにも出力される。
 token、Raw JSON本文、Raw保存先はログへ出力しない。
+
+#### Raw JSONからcompactedを再構築する
+
+NormalizerやProjectionの修正後に、保存済みRawからGoogle Healthだけを再構築できる。
+本番の初回full-fidelity切り替えでは、既存のGoogle Health compactedを削除してから
+再生成する次のコマンドを実行する。
+
+```bash
+cd /opt/egograph/repo
+uv run python -m pipelines.main google-health raw-replay --reset-compacted --json
+```
+
+この処理は実行前に全Rawを読み込み・normalizeして検証し、検証成功後にのみ
+compactedを削除する。RawはS3の`LastModified`順、同一workflow runはまとめて
+処理するため、後日のrepair runが同じ期間を補完した場合も、古い値を加算せず
+通常の`compact_range`と同じ範囲置換になる。実行後は結果の`raw_count`と代表的な
+`daily_metrics`、`samples`、`intervals`、`sessions`、`records`の件数を確認する。
 
 #### SQLiteの同期状態を確認する
 

@@ -29,6 +29,13 @@ class FetchStrategy(StrEnum):
     DAILY_ROLLUP = "daily_rollup"
 
 
+class TimeseriesAggregation(StrEnum):
+    """timeseries bucketで使う集約方式。"""
+
+    GAUGE = "gauge"
+    SUM = "sum"
+
+
 @dataclass(frozen=True)
 class GoogleHealthDataType:
     """取得対象data typeの定義。"""
@@ -40,6 +47,7 @@ class GoogleHealthDataType:
     fetch_strategy: FetchStrategy = FetchStrategy.RECONCILE
     include_interval_rollup: bool = False
     include_daily_rollup: bool = False
+    timeseries_aggregation: TimeseriesAggregation = TimeseriesAggregation.GAUGE
     smoke_test: bool = False
 
     @property
@@ -61,6 +69,7 @@ DATA_TYPES = (
         RecordKind.INTERVAL,
         "count",
         include_daily_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
         smoke_test=True,
     ),
     GoogleHealthDataType(
@@ -69,6 +78,7 @@ DATA_TYPES = (
         RecordKind.INTERVAL,
         "millimeter",
         include_daily_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
     ),
     GoogleHealthDataType(
         "total-calories",
@@ -83,6 +93,7 @@ DATA_TYPES = (
         RecordKind.INTERVAL,
         "kilocalorie",
         include_daily_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
     ),
     GoogleHealthDataType(
         "active-minutes",
@@ -90,6 +101,7 @@ DATA_TYPES = (
         RecordKind.INTERVAL,
         "minute",
         include_daily_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
     ),
     GoogleHealthDataType(
         "active-zone-minutes",
@@ -97,6 +109,7 @@ DATA_TYPES = (
         RecordKind.INTERVAL,
         "minute",
         include_daily_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
     ),
     GoogleHealthDataType(
         "activity-level",
@@ -110,6 +123,7 @@ DATA_TYPES = (
         RecordKind.INTERVAL,
         "second",
         include_daily_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
     ),
     GoogleHealthDataType(
         "calories-in-heart-rate-zone",
@@ -118,6 +132,7 @@ DATA_TYPES = (
         "kilocalorie",
         fetch_strategy=FetchStrategy.DAILY_ROLLUP,
         include_interval_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
     ),
     GoogleHealthDataType(
         "time-in-heart-rate-zone",
@@ -125,6 +140,7 @@ DATA_TYPES = (
         RecordKind.INTERVAL,
         "second",
         include_daily_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
     ),
     GoogleHealthDataType(
         "exercise",
@@ -138,6 +154,7 @@ DATA_TYPES = (
         RecordKind.INTERVAL,
         "count",
         include_daily_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
     ),
     GoogleHealthDataType(
         "altitude",
@@ -145,6 +162,7 @@ DATA_TYPES = (
         RecordKind.INTERVAL,
         "millimeter",
         include_daily_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
     ),
     GoogleHealthDataType(
         "swim-lengths-data",
@@ -152,6 +170,7 @@ DATA_TYPES = (
         RecordKind.INTERVAL,
         "count",
         include_daily_rollup=True,
+        timeseries_aggregation=TimeseriesAggregation.SUM,
     ),
     GoogleHealthDataType(
         "daily-vo2-max",
@@ -220,6 +239,18 @@ DATA_TYPES = (
         DataCategory.HEALTH_METRICS,
         RecordKind.SAMPLE,
         "breaths_per_minute",
+    ),
+    GoogleHealthDataType(
+        "respiratory-rate",
+        DataCategory.HEALTH_METRICS,
+        RecordKind.SAMPLE,
+        "breaths_per_minute",
+    ),
+    GoogleHealthDataType(
+        "skin-temperature",
+        DataCategory.HEALTH_METRICS,
+        RecordKind.SAMPLE,
+        "celsius",
     ),
     GoogleHealthDataType(
         "daily-respiratory-rate",

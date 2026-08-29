@@ -5,12 +5,17 @@ from __future__ import annotations
 import argparse
 import json
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import uvicorn
 
 from pipelines.app import create_app
 from pipelines.config import PipelinesConfig
 from pipelines.service import PipelineService
+from pipelines.sources.common.config import R2Config
+from pipelines.sources.common.settings import PipelinesSettings
+from pipelines.sources.google_health.replay import replay_google_health_raw
+from pipelines.sources.google_health.writer import GoogleHealthWriter
 
 
 def _json_default(value: Any) -> Any:
@@ -59,6 +64,22 @@ def _build_parser() -> argparse.ArgumentParser:
     workflow_disable_parser.add_argument("workflow_id")
     workflow_disable_parser.add_argument("--json", action="store_true")
 
+    google_health_parser = subparsers.add_parser("google-health")
+    google_health_sub = google_health_parser.add_subparsers(
+        dest="google_health_command",
+        required=True,
+    )
+    raw_replay_parser = google_health_sub.add_parser(
+        "raw-replay",
+        help="Google Health Rawからcompacted Datasetを再構築する",
+    )
+    raw_replay_parser.add_argument(
+        "--reset-compacted",
+        action="store_true",
+        help="既存のGoogle Health compactedを削除してから全面再構築する",
+    )
+    raw_replay_parser.add_argument("--json", action="store_true")
+
     run_parser = subparsers.add_parser("run")
     run_sub = run_parser.add_subparsers(dest="run_command", required=True)
     run_list_parser = run_sub.add_parser("list")
@@ -88,6 +109,26 @@ def main() -> None:
             app,
             host=args.host or config.host,
             port=args.port or config.port,
+        )
+        return
+
+    if args.command == "google-health" and args.google_health_command == "raw-replay":
+        r2_config = _load_r2_config()
+        writer = GoogleHealthWriter(
+            endpoint_url=r2_config.endpoint_url,
+            access_key_id=r2_config.access_key_id,
+            secret_access_key=r2_config.secret_access_key.get_secret_value(),
+            bucket_name=r2_config.bucket_name,
+            raw_path=r2_config.raw_path,
+            events_path=r2_config.events_path,
+            timezone=ZoneInfo(config.timezone),
+        )
+        _emit(
+            replay_google_health_raw(
+                writer,
+                reset_compacted=args.reset_compacted,
+            ),
+            args.json,
         )
         return
 
@@ -126,6 +167,14 @@ def main() -> None:
         return
     if args.command == "run" and args.run_command == "cancel":
         _emit(service.cancel_run(args.run_id).__dict__, args.json)
+
+
+def _load_r2_config() -> R2Config:
+    """CLI用のR2設定を読み込み、未設定を明示的なエラーにする。"""
+    source_config = PipelinesSettings.load()
+    if source_config.duckdb is None or source_config.duckdb.r2 is None:
+        raise ValueError("invalid_r2_config: R2 settings are required")
+    return source_config.duckdb.r2
 
 
 if __name__ == "__main__":
