@@ -2,11 +2,12 @@
 
 from datetime import UTC, date, datetime, timedelta
 from io import BytesIO
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
 import pytest
 from botocore.exceptions import ClientError
+from pipelines.maintenance.progress import ProgressReporter
 from pipelines.sources.google_health.replay import replay_google_health_raw
 from pipelines.sources.google_health.writer import GoogleHealthWriter
 
@@ -70,6 +71,33 @@ def _writer(memory_s3: MemoryS3) -> GoogleHealthWriter:
             bucket_name="bucket",
             raw_path="archive/",
         )
+
+
+class RecordingProgress(ProgressReporter):
+    """進捗通知の順序を記録する。"""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, int, int, str]] = []
+
+    def report(self, phase: str, current: int, total: int, label: str) -> None:
+        self.events.append((phase, current, total, label))
+
+
+def _heart_rate_payload(value: int, timestamp: str) -> dict:
+    return {
+        "reconcileResponses": [
+            {
+                "dataPoints": [
+                    {
+                        "heartRate": {
+                            "sampleTime": {"physicalTime": timestamp},
+                            "beatsPerMinute": value,
+                        }
+                    }
+                ]
+            }
+        ]
+    }
 
 
 def test_replay_rebuilds_new_datasets_and_is_idempotent():
@@ -224,3 +252,74 @@ def test_replay_validates_all_raw_before_resetting_compacted():
         replay_google_health_raw(writer, reset_compacted=True)
     rows = pd.read_parquet(BytesIO(memory_s3.objects[compacted_key]))
     assert rows.iloc[0]["value"] == 72.0
+
+
+def test_replay_normalizes_one_entry_at_a_time_and_uses_deterministic_event_ids():
+    """全Rawを保持せず、Raw Entryごとに保存・compactする。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    for run_id, value in (("run-1", 72), ("run-2", 74)):
+        writer.save_raw(
+            connection_id="connection-1",
+            data_type="heart-rate",
+            date_from=date(2026, 6, 1),
+            date_to=date(2026, 6, 2),
+            run_id=run_id,
+            payload=_heart_rate_payload(value, "2026-06-01T01:00:00Z"),
+        )
+    progress = RecordingProgress()
+    events: list[str] = []
+    writer.reset_compacted = Mock(side_effect=lambda **_: events.append("reset"))
+    writer.save_events = Mock(side_effect=lambda **kwargs: events.append("save"))
+    writer.compact_range = Mock(side_effect=lambda **kwargs: events.append("compact"))
+
+    # Act
+    result = replay_google_health_raw(
+        writer,
+        reset_compacted=True,
+        progress=progress,
+    )
+
+    # Assert
+    assert result["raw_count"] == 2
+    assert progress.events == [
+        ("validate", 1, 2, "heart-rate"),
+        ("validate", 2, 2, "heart-rate"),
+        ("replay", 1, 2, "heart-rate"),
+        ("replay", 2, 2, "heart-rate"),
+    ]
+    assert events == ["reset", "save", "compact", "save", "compact"]
+    save_ids = [
+        call.kwargs["run_id"] for call in writer.save_events.call_args_list
+    ]
+    compact_ids = [
+        call.kwargs["run_id"] for call in writer.compact_range.call_args_list
+    ]
+    assert save_ids == compact_ids
+    assert len(set(save_ids)) == 2
+    assert all(event_id.startswith("raw-replay-") for event_id in save_ids)
+
+
+def test_replay_compacts_empty_normalization_to_replace_no_data():
+    """正規化結果が空でも対象rangeのcompactを実行する。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    writer.save_raw(
+        connection_id="connection-1",
+        data_type="heart-rate",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+        run_id="run-empty",
+        payload={"reconcileResponses": []},
+    )
+    writer.save_events = Mock()
+    writer.compact_range = Mock()
+
+    # Act
+    replay_google_health_raw(writer, progress=RecordingProgress())
+
+    # Assert
+    writer.save_events.assert_called_once()
+    writer.compact_range.assert_called_once()

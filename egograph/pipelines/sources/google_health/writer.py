@@ -33,6 +33,9 @@ GOOGLE_HEALTH_DATASETS = (
     datasets.GOOGLE_HEALTH_INTERVALS,
     datasets.GOOGLE_HEALTH_SESSIONS,
 )
+GOOGLE_HEALTH_DATASETS_BY_ID = {
+    dataset.dataset_id: dataset for dataset in GOOGLE_HEALTH_DATASETS
+}
 
 
 class GoogleHealthWriter:
@@ -97,10 +100,11 @@ class GoogleHealthWriter:
         *,
         run_id: str,
         records: dict[str, list[dict[str, Any]]],
+        selected_dataset_ids: tuple[str, ...] | None = None,
     ) -> list[str]:
-        """今回runの正規化行をUUID名のevents Parquetへ保存する。"""
+        """今回runの正規化行をevents Parquetへ保存する。"""
         saved_keys: list[str] = []
-        for dataset in GOOGLE_HEALTH_DATASETS:
+        for dataset in _selected_datasets(selected_dataset_ids):
             dataset_name = _dataset_name(dataset)
             date_column = _date_column(dataset)
             rows_by_month: dict[tuple[int, int], list[dict[str, Any]]] = {}
@@ -131,10 +135,11 @@ class GoogleHealthWriter:
         date_from: date,
         date_to: date,
         run_id: str,
+        selected_dataset_ids: tuple[str, ...] | None = None,
     ) -> list[str]:
         """既存compactedの対象範囲を今回runのeventsで置換する。"""
         compacted_keys: list[str] = []
-        for dataset in GOOGLE_HEALTH_DATASETS:
+        for dataset in _selected_datasets(selected_dataset_ids):
             dataset_name = _dataset_name(dataset)
             date_column = _date_column(dataset)
             months = set(
@@ -181,14 +186,18 @@ class GoogleHealthWriter:
                 compacted_keys.append(compacted_key)
         return compacted_keys
 
-    def reset_compacted(self) -> int:
+    def reset_compacted(
+        self,
+        *,
+        selected_dataset_ids: tuple[str, ...] | None = None,
+    ) -> int:
         """Google Healthのcompacted Datasetを全削除する。
 
         Raw replayで新世代のcompactedを作り直す前にだけ使用する。eventsと
         Raw JSONは削除せず、Google Health Dataset以外にも触れない。
         """
         deleted = 0
-        for dataset in GOOGLE_HEALTH_DATASETS:
+        for dataset in _selected_datasets(selected_dataset_ids):
             prefix = dataset.compacted_prefix(self.compacted_path)
             paginator = self.s3.get_paginator("list_objects_v2")
             for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
@@ -332,6 +341,33 @@ def _target_months(
 
 def _normalize_path(path: str) -> str:
     return path.rstrip("/") + "/"
+
+
+def _selected_datasets(
+    selected_dataset_ids: tuple[str, ...] | None,
+) -> tuple[DatasetDefinition, ...]:
+    """指定されたGoogle Health projectionをCatalog順に返す。"""
+    if selected_dataset_ids is None:
+        return GOOGLE_HEALTH_DATASETS
+    normalized = tuple(dict.fromkeys(selected_dataset_ids))
+    unknown = [
+        dataset_id
+        for dataset_id in normalized
+        if dataset_id not in GOOGLE_HEALTH_DATASETS_BY_ID
+    ]
+    if unknown:
+        raise ValueError(
+            "invalid_dataset_id: unknown Google Health dataset: "
+            f"{', '.join(unknown)}"
+        )
+    if not normalized:
+        raise ValueError("invalid_dataset_id: at least one dataset is required")
+    selected = set(normalized)
+    return tuple(
+        dataset
+        for dataset in GOOGLE_HEALTH_DATASETS
+        if dataset.dataset_id in selected
+    )
 
 
 def _validated_parquet_bytes(
