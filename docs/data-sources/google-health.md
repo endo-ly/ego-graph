@@ -815,15 +815,23 @@ runの`status`は`succeeded`、`partial_failed`、`failed`のいずれかにな�
 同じ情報のうち`data_type`、`status`、`record_count`、`duration_seconds`は運用ログにも出力される。
 token、Raw JSON本文、Raw保存先はログへ出力しない。
 
-#### Raw JSONからcompactedを再構築する
+#### 保存済みRawをsourceにしてcompactedを再構築する
 
-NormalizerやProjectionの修正後に、保存済みRawからGoogle Healthだけを再構築できる。
-本番の初回full-fidelity切り替えでは、既存のGoogle Health compactedを削除してから
-再生成する次のコマンドを実行する。
+NormalizerやProjectionの修正後は、公開CLIの`recompact`で保存済みRawからGoogle Healthの
+compacted Datasetを再構築できる。全期間を指定すると、検証成功後に既存のGoogle Health
+compactedをresetして完全再構築する。対象月を指定すると、その月だけをrange replaceする。
 
 ```bash
 cd /opt/egograph/repo
-uv run python -m pipelines.main google-health raw-replay --reset-compacted --json
+uv run python -m pipelines.main recompact \
+  --provider google_health --json
+```
+
+特定月だけを再構築する場合は、`--year`と`--month`を同時に指定する。
+
+```bash
+uv run python -m pipelines.main recompact \
+  --provider google_health --year 2026 --month 8 --json
 ```
 
 この処理は実行前に全Rawを読み込み・normalizeして検証し、検証成功後にのみ

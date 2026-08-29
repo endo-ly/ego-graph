@@ -86,14 +86,14 @@ curl http://127.0.0.1:8001/v1/health
 cd /opt/egograph/repo
 uv run python -m pipelines.main workflow list --json
 uv run python -m pipelines.main run list --json
-uv run python -m pipelines.main google-health raw-replay --reset-compacted --json
+uv run python -m pipelines.main recompact --provider google_health --json
 uv run python -m pipelines.main recompact --json
 ```
 
-`google-health raw-replay`は保存済みGoogle Health Rawからcompacted Datasetを再構築する
-保守コマンドである。`--reset-compacted`を付けると、全Rawの検証後にGoogle Healthの
-compactedだけを削除し、S3 `LastModified`順に再生成する。初回full-fidelity切り替えや
-Normalizer修正後に使用し、実行後は代表的なQuery結果を確認する。
+`recompact`はcompacted Datasetを再構築する保守コマンドである。Google Healthを指定した
+場合は、保存済みRawをsourceとして内部の専用adapterが再normalizeする。全期間では既存の
+Google Health compactedを検証後に再構築し、年月を指定した場合は対象範囲だけを置換する。
+初回full-fidelity切り替えやNormalizer修正後に使用し、実行後は代表的なQuery結果を確認する。
 
 ### Dataset Catalogからcompactedを再構築する
 
@@ -125,15 +125,14 @@ stderrへ出力されるため、stdoutをJSONパイプラインへ渡せる。
 snapshot Datasetは月に分割されていないため、指定時もsnapshot全体を再生成する。
 
 Google Healthの`RANGE_REPLACE`は汎用dedupeではなく、保存済みRawを扱う専用adapterへ
-委譲される。Google HealthのRaw構造を反映する再構築は、次のコマンドでも明示的に実行
-できる。
-
-Raw replayでは、各data typeが生成し得るProjection Datasetだけをevents保存・compactの
-対象にする。データのないDatasetも対象から外さないため、no-dataの範囲置換は維持される。
+委譲される。Google HealthのRaw構造を反映する再構築も、公開CLIは`recompact`を使用する。
+全期間では内部的にresetして完全再構築し、年月指定ではrange replaceを行う。Raw replayでは、
+各data typeが生成し得るProjection Datasetだけをevents保存・compactの対象にする。データの
+ないDatasetも対象から外さないため、no-dataの範囲置換は維持される。
 
 ```bash
-uv run python -m pipelines.main google-health raw-replay \
-  --reset-compacted --json
+uv run python -m pipelines.main recompact \
+  --provider google_health --json
 ```
 
 ### Browser History 拡張機能
