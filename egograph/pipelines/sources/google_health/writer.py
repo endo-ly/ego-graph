@@ -207,26 +207,6 @@ class GoogleHealthWriter:
                         deleted += 1
         return deleted
 
-    def count_compacted_partitions(
-        self,
-        *,
-        selected_dataset_ids: tuple[str, ...] | None = None,
-    ) -> dict[str, int]:
-        """Google Healthのcompacted partition数をDatasetごとに返す。"""
-        counts: dict[str, int] = {}
-        paginator = self.s3.get_paginator("list_objects_v2")
-        for dataset in _selected_datasets(selected_dataset_ids):
-            prefix = dataset.compacted_prefix(self.compacted_path)
-            count = 0
-            for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
-                count += sum(
-                    isinstance(item.get("Key"), str)
-                    and str(item["Key"]).endswith("/data.parquet")
-                    for item in page.get("Contents", [])
-                )
-            counts[dataset.dataset_id] = count
-        return counts
-
     def _event_key(
         self,
         dataset: DatasetDefinition,

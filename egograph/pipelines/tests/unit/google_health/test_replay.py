@@ -412,7 +412,12 @@ def test_replay_normalizes_one_entry_at_a_time_and_uses_deterministic_event_ids(
     events: list[str] = []
     writer.reset_compacted = Mock(side_effect=lambda **_: events.append("reset"))
     writer.save_events = Mock(side_effect=lambda **kwargs: events.append("save"))
-    writer.compact_range = Mock(side_effect=lambda **kwargs: events.append("compact"))
+
+    def record_compact(**kwargs):
+        events.append("compact")
+        return []
+
+    writer.compact_range = Mock(side_effect=record_compact)
 
     # Act
     result = replay_google_health_raw(
@@ -455,7 +460,7 @@ def test_replay_compacts_only_datasets_a_data_type_can_generate():
         payload=_heart_rate_payload(72, "2026-06-01T01:00:00Z"),
     )
     writer.save_events = Mock()
-    writer.compact_range = Mock()
+    writer.compact_range = Mock(return_value=[])
 
     # Act
     replay_google_health_raw(writer, progress=RecordingProgress())
@@ -484,7 +489,7 @@ def test_replay_compacts_empty_normalization_to_replace_no_data():
         payload={"reconcileResponses": []},
     )
     writer.save_events = Mock()
-    writer.compact_range = Mock()
+    writer.compact_range = Mock(return_value=[])
 
     # Act
     replay_google_health_raw(writer, progress=RecordingProgress())
@@ -549,7 +554,7 @@ def test_partial_replay_uses_semantic_session_target_date(
         },
     )
     writer.save_events = Mock()
-    writer.compact_range = Mock()
+    writer.compact_range = Mock(return_value=[])
 
     # Act
     replay_google_health_raw(

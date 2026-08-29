@@ -100,6 +100,9 @@ def replay_google_health_raw(
         writer.reset_compacted(selected_dataset_ids=selected_dataset_ids)
 
     replayed_record_count = 0
+    compacted_partition_keys = {
+        dataset_id: set() for dataset_id in selected_dataset_ids
+    }
     for index, entry in enumerate(entries, start=1):
         raw_payload = _load_raw(writer, entry.key)
         normalized = _normalize_entry(
@@ -130,7 +133,7 @@ def replay_google_health_raw(
             if date_from is not None and date_to is not None:
                 compact_from = max(compact_from, date_from)
                 compact_to = min(compact_to, date_to)
-            writer.compact_range(
+            compacted_keys = writer.compact_range(
                 connection_id=entry.connection_id,
                 selected_data_types=(entry.data_type,),
                 date_from=compact_from,
@@ -138,13 +141,20 @@ def replay_google_health_raw(
                 run_id=event_id,
                 selected_dataset_ids=entry_dataset_ids,
             )
+            for key in compacted_keys:
+                for dataset in _google_health_datasets():
+                    if (
+                        dataset.dataset_id in entry_dataset_ids
+                        and key.startswith(
+                            dataset.compacted_prefix(writer.compacted_path)
+                        )
+                    ):
+                        compacted_partition_keys[dataset.dataset_id].add(key)
+                        break
             replayed_record_count += sum(len(rows) for rows in normalized.values())
         progress.report("replay", index, len(entries), entry.data_type)
         del normalized, raw_payload
 
-    compacted_partition_counts = writer.count_compacted_partitions(
-        selected_dataset_ids=selected_dataset_ids
-    )
     return {
         "provider": "google_health",
         "operation": "raw_replay",
@@ -154,7 +164,10 @@ def replay_google_health_raw(
         "validated_record_count": validated_record_count,
         "replayed_count": len(entries),
         "record_count": replayed_record_count,
-        "compacted_partition_counts": compacted_partition_counts,
+        "compacted_partition_counts": {
+            dataset_id: len(keys)
+            for dataset_id, keys in compacted_partition_keys.items()
+        },
         "duration_seconds": round(time.monotonic() - started_at, 3),
     }
 
