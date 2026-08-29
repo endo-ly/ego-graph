@@ -16,7 +16,6 @@ from pipelines.maintenance.recompact import RecompactRequest, RecompactService
 from pipelines.service import PipelineService
 from pipelines.sources.common.config import R2Config
 from pipelines.sources.common.settings import PipelinesSettings
-from pipelines.sources.google_health.replay import replay_google_health_raw
 from pipelines.sources.google_health.writer import GoogleHealthWriter
 
 
@@ -66,22 +65,6 @@ def _build_parser() -> argparse.ArgumentParser:
     workflow_disable_parser.add_argument("workflow_id")
     workflow_disable_parser.add_argument("--json", action="store_true")
 
-    google_health_parser = subparsers.add_parser("google-health")
-    google_health_sub = google_health_parser.add_subparsers(
-        dest="google_health_command",
-        required=True,
-    )
-    raw_replay_parser = google_health_sub.add_parser(
-        "raw-replay",
-        help="Google Health Rawからcompacted Datasetを再構築する",
-    )
-    raw_replay_parser.add_argument(
-        "--reset-compacted",
-        action="store_true",
-        help="既存のGoogle Health compactedを削除してから全面再構築する",
-    )
-    raw_replay_parser.add_argument("--json", action="store_true")
-
     recompact_parser = subparsers.add_parser(
         "recompact",
         help="Dataset Catalogのsourceからcompacted Datasetを再構築する",
@@ -122,26 +105,6 @@ def main() -> None:
             app,
             host=args.host or config.host,
             port=args.port or config.port,
-        )
-        return
-
-    if args.command == "google-health" and args.google_health_command == "raw-replay":
-        r2_config = _load_r2_config()
-        writer = GoogleHealthWriter(
-            endpoint_url=r2_config.endpoint_url,
-            access_key_id=r2_config.access_key_id,
-            secret_access_key=r2_config.secret_access_key.get_secret_value(),
-            bucket_name=r2_config.bucket_name,
-            raw_path=r2_config.raw_path,
-            events_path=r2_config.events_path,
-            timezone=ZoneInfo(config.timezone),
-        )
-        _emit(
-            replay_google_health_raw(
-                writer,
-                reset_compacted=args.reset_compacted,
-            ),
-            args.json,
         )
         return
 
