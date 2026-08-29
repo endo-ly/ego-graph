@@ -19,9 +19,10 @@ from pipelines.maintenance.progress import (
 )
 from pipelines.sources.google_health.data_types import DATA_TYPE_BY_NAME
 from pipelines.sources.google_health.normalizer import (
+    aggregate_daily_metrics,
     normalize_google_health_payload,
 )
-from pipelines.sources.google_health.timezone import local_date
+from pipelines.sources.google_health.timezone import projection_row_local_date
 from pipelines.sources.google_health.writer import GoogleHealthWriter
 
 _RAW_KEY_PATTERN = re.compile(
@@ -106,36 +107,44 @@ def replay_google_health_raw(
             raw_payload,
             timezone=timezone,
         )
+        entry_dataset_ids = _selected_entry_dataset_ids(
+            entry.data_type,
+            selected_dataset_ids,
+        )
         normalized = _select_normalized_rows(
             normalized,
-            selected_dataset_ids=selected_dataset_ids,
+            selected_dataset_ids=entry_dataset_ids,
             timezone=timezone,
             date_from=date_from,
             date_to=date_to,
         )
         event_id = replay_event_id(entry)
-        writer.save_events(
-            run_id=event_id,
-            records=normalized,
-            selected_dataset_ids=selected_dataset_ids,
-        )
-        compact_from = entry.date_from
-        compact_to = entry.date_to
-        if date_from is not None and date_to is not None:
-            compact_from = max(compact_from, date_from)
-            compact_to = min(compact_to, date_to)
-        writer.compact_range(
-            connection_id=entry.connection_id,
-            selected_data_types=(entry.data_type,),
-            date_from=compact_from,
-            date_to=compact_to,
-            run_id=event_id,
-            selected_dataset_ids=selected_dataset_ids,
-        )
-        replayed_record_count += sum(len(rows) for rows in normalized.values())
+        if entry_dataset_ids:
+            writer.save_events(
+                run_id=event_id,
+                records=normalized,
+                selected_dataset_ids=entry_dataset_ids,
+            )
+            compact_from = entry.date_from
+            compact_to = entry.date_to
+            if date_from is not None and date_to is not None:
+                compact_from = max(compact_from, date_from)
+                compact_to = min(compact_to, date_to)
+            writer.compact_range(
+                connection_id=entry.connection_id,
+                selected_data_types=(entry.data_type,),
+                date_from=compact_from,
+                date_to=compact_to,
+                run_id=event_id,
+                selected_dataset_ids=entry_dataset_ids,
+            )
+            replayed_record_count += sum(len(rows) for rows in normalized.values())
         progress.report("replay", index, len(entries), entry.data_type)
         del normalized, raw_payload
 
+    compacted_partition_counts = writer.count_compacted_partitions(
+        selected_dataset_ids=selected_dataset_ids
+    )
     return {
         "provider": "google_health",
         "operation": "raw_replay",
@@ -145,6 +154,7 @@ def replay_google_health_raw(
         "validated_record_count": validated_record_count,
         "replayed_count": len(entries),
         "record_count": replayed_record_count,
+        "compacted_partition_counts": compacted_partition_counts,
         "duration_seconds": round(time.monotonic() - started_at, 3),
     }
 
@@ -224,13 +234,17 @@ def _normalize_entry(
     timezone: ZoneInfo,
 ) -> dict[str, list[dict[str, Any]]]:
     """1 Raw Entryを正規化する。"""
-    return normalize_google_health_payload(
+    normalized = normalize_google_health_payload(
         connection_id=entry.connection_id,
         data_type=DATA_TYPE_BY_NAME[entry.data_type],
         payload=raw_payload,
         raw_ref=entry.key,
         timezone=timezone,
     )
+    normalized["daily_metrics"] = aggregate_daily_metrics(
+        normalized["daily_metrics"]
+    )
+    return normalized
 
 
 def _validate_dataset_selection(
@@ -262,6 +276,20 @@ def _google_health_datasets():
     )
 
 
+def _selected_entry_dataset_ids(
+    data_type_name: str,
+    selected_dataset_ids: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Raw Entryが生成し得るselected Datasetだけを返す。"""
+    data_type = DATA_TYPE_BY_NAME[data_type_name]
+    possible_names = set(data_type.projection_dataset_names)
+    return tuple(
+        dataset_id
+        for dataset_id in selected_dataset_ids
+        if dataset_id.split(".", 1)[1] in possible_names
+    )
+
+
 def _select_normalized_rows(
     normalized: dict[str, list[dict[str, Any]]],
     *,
@@ -285,31 +313,11 @@ def _select_normalized_rows(
         result[dataset_name] = [
             row
             for row in rows
-            if date_from <= _row_local_date(dataset_name, row, timezone) < date_to
+            if date_from
+            <= projection_row_local_date(dataset_name, row, timezone)
+            < date_to
         ]
     return result
-
-
-def _row_local_date(dataset_name: str, row: dict[str, Any], timezone: ZoneInfo) -> date:
-    """projection rowの対象日を返す。"""
-    column = {
-        "records": "record_date",
-        "daily_metrics": "date",
-        "samples": "measured_at_utc",
-        "intervals": "started_at_utc",
-        "sessions": "ended_at_utc",
-    }[dataset_name]
-    value = row[column]
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value
-    timestamp = (
-        value
-        if isinstance(value, datetime)
-        else datetime.fromisoformat(str(value))
-    )
-    if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=UTC)
-    return local_date(timestamp, timezone)
 
 
 def _entry_overlaps(

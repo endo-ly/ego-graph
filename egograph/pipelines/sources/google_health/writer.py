@@ -22,8 +22,8 @@ from pipelines.sources.common.compaction import (
     dataframe_to_parquet_bytes,
 )
 from pipelines.sources.google_health.timezone import (
-    local_date,
     local_date_start_utc,
+    projection_row_local_date,
 )
 
 GOOGLE_HEALTH_DATASETS = (
@@ -141,7 +141,6 @@ class GoogleHealthWriter:
         compacted_keys: list[str] = []
         for dataset in _selected_datasets(selected_dataset_ids):
             dataset_name = _dataset_name(dataset)
-            date_column = _date_column(dataset)
             months = set(
                 _target_months(
                     dataset_name,
@@ -166,7 +165,7 @@ class GoogleHealthWriter:
                     existing,
                     connection_id=connection_id,
                     selected_data_types=selected_data_types,
-                    date_column=date_column,
+                    dataset_name=dataset_name,
                     date_from=date_from,
                     date_to=date_to,
                     timezone=self.timezone,
@@ -207,6 +206,26 @@ class GoogleHealthWriter:
                         self.s3.delete_object(Bucket=self.bucket_name, Key=key)
                         deleted += 1
         return deleted
+
+    def count_compacted_partitions(
+        self,
+        *,
+        selected_dataset_ids: tuple[str, ...] | None = None,
+    ) -> dict[str, int]:
+        """Google Healthのcompacted partition数をDatasetごとに返す。"""
+        counts: dict[str, int] = {}
+        paginator = self.s3.get_paginator("list_objects_v2")
+        for dataset in _selected_datasets(selected_dataset_ids):
+            prefix = dataset.compacted_prefix(self.compacted_path)
+            count = 0
+            for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
+                count += sum(
+                    isinstance(item.get("Key"), str)
+                    and str(item["Key"]).endswith("/data.parquet")
+                    for item in page.get("Contents", [])
+                )
+            counts[dataset.dataset_id] = count
+        return counts
 
     def _event_key(
         self,
@@ -253,7 +272,7 @@ def _retain_outside_target(
     *,
     connection_id: str,
     selected_data_types: tuple[str, ...],
-    date_column: str,
+    dataset_name: str,
     date_from: date,
     date_to: date,
     timezone: ZoneInfo,
@@ -261,14 +280,7 @@ def _retain_outside_target(
     retained = []
     selected = set(selected_data_types)
     for row in rows:
-        target_column = (
-            "ended_at_utc"
-            if date_column == "started_at_utc"
-            and row.get("data_type") == "sleep"
-            and "ended_at_utc" in row
-            else date_column
-        )
-        row_date = _target_date(row[target_column], date_column, timezone)
+        row_date = projection_row_local_date(dataset_name, row, timezone)
         is_target = (
             row.get("connection_id") == connection_id
             and row.get("data_type") in selected
@@ -300,19 +312,6 @@ def _as_date(value: Any) -> date:
     if isinstance(value, date):
         return value
     return pd.Timestamp(value).date()
-
-
-def _target_date(
-    value: Any,
-    date_column: str,
-    timezone: ZoneInfo,
-) -> date:
-    if date_column in {"date", "record_date"}:
-        return _as_date(value)
-    timestamp = pd.Timestamp(value)
-    if timestamp.tzinfo is None:
-        timestamp = timestamp.tz_localize("UTC")
-    return local_date(timestamp.to_pydatetime(), timezone)
 
 
 def _target_months(

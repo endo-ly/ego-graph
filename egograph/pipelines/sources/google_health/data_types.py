@@ -61,6 +61,27 @@ class GoogleHealthDataType:
         parts = self.name.split("-")
         return parts[0] + "".join(part.title() for part in parts[1:])
 
+    @property
+    def projection_dataset_names(self) -> tuple[str, ...]:
+        """このdata typeが生成し得るProjection dataset名を返す。"""
+        names = ["records"]
+        if self.record_kind is RecordKind.DAILY:
+            names.append("daily_metrics")
+        elif self.record_kind is RecordKind.SAMPLE:
+            names.append("samples")
+            if (
+                self.include_daily_rollup
+                or self.name == "respiratory-rate-sleep-summary"
+            ):
+                names.append("daily_metrics")
+        elif self.record_kind is RecordKind.INTERVAL:
+            names.append("intervals")
+            if self.include_daily_rollup:
+                names.append("daily_metrics")
+        elif self.record_kind is RecordKind.SESSION:
+            names.extend(("sessions", "daily_metrics"))
+        return tuple(names)
+
 
 DATA_TYPES = (
     GoogleHealthDataType(

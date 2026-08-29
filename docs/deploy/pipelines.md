@@ -112,7 +112,7 @@ uv run python -m pipelines.main recompact --provider spotify --json
 uv run python -m pipelines.main recompact \
   --dataset browser_history.page_views --json
 
-# 特定月だけ。yearとmonthは必ず同時指定
+# monthly Datasetの特定月だけ。yearとmonthは必ず同時指定
 uv run python -m pipelines.main recompact \
   --year 2026 --month 8 --json
 ```
@@ -121,10 +121,15 @@ uv run python -m pipelines.main recompact \
 sourceに存在しない古いmonthly compacted partitionを、対象datasetの全partition処理が
 成功した後に削除する。Raw、events、master sourceは削除しない。`--json`指定時も進捗は
 stderrへ出力されるため、stdoutをJSONパイプラインへ渡せる。
+`--year` / `--month`はmonthly Datasetのsource partition選択に適用される。
+snapshot Datasetは月に分割されていないため、指定時もsnapshot全体を再生成する。
 
 Google Healthの`RANGE_REPLACE`は汎用dedupeではなく、保存済みRawを扱う専用adapterへ
 委譲される。Google HealthのRaw構造を反映する再構築は、次のコマンドでも明示的に実行
 できる。
+
+Raw replayでは、各data typeが生成し得るProjection Datasetだけをevents保存・compactの
+対象にする。データのないDatasetも対象から外さないため、no-dataの範囲置換は維持される。
 
 ```bash
 uv run python -m pipelines.main google-health raw-replay \

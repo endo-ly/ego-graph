@@ -197,7 +197,7 @@ def test_range_replace_is_delegated_to_google_health_adapter(monkeypatch):
     def fake_replay(writer, **kwargs):
         captured["writer"] = writer
         captured.update(kwargs)
-        return {"replayed_count": 3}
+        return {"compacted_partition_counts": {"google_health.samples": 3}}
 
     monkeypatch.setattr(
         "pipelines.maintenance.recompact.replay_google_health_raw",

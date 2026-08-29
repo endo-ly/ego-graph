@@ -257,7 +257,11 @@ class RecompactService:
                 date_to=date_to,
                 progress=self.progress,
             )
-            partition_count = int(replay_result.get("replayed_count", 0))
+            partition_counts = replay_result.get("compacted_partition_counts", {})
+            if not isinstance(partition_counts, dict):
+                raise ValueError(
+                    "invalid_recompact_result: compacted partition counts are missing"
+                )
         except Exception as exc:
             logger.exception("Google Health recompact failed: error=%s", exc)
             for dataset in datasets:
@@ -274,7 +278,7 @@ class RecompactService:
                 dataset_id=dataset.dataset_id,
                 strategy=dataset.compaction_strategy.value,
                 status="succeeded",
-                partition_count=partition_count,
+                partition_count=int(partition_counts.get(dataset.dataset_id, 0)),
             )
 
     def _recompact_monthly(

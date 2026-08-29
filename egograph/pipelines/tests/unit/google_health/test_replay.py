@@ -100,6 +100,25 @@ def _heart_rate_payload(value: int, timestamp: str) -> dict:
     }
 
 
+def _session_point(
+    data_type: str,
+    session_id: str,
+    started_at: str,
+    ended_at: str,
+) -> dict:
+    """テスト用のsleep/exercise DataPointを作る。"""
+    return {
+        "dataPointName": session_id,
+        data_type: {
+            "interval": {
+                "startTime": started_at,
+                "endTime": ended_at,
+            },
+            "type": data_type.upper(),
+        },
+    }
+
+
 def test_replay_rebuilds_new_datasets_and_is_idempotent():
     """Raw replayが新schemaを作り、同じRawの再実行で重複しない。"""
     # Arrange
@@ -135,6 +154,13 @@ def test_replay_rebuilds_new_datasets_and_is_idempotent():
     # Assert
     assert first["raw_count"] == 1
     assert second["raw_count"] == 1
+    assert first["compacted_partition_counts"] == {
+        "google_health.records": 1,
+        "google_health.daily_metrics": 0,
+        "google_health.samples": 1,
+        "google_health.intervals": 0,
+        "google_health.sessions": 0,
+    }
     compacted_key = (
         "compacted/events/google_health/samples/year=2026/month=06/data.parquet"
     )
@@ -192,6 +218,57 @@ def test_replay_replaces_delayed_rollup_values_in_raw_save_order():
     assert daily.iloc[0]["value"] == 10000.0
     assert len(records) == 1
     assert '"countSum":10000' in records.iloc[0]["payload_json"]
+
+
+def test_replay_aggregates_daily_metrics_within_each_raw_entry():
+    """Raw Entry内の複数sessionを通常ingestと同じ日次値へ集約する。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    writer.save_raw(
+        connection_id="connection-1",
+        data_type="sleep",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+        run_id="sleep-run",
+        payload={
+            "reconcileResponses": [
+                {
+                    "dataPoints": [
+                        _session_point(
+                            "sleep",
+                            "sleep-1",
+                            "2026-06-01T00:00:00Z",
+                            "2026-06-01T06:00:00Z",
+                        ),
+                        _session_point(
+                            "sleep",
+                            "sleep-2",
+                            "2026-06-01T06:00:00Z",
+                            "2026-06-01T07:00:00Z",
+                        ),
+                    ]
+                }
+            ]
+        },
+    )
+
+    # Act
+    replay_google_health_raw(writer, reset_compacted=True)
+
+    # Assert
+    daily_path = (
+        "compacted/events/google_health/daily_metrics/year=2026/month=06/data.parquet"
+    )
+    sessions_path = (
+        "compacted/events/google_health/sessions/year=2026/month=06/data.parquet"
+    )
+    daily = pd.read_parquet(BytesIO(memory_s3.objects[daily_path]))
+    sessions = pd.read_parquet(BytesIO(memory_s3.objects[sessions_path]))
+    assert len(daily) == 1
+    assert daily.iloc[0]["metric_name"] == "sleep_duration"
+    assert daily.iloc[0]["value"] == 7 * 60 * 60
+    assert len(sessions) == 2
 
 
 def test_replay_validates_all_raw_before_resetting_compacted():
@@ -301,6 +378,35 @@ def test_replay_normalizes_one_entry_at_a_time_and_uses_deterministic_event_ids(
     assert all(event_id.startswith("raw-replay-") for event_id in save_ids)
 
 
+def test_replay_compacts_only_datasets_a_data_type_can_generate():
+    """Raw Entryごとに不要なProjection Datasetをcompactしない。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    writer.save_raw(
+        connection_id="connection-1",
+        data_type="heart-rate",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+        run_id="run-1",
+        payload=_heart_rate_payload(72, "2026-06-01T01:00:00Z"),
+    )
+    writer.save_events = Mock()
+    writer.compact_range = Mock()
+
+    # Act
+    replay_google_health_raw(writer, progress=RecordingProgress())
+
+    # Assert
+    expected = (
+        "google_health.records",
+        "google_health.daily_metrics",
+        "google_health.samples",
+    )
+    assert writer.save_events.call_args.kwargs["selected_dataset_ids"] == expected
+    assert writer.compact_range.call_args.kwargs["selected_dataset_ids"] == expected
+
+
 def test_replay_compacts_empty_normalization_to_replace_no_data():
     """正規化結果が空でも対象rangeのcompactを実行する。"""
     # Arrange
@@ -323,3 +429,74 @@ def test_replay_compacts_empty_normalization_to_replace_no_data():
     # Assert
     writer.save_events.assert_called_once()
     writer.compact_range.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("data_type", "started_at", "ended_at", "included"),
+    [
+        (
+            "exercise",
+            "2026-07-31T23:30:00Z",
+            "2026-08-01T00:30:00Z",
+            False,
+        ),
+        (
+            "exercise",
+            "2026-08-31T23:30:00Z",
+            "2026-09-01T00:30:00Z",
+            True,
+        ),
+        (
+            "sleep",
+            "2026-07-31T23:30:00Z",
+            "2026-08-01T07:30:00Z",
+            True,
+        ),
+    ],
+)
+def test_partial_replay_uses_semantic_session_target_date(
+    data_type,
+    started_at,
+    ended_at,
+    included,
+):
+    """月指定Replayのsession対象日をsleepとexerciseで使い分ける。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    writer.save_raw(
+        connection_id="connection-1",
+        data_type=data_type,
+        date_from=date(2026, 7, 31),
+        date_to=date(2026, 9, 2),
+        run_id=f"{data_type}-run",
+        payload={
+            "reconcileResponses": [
+                {
+                    "dataPoints": [
+                        _session_point(
+                            data_type,
+                            f"{data_type}-1",
+                            started_at,
+                            ended_at,
+                        )
+                    ]
+                }
+            ]
+        },
+    )
+    writer.save_events = Mock()
+    writer.compact_range = Mock()
+
+    # Act
+    replay_google_health_raw(
+        writer,
+        selected_dataset_ids=("google_health.sessions",),
+        date_from=date(2026, 8, 1),
+        date_to=date(2026, 9, 1),
+        progress=RecordingProgress(),
+    )
+
+    # Assert
+    sessions = writer.save_events.call_args.kwargs["records"]["sessions"]
+    assert bool(sessions) is included
