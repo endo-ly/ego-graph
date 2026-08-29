@@ -826,10 +826,20 @@ uv run python -m pipelines.main google-health raw-replay --reset-compacted --jso
 ```
 
 この処理は実行前に全Rawを読み込み・normalizeして検証し、検証成功後にのみ
-compactedを削除する。RawはS3の`LastModified`順、同一workflow runはまとめて
-処理するため、後日のrepair runが同じ期間を補完した場合も、古い値を加算せず
-通常の`compact_range`と同じ範囲置換になる。実行後は結果の`raw_count`と代表的な
+compactedを削除する。RawはS3の`LastModified`順に、Raw Entry単位で決定的な
+event IDを使って処理するため、同じworkflow runに複数data typeがあってもevents
+ファイルを上書きしない。後日のrepair runが同じ期間を補完した場合も、古い値を加算せず
+通常の`compact_range`と同じ範囲置換になる。実行中の正規化結果は1 Raw Entry分だけ
+保持し、進捗はstderrへ出力する。実行後は結果の`raw_count`と代表的な
 `daily_metrics`、`samples`、`intervals`、`sessions`、`records`の件数を確認する。
+
+Google Healthを含む全DatasetのcompactedをCatalogから再構築する場合は、汎用の
+`recompact`を使用する。Google Healthの`RANGE_REPLACE`だけはRaw JSONを完全な
+rebuild sourceとして扱う専用adapterへ委譲される。
+
+```bash
+uv run python -m pipelines.main recompact --provider google_health --json
+```
 
 #### SQLiteの同期状態を確認する
 

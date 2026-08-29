@@ -87,12 +87,49 @@ cd /opt/egograph/repo
 uv run python -m pipelines.main workflow list --json
 uv run python -m pipelines.main run list --json
 uv run python -m pipelines.main google-health raw-replay --reset-compacted --json
+uv run python -m pipelines.main recompact --json
 ```
 
 `google-health raw-replay`は保存済みGoogle Health Rawからcompacted Datasetを再構築する
 保守コマンドである。`--reset-compacted`を付けると、全Rawの検証後にGoogle Healthの
 compactedだけを削除し、S3 `LastModified`順に再生成する。初回full-fidelity切り替えや
 Normalizer修正後に使用し、実行後は代表的なQuery結果を確認する。
+
+### Dataset Catalogからcompactedを再構築する
+
+`recompact`はRaw JSONを解釈せず、Dataset Catalogに定義されたsourceからcompactedを
+再生成する全体向け保守コマンドである。通常のsource Parquetを使うdatasetは、1 dataset・
+1月ずつ読み込み、strategyに応じて処理する。
+
+```bash
+# 全dataset（NONEはskip）
+uv run python -m pipelines.main recompact --json
+
+# provider単位
+uv run python -m pipelines.main recompact --provider spotify --json
+
+# dataset単位
+uv run python -m pipelines.main recompact \
+  --dataset browser_history.page_views --json
+
+# 特定月だけ。yearとmonthは必ず同時指定
+uv run python -m pipelines.main recompact \
+  --year 2026 --month 8 --json
+```
+
+`--provider`と`--dataset`は同時に指定できない。`--prune`を付けた場合だけ、対象範囲で
+sourceに存在しない古いmonthly compacted partitionを、対象datasetの全partition処理が
+成功した後に削除する。Raw、events、master sourceは削除しない。`--json`指定時も進捗は
+stderrへ出力されるため、stdoutをJSONパイプラインへ渡せる。
+
+Google Healthの`RANGE_REPLACE`は汎用dedupeではなく、保存済みRawを扱う専用adapterへ
+委譲される。Google HealthのRaw構造を反映する再構築は、次のコマンドでも明示的に実行
+できる。
+
+```bash
+uv run python -m pipelines.main google-health raw-replay \
+  --reset-compacted --json
+```
 
 ### Browser History 拡張機能
 
