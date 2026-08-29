@@ -65,18 +65,22 @@ class GoogleHealthDataType:
     def projection_dataset_names(self) -> tuple[str, ...]:
         """このdata typeが生成し得るProjection dataset名を返す。"""
         names = ["records"]
+        has_daily_projection = (
+            self.fetch_strategy is FetchStrategy.DAILY_ROLLUP
+            or self.include_daily_rollup
+        )
         if self.record_kind is RecordKind.DAILY:
             names.append("daily_metrics")
         elif self.record_kind is RecordKind.SAMPLE:
             names.append("samples")
             if (
-                self.include_daily_rollup
+                has_daily_projection
                 or self.name == "respiratory-rate-sleep-summary"
             ):
                 names.append("daily_metrics")
         elif self.record_kind is RecordKind.INTERVAL:
             names.append("intervals")
-            if self.include_daily_rollup:
+            if has_daily_projection:
                 names.append("daily_metrics")
         elif self.record_kind is RecordKind.SESSION:
             names.extend(("sessions", "daily_metrics"))

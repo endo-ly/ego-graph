@@ -220,6 +220,69 @@ def test_replay_replaces_delayed_rollup_values_in_raw_save_order():
     assert '"countSum":10000' in records.iloc[0]["payload_json"]
 
 
+def test_replay_preserves_daily_rollup_for_interval_data_type():
+    """DailyRollup専用のinterval data typeもdaily projectionを保存する。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    writer.save_raw(
+        connection_id="connection-1",
+        data_type="calories-in-heart-rate-zone",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+        run_id="calories-run",
+        payload={
+            "rollupResponses": [
+                {
+                    "rollupDataPoints": [
+                        {
+                            "startTime": "2026-06-01T00:00:00Z",
+                            "endTime": "2026-06-01T00:05:00Z",
+                            "caloriesInHeartRateZone": {
+                                "kilocaloriesSum": "2.5"
+                            },
+                        }
+                    ]
+                }
+            ],
+            "dailyRollupResponses": [
+                {
+                    "rollupDataPoints": [
+                        {
+                            "civilStartTime": {
+                                "date": {"year": 2026, "month": 6, "day": 1}
+                            },
+                            "caloriesInHeartRateZone": {
+                                "caloriesInHeartRateZones": [
+                                    {"heartRateZone": "CARDIO", "kcal": 30.0}
+                                ]
+                            },
+                        }
+                    ]
+                }
+            ],
+        },
+    )
+
+    # Act
+    replay_google_health_raw(writer, reset_compacted=True)
+
+    # Assert
+    interval_path = (
+        "compacted/events/google_health/intervals/year=2026/month=06/data.parquet"
+    )
+    daily_path = (
+        "compacted/events/google_health/daily_metrics/year=2026/month=06/data.parquet"
+    )
+    intervals = pd.read_parquet(BytesIO(memory_s3.objects[interval_path]))
+    daily = pd.read_parquet(BytesIO(memory_s3.objects[daily_path]))
+    assert intervals.iloc[0]["value"] == 2.5
+    assert {
+        (row["metric_name"], row["value"])
+        for _, row in daily.iterrows()
+    } == {("calories_in_heart_rate_zone_cardio", 30.0)}
+
+
 def test_replay_aggregates_daily_metrics_within_each_raw_entry():
     """Raw Entry内の複数sessionを通常ingestと同じ日次値へ集約する。"""
     # Arrange
