@@ -3,27 +3,38 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import duckdb
+import pandas as pd
 from dataset_catalog import datasets
 
 from pipelines.maintenance.progress import (
     ProgressReporter,
     StderrProgressReporter,
 )
+from pipelines.sources.common.compaction import normalize_dataframe_for_dataset
 from pipelines.sources.google_health.data_types import DATA_TYPE_BY_NAME
 from pipelines.sources.google_health.normalizer import (
     aggregate_daily_metrics,
     normalize_google_health_payload,
 )
+from pipelines.sources.google_health.raw_stream import (
+    RawPointChunk,
+    iter_raw_point_chunks,
+)
 from pipelines.sources.google_health.timezone import projection_row_local_date
 from pipelines.sources.google_health.writer import GoogleHealthWriter
+
+RAW_REPLAY_CHUNK_SIZE = 5_000
 
 _RAW_KEY_PATTERN = re.compile(
     r"^connection_id=(?P<connection_id>[^/]+)/"
@@ -43,6 +54,14 @@ class RawReplayEntry:
     date_to: date
     run_id: str
     last_modified: datetime | None = None
+
+
+@dataclass(frozen=True)
+class _PreparedReplayEntry:
+    """1 Raw Entryの準備結果。"""
+
+    validated_record_count: int
+    replayed_record_count: int
 
 
 def replay_google_health_raw(
@@ -81,45 +100,32 @@ def replay_google_health_raw(
     started_at = time.monotonic()
 
     validated_record_count = 0
+    replayed_record_count = 0
     for index, entry in enumerate(entries, start=1):
-        raw_payload = _load_raw(writer, entry.key)
-        normalized = _normalize_entry(
+        prepared = _prepare_replay_entry(
+            writer,
             entry,
-            raw_payload,
             timezone=timezone,
+            selected_dataset_ids=selected_dataset_ids,
+            date_from=date_from,
+            date_to=date_to,
         )
-        if _raw_point_count(raw_payload) > 0 and not normalized["records"]:
-            raise ValueError(f"invalid_raw_google_health_record: {entry.key}")
-        validated_record_count += len(normalized["records"])
+        validated_record_count += prepared.validated_record_count
+        replayed_record_count += prepared.replayed_record_count
         progress.report("validate", index, len(entries), entry.data_type)
-        del normalized, raw_payload
 
     if reset_compacted:
         # 破損Rawが残っている場合でも、検証済みでない状態のcompactedを先に
         # 削除しない。全entryのnormalizeが成功した後で全面再構築を開始する。
         writer.reset_compacted(selected_dataset_ids=selected_dataset_ids)
 
-    replayed_record_count = 0
     compacted_partition_keys = {
         dataset_id: set() for dataset_id in selected_dataset_ids
     }
     for index, entry in enumerate(entries, start=1):
-        raw_payload = _load_raw(writer, entry.key)
-        normalized = _normalize_entry(
-            entry,
-            raw_payload,
-            timezone=timezone,
-        )
         entry_dataset_ids = _selected_entry_dataset_ids(
             entry.data_type,
             selected_dataset_ids,
-        )
-        normalized = _select_normalized_rows(
-            normalized,
-            selected_dataset_ids=entry_dataset_ids,
-            timezone=timezone,
-            date_from=date_from,
-            date_to=date_to,
         )
         event_id = replay_event_id(entry)
         if entry_dataset_ids:
@@ -128,14 +134,6 @@ def replay_google_health_raw(
             if date_from is not None and date_to is not None:
                 compact_from = max(compact_from, date_from)
                 compact_to = min(compact_to, date_to)
-            writer.replace_events(
-                run_id=event_id,
-                records=normalized,
-                selected_data_types=(entry.data_type,),
-                date_from=compact_from,
-                date_to=compact_to,
-                selected_dataset_ids=entry_dataset_ids,
-            )
             compacted_keys = writer.compact_range(
                 connection_id=entry.connection_id,
                 selected_data_types=(entry.data_type,),
@@ -146,17 +144,12 @@ def replay_google_health_raw(
             )
             for key in compacted_keys:
                 for dataset in _google_health_datasets():
-                    if (
-                        dataset.dataset_id in entry_dataset_ids
-                        and key.startswith(
-                            dataset.compacted_prefix(writer.compacted_path)
-                        )
+                    if dataset.dataset_id in entry_dataset_ids and key.startswith(
+                        dataset.compacted_prefix(writer.compacted_path)
                     ):
                         compacted_partition_keys[dataset.dataset_id].add(key)
                         break
-            replayed_record_count += sum(len(rows) for rows in normalized.values())
         progress.report("replay", index, len(entries), entry.data_type)
-        del normalized, raw_payload
 
     return {
         "provider": "google_health",
@@ -218,49 +211,230 @@ def list_raw_entries(writer: GoogleHealthWriter) -> list[RawReplayEntry]:
     return sorted(entries, key=_entry_sort_key)
 
 
-def _load_raw(writer: GoogleHealthWriter, key: str) -> dict[str, Any]:
-    response = writer.s3.get_object(Bucket=writer.bucket_name, Key=key)
-    try:
-        value = json.loads(response["Body"].read())
-    except (KeyError, TypeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"invalid_raw_google_health_json: {key}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"invalid_raw_google_health_payload: {key}")
-    return value
-
-
-def _raw_point_count(payload: dict[str, Any]) -> int:
-    count = 0
-    for response in payload.get("reconcileResponses") or []:
-        if isinstance(response, dict) and isinstance(response.get("dataPoints"), list):
-            count += len(response["dataPoints"])
-    for field in ("rollupResponses", "dailyRollupResponses"):
-        for response in payload.get(field) or []:
-            if isinstance(response, dict) and isinstance(
-                response.get("rollupDataPoints"), list
-            ):
-                count += len(response["rollupDataPoints"])
-    return count
-
-
-def _normalize_entry(
+def _prepare_replay_entry(
+    writer: GoogleHealthWriter,
     entry: RawReplayEntry,
-    raw_payload: dict[str, Any],
     *,
     timezone: ZoneInfo,
+    selected_dataset_ids: tuple[str, ...],
+    date_from: date | None,
+    date_to: date | None,
+) -> _PreparedReplayEntry:
+    """1 Rawを一度だけstreaming処理し、eventsを準備する。"""
+    entry_dataset_ids = _selected_entry_dataset_ids(
+        entry.data_type,
+        selected_dataset_ids,
+    )
+    compact_from = entry.date_from
+    compact_to = entry.date_to
+    if date_from is not None and date_to is not None:
+        compact_from = max(compact_from, date_from)
+        compact_to = min(compact_to, date_to)
+
+    validated_record_count = 0
+    replayed_record_count = 0
+    raw_point_count = 0
+    daily_rows: list[dict[str, Any]] = []
+    ingested_at = datetime.now(tz=UTC)
+
+    with TemporaryDirectory(prefix="google-health-replay-") as temporary_directory:
+        temporary_root = Path(temporary_directory)
+        staged_files: dict[str, dict[tuple[int, int], list[Path]]] = {}
+        body = _open_raw_body(writer, entry.key)
+        try:
+            for chunk_index, chunk in enumerate(
+                iter_raw_point_chunks(
+                    body,
+                    chunk_size=RAW_REPLAY_CHUNK_SIZE,
+                ),
+                start=1,
+            ):
+                raw_point_count += len(chunk.points)
+                normalized = _normalize_chunk(
+                    entry,
+                    chunk,
+                    timezone=timezone,
+                    ingested_at=ingested_at,
+                )
+                validated_record_count += len(normalized["records"])
+                daily_rows.extend(normalized["daily_metrics"])
+                selected = _select_normalized_rows(
+                    normalized,
+                    selected_dataset_ids=entry_dataset_ids,
+                    timezone=timezone,
+                    date_from=date_from,
+                    date_to=date_to,
+                )
+                selected["daily_metrics"] = []
+                replayed_record_count += sum(len(rows) for rows in selected.values())
+                _stage_rows(
+                    staged_files,
+                    temporary_root,
+                    selected,
+                    chunk_index=chunk_index,
+                )
+                del selected, normalized
+        except ValueError as exc:
+            if str(exc).startswith(
+                (
+                    "invalid_raw_google_health_json",
+                    "invalid_raw_google_health_payload",
+                )
+            ):
+                raise ValueError(f"{exc}: {entry.key}") from exc
+            raise
+        finally:
+            _close_raw_body(body)
+
+        if raw_point_count > 0 and validated_record_count == 0:
+            raise ValueError(f"invalid_raw_google_health_record: {entry.key}")
+
+        daily_metrics = aggregate_daily_metrics(daily_rows)
+        selected_daily = _select_normalized_rows(
+            {"daily_metrics": daily_metrics},
+            selected_dataset_ids=entry_dataset_ids,
+            timezone=timezone,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        replayed_record_count += len(selected_daily["daily_metrics"])
+        _stage_rows(
+            staged_files,
+            temporary_root,
+            selected_daily,
+            chunk_index="daily",
+        )
+        event_files = _merge_staged_files(staged_files, temporary_root)
+        if entry_dataset_ids:
+            writer.replace_events_from_parquet(
+                run_id=replay_event_id(entry),
+                event_files=event_files,
+                selected_data_types=(entry.data_type,),
+                date_from=compact_from,
+                date_to=compact_to,
+                selected_dataset_ids=entry_dataset_ids,
+            )
+
+    return _PreparedReplayEntry(
+        validated_record_count=validated_record_count,
+        replayed_record_count=replayed_record_count,
+    )
+
+
+def _open_raw_body(writer: GoogleHealthWriter, key: str) -> Any:
+    """Raw JSONのstreaming bodyを取得する。"""
+    response = writer.s3.get_object(Bucket=writer.bucket_name, Key=key)
+    try:
+        return response["Body"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"invalid_raw_google_health_json: {key}") from exc
+
+
+def _close_raw_body(body: Any) -> None:
+    """Raw JSONのstreaming bodyを閉じる。"""
+    close = getattr(body, "close", None)
+    if callable(close):
+        close()
+
+
+def _normalize_chunk(
+    entry: RawReplayEntry,
+    chunk: RawPointChunk,
+    *,
+    timezone: ZoneInfo,
+    ingested_at: datetime,
 ) -> dict[str, list[dict[str, Any]]]:
-    """1 Raw Entryを正規化する。"""
+    """1 chunkを既存Normalizerで正規化する。"""
     normalized = normalize_google_health_payload(
         connection_id=entry.connection_id,
         data_type=DATA_TYPE_BY_NAME[entry.data_type],
-        payload=raw_payload,
+        payload=chunk.as_payload(),
         raw_ref=entry.key,
+        ingested_at=ingested_at,
         timezone=timezone,
     )
-    normalized["daily_metrics"] = aggregate_daily_metrics(
-        normalized["daily_metrics"]
-    )
     return normalized
+
+
+def _stage_rows(
+    staged_files: dict[str, dict[tuple[int, int], list[Path]]],
+    temporary_root: Path,
+    records: Mapping[str, list[dict[str, Any]]],
+    *,
+    chunk_index: int | str,
+) -> None:
+    """正規化chunkをDataset・月単位の一時Parquetへ書き出す。"""
+    datasets_by_name = {
+        dataset.dataset_id.split(".", 1)[1]: dataset
+        for dataset in _google_health_datasets()
+    }
+    for dataset_name, rows in records.items():
+        if not rows:
+            continue
+        dataset = datasets_by_name.get(dataset_name)
+        if dataset is None or dataset.time_column is None:
+            continue
+        rows_by_month: dict[tuple[int, int], list[dict[str, Any]]] = {}
+        for row in rows:
+            month = _row_month(row, dataset.time_column)
+            rows_by_month.setdefault(month, []).append(row)
+        for (year, month), month_rows in sorted(rows_by_month.items()):
+            path = (
+                temporary_root
+                / "chunks"
+                / dataset_name
+                / f"year={year}"
+                / f"month={month:02d}"
+                / f"chunk-{chunk_index}.parquet"
+            )
+            path.parent.mkdir(parents=True, exist_ok=True)
+            dataframe = normalize_dataframe_for_dataset(
+                pd.DataFrame(month_rows),
+                dataset,
+            )
+            dataframe.to_parquet(path, index=False, engine="pyarrow")
+            staged_files.setdefault(dataset_name, {}).setdefault(
+                (year, month), []
+            ).append(path)
+
+
+def _merge_staged_files(
+    staged_files: Mapping[str, Mapping[tuple[int, int], list[Path]]],
+    temporary_root: Path,
+) -> dict[str, dict[tuple[int, int], Path]]:
+    """chunk ParquetをDataset・月ごとにDuckDBで結合する。"""
+    merged_files: dict[str, dict[tuple[int, int], Path]] = {}
+    with duckdb.connect(":memory:") as connection:
+        for dataset_name, partition_files in staged_files.items():
+            for (year, month), paths in sorted(partition_files.items()):
+                if len(paths) == 1:
+                    merged_path = paths[0]
+                else:
+                    merged_path = (
+                        temporary_root
+                        / "events"
+                        / dataset_name
+                        / f"year={year}"
+                        / f"month={month:02d}"
+                        / "data.parquet"
+                    )
+                    merged_path.parent.mkdir(parents=True, exist_ok=True)
+                    connection.read_parquet(
+                        [str(path) for path in paths],
+                        union_by_name=True,
+                    ).write_parquet(str(merged_path))
+                merged_files.setdefault(dataset_name, {})[(year, month)] = merged_path
+    return merged_files
+
+
+def _row_month(row: Mapping[str, Any], column: str) -> tuple[int, int]:
+    """Projection rowのUTC/date partition月を返す。"""
+    value = row.get(column)
+    if isinstance(value, datetime):
+        return value.year, value.month
+    if isinstance(value, date):
+        return value.year, value.month
+    raise ValueError(f"invalid_projection_date: {column}")
 
 
 def _validate_dataset_selection(
@@ -274,8 +448,7 @@ def _validate_dataset_selection(
     unknown = [dataset_id for dataset_id in normalized if dataset_id not in all_ids]
     if unknown:
         raise ValueError(
-            "invalid_dataset_id: unknown Google Health dataset: "
-            f"{', '.join(unknown)}"
+            f"invalid_dataset_id: unknown Google Health dataset: {', '.join(unknown)}"
         )
     if not normalized:
         raise ValueError("invalid_dataset_id: at least one dataset is required")

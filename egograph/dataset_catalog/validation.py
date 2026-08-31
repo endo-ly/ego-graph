@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 from collections.abc import Iterable
+from pathlib import Path
 
 import pyarrow.parquet as pq
 
@@ -59,13 +60,31 @@ def validate_parquet_bytes(definition: DatasetDefinition, data: bytes) -> None:
     """
     try:
         schema = pq.ParquetFile(io.BytesIO(data)).schema_arrow
-        validate_required_columns(definition, schema.names)
+        _validate_parquet_schema(definition, schema)
     except ValueError:
         raise
     except Exception as exc:
         raise ValueError(
             f"invalid_schema: unreadable_parquet: {definition.dataset_id}: {exc}"
         ) from exc
+
+
+def validate_parquet_file(definition: DatasetDefinition, path: str | Path) -> None:
+    """Parquetファイルを読み込まずにschema契約だけ検証する。"""
+    try:
+        schema = pq.ParquetFile(path).schema_arrow
+        _validate_parquet_schema(definition, schema)
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(
+            f"invalid_schema: unreadable_parquet: {definition.dataset_id}: {exc}"
+        ) from exc
+
+
+def _validate_parquet_schema(definition: DatasetDefinition, schema) -> None:
+    """Parquet schemaとDataset契約を突き合わせる。"""
+    validate_required_columns(definition, schema.names)
     if not definition.column_types:
         return
     for column, expected in definition.column_types.items():
