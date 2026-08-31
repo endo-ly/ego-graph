@@ -274,6 +274,15 @@ def _prepare_replay_entry(
                     chunk_index=chunk_index,
                 )
                 del selected, normalized
+        except ValueError as exc:
+            if str(exc).startswith(
+                (
+                    "invalid_raw_google_health_json",
+                    "invalid_raw_google_health_payload",
+                )
+            ):
+                raise ValueError(f"{exc}: {entry.key}") from exc
+            raise
         finally:
             _close_raw_body(body)
 

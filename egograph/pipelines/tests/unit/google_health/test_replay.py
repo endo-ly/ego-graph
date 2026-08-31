@@ -683,6 +683,29 @@ def test_replay_compacts_empty_normalization_to_replace_no_data():
     writer.compact_range.assert_called_once()
 
 
+def test_replay_reports_raw_key_for_stream_parse_error():
+    """streaming parseエラーに対象Raw keyを含める。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    raw_key = writer.save_raw(
+        connection_id="connection-1",
+        data_type="heart-rate",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+        run_id="run-invalid-json",
+        payload={"reconcileResponses": []},
+    )
+    memory_s3.objects[raw_key] = b'{"reconcileResponses": ['
+
+    # Act
+    with pytest.raises(ValueError) as exc_info:
+        replay_google_health_raw(writer)
+
+    # Assert
+    assert str(exc_info.value) == f"invalid_raw_google_health_json: {raw_key}"
+
+
 @pytest.mark.parametrize(
     ("data_type", "started_at", "ended_at", "included"),
     [
