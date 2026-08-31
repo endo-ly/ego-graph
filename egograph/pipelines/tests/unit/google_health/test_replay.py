@@ -22,6 +22,8 @@ class MemoryS3:
         self._write_count = 0
 
     def put_object(self, *, Bucket, Key, Body, ContentType):  # noqa: N803
+        if hasattr(Body, "read"):
+            Body = Body.read()
         self.objects[Key] = Body
         self.last_modified[Key] = datetime(
             2026,
@@ -60,6 +62,15 @@ class MemoryS3:
         return Paginator(self.objects)
 
 
+class GuardedRawBody(BytesIO):
+    """全量readを検出するRaw JSON body。"""
+
+    def read(self, size=-1):
+        if size == -1:
+            raise AssertionError("Raw replay must not read the whole body")
+        return super().read(size)
+
+
 def _writer(memory_s3: MemoryS3) -> GoogleHealthWriter:
     with patch(
         "pipelines.sources.google_health.writer.boto3.client",
@@ -95,6 +106,31 @@ def _heart_rate_payload(value: int, timestamp: str) -> dict:
                             "beatsPerMinute": value,
                         }
                     }
+                ]
+            }
+        ]
+    }
+
+
+def _large_heart_rate_payload(point_count: int) -> dict:
+    """streaming replay検証用のheart-rate Rawを作る。"""
+    started_at = datetime(2026, 6, 1, tzinfo=UTC)
+    return {
+        "reconcileResponses": [
+            {
+                "dataPoints": [
+                    {
+                        "dataPointName": f"heart-rate-{index}",
+                        "heartRate": {
+                            "sampleTime": {
+                                "physicalTime": (started_at + timedelta(seconds=index))
+                                .isoformat()
+                                .replace("+00:00", "Z")
+                            },
+                            "beatsPerMinute": 60 + index % 40,
+                        },
+                    }
+                    for index in range(point_count)
                 ]
             }
         ]
@@ -169,6 +205,105 @@ def test_replay_rebuilds_new_datasets_and_is_idempotent():
     assert len(rows) == 1
     assert rows.iloc[0]["value"] == 72.0
     assert any("archive/google_health/" in key for key in memory_s3.objects)
+
+
+def test_replay_streams_large_raw_in_bounded_chunks_without_second_raw_read(
+    monkeypatch,
+):
+    """大きなRawを全量readせず、chunk単位で一度だけ正規化する。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    raw_key = writer.save_raw(
+        connection_id="connection-1",
+        data_type="heart-rate",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+        run_id="large-run",
+        payload=_large_heart_rate_payload(20_001),
+    )
+    raw_body = memory_s3.objects[raw_key]
+    original_get_object = memory_s3.get_object
+    raw_get_count = 0
+
+    def get_object(*, Bucket, Key):  # noqa: N803
+        nonlocal raw_get_count
+        if Key == raw_key:
+            raw_get_count += 1
+            return {"Body": GuardedRawBody(raw_body)}
+        return original_get_object(Bucket=Bucket, Key=Key)
+
+    monkeypatch.setattr(memory_s3, "get_object", get_object)
+    original_normalize = replay_module.normalize_google_health_payload
+    chunk_sizes: list[int] = []
+
+    def record_normalize(**kwargs):
+        payload = kwargs["payload"]
+        points = payload.get("reconcileResponses", [])[0]["dataPoints"]
+        chunk_sizes.append(len(points))
+        return original_normalize(**kwargs)
+
+    monkeypatch.setattr(
+        replay_module,
+        "normalize_google_health_payload",
+        record_normalize,
+    )
+
+    # Act
+    result = replay_google_health_raw(writer, reset_compacted=True)
+
+    # Assert
+    assert result["raw_count"] == 1
+    assert raw_get_count == 1
+    assert chunk_sizes == [5_000, 5_000, 5_000, 5_000, 1]
+
+
+def test_replay_keeps_existing_compacted_when_late_chunk_fails(monkeypatch):
+    """後半chunkの失敗時はeventsとcompactedを変更しない。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    raw_key = writer.save_raw(
+        connection_id="connection-1",
+        data_type="heart-rate",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 2),
+        run_id="late-failure-run",
+        payload=_large_heart_rate_payload(5_001),
+    )
+    replay_google_health_raw(writer, reset_compacted=True)
+    compacted_key = (
+        "compacted/events/google_health/samples/year=2026/month=06/data.parquet"
+    )
+    original_compacted = memory_s3.objects[compacted_key]
+    original_event_keys = {key for key in memory_s3.objects if "raw-replay-" in key}
+    original_normalize = replay_module.normalize_google_health_payload
+    normalize_count = 0
+
+    def fail_on_second_chunk(**kwargs):
+        nonlocal normalize_count
+        normalize_count += 1
+        if normalize_count == 2:
+            raise ValueError("normalization failed")
+        return original_normalize(**kwargs)
+
+    monkeypatch.setattr(
+        replay_module,
+        "normalize_google_health_payload",
+        fail_on_second_chunk,
+    )
+    reset_compacted = Mock(wraps=writer.reset_compacted)
+    writer.reset_compacted = reset_compacted
+
+    # Act / Assert
+    with pytest.raises(ValueError, match="normalization failed"):
+        replay_google_health_raw(writer, reset_compacted=True)
+    assert reset_compacted.call_count == 0
+    assert memory_s3.objects[compacted_key] == original_compacted
+    assert {
+        key for key in memory_s3.objects if "raw-replay-" in key
+    } == original_event_keys
+    assert raw_key in memory_s3.objects
 
 
 def test_replay_removes_stale_event_when_projection_becomes_empty(monkeypatch):
@@ -281,9 +416,7 @@ def test_replay_preserves_daily_rollup_for_interval_data_type():
                         {
                             "startTime": "2026-06-01T00:00:00Z",
                             "endTime": "2026-06-01T00:05:00Z",
-                            "caloriesInHeartRateZone": {
-                                "kilocaloriesSum": "2.5"
-                            },
+                            "caloriesInHeartRateZone": {"kilocaloriesSum": "2.5"},
                         }
                     ]
                 }
@@ -320,10 +453,9 @@ def test_replay_preserves_daily_rollup_for_interval_data_type():
     intervals = pd.read_parquet(BytesIO(memory_s3.objects[interval_path]))
     daily = pd.read_parquet(BytesIO(memory_s3.objects[daily_path]))
     assert intervals.iloc[0]["value"] == 2.5
-    assert {
-        (row["metric_name"], row["value"])
-        for _, row in daily.iterrows()
-    } == {("calories_in_heart_rate_zone_cardio", 30.0)}
+    assert {(row["metric_name"], row["value"]) for _, row in daily.iterrows()} == {
+        ("calories_in_heart_rate_zone_cardio", 30.0)
+    }
 
 
 def test_replay_aggregates_daily_metrics_within_each_raw_entry():
@@ -459,7 +591,7 @@ def test_replay_normalizes_one_entry_at_a_time_and_uses_deterministic_event_ids(
         events.append("save")
         return []
 
-    writer.save_events = Mock(side_effect=record_save)
+    writer.replace_events_from_parquet = Mock(side_effect=record_save)
 
     def record_compact(**kwargs):
         events.append("compact")
@@ -482,9 +614,10 @@ def test_replay_normalizes_one_entry_at_a_time_and_uses_deterministic_event_ids(
         ("replay", 1, 2, "heart-rate"),
         ("replay", 2, 2, "heart-rate"),
     ]
-    assert events == ["reset", "save", "compact", "save", "compact"]
+    assert events == ["save", "save", "reset", "compact", "compact"]
     save_ids = [
-        call.kwargs["run_id"] for call in writer.save_events.call_args_list
+        call.kwargs["run_id"]
+        for call in writer.replace_events_from_parquet.call_args_list
     ]
     compact_ids = [
         call.kwargs["run_id"] for call in writer.compact_range.call_args_list
@@ -507,7 +640,7 @@ def test_replay_compacts_only_datasets_a_data_type_can_generate():
         run_id="run-1",
         payload=_heart_rate_payload(72, "2026-06-01T01:00:00Z"),
     )
-    writer.save_events = Mock(return_value=[])
+    writer.replace_events_from_parquet = Mock(return_value=[])
     writer.compact_range = Mock(return_value=[])
 
     # Act
@@ -519,7 +652,10 @@ def test_replay_compacts_only_datasets_a_data_type_can_generate():
         "google_health.daily_metrics",
         "google_health.samples",
     )
-    assert writer.save_events.call_args.kwargs["selected_dataset_ids"] == expected
+    assert (
+        writer.replace_events_from_parquet.call_args.kwargs["selected_dataset_ids"]
+        == expected
+    )
     assert writer.compact_range.call_args.kwargs["selected_dataset_ids"] == expected
 
 
@@ -536,14 +672,14 @@ def test_replay_compacts_empty_normalization_to_replace_no_data():
         run_id="run-empty",
         payload={"reconcileResponses": []},
     )
-    writer.save_events = Mock(return_value=[])
+    writer.replace_events_from_parquet = Mock(return_value=[])
     writer.compact_range = Mock(return_value=[])
 
     # Act
     replay_google_health_raw(writer, progress=RecordingProgress())
 
     # Assert
-    writer.save_events.assert_called_once()
+    writer.replace_events_from_parquet.assert_called_once()
     writer.compact_range.assert_called_once()
 
 
@@ -601,7 +737,7 @@ def test_partial_replay_uses_semantic_session_target_date(
             ]
         },
     )
-    writer.save_events = Mock(return_value=[])
+    writer.replace_events_from_parquet = Mock(return_value=[])
     writer.compact_range = Mock(return_value=[])
 
     # Act
@@ -614,5 +750,7 @@ def test_partial_replay_uses_semantic_session_target_date(
     )
 
     # Assert
-    sessions = writer.save_events.call_args.kwargs["records"]["sessions"]
+    event_files = writer.replace_events_from_parquet.call_args.kwargs["event_files"]
+    session_files = event_files.get("sessions", {})
+    sessions = [path for path in session_files.values()]
     assert bool(sessions) is included
