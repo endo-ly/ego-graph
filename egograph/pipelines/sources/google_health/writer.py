@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -14,6 +16,7 @@ from botocore.exceptions import ClientError
 from dataset_catalog import DatasetDefinition, datasets
 from dataset_catalog.validation import (
     validate_parquet_bytes,
+    validate_parquet_file,
     validate_required_columns,
 )
 
@@ -163,6 +166,46 @@ class GoogleHealthWriter:
                     self._delete_if_exists(event_key)
         return saved_keys
 
+    def replace_events_from_parquet(
+        self,
+        *,
+        run_id: str,
+        event_files: Mapping[str, Mapping[tuple[int, int], Path]],
+        selected_data_types: tuple[str, ...],
+        date_from: date,
+        date_to: date,
+        selected_dataset_ids: tuple[str, ...] | None = None,
+    ) -> list[str]:
+        """一時Parquetからdeterministicなeventを置換する。
+
+        Raw replayではnormalize結果をPython listへ戻さず、一時Parquetを
+        Dataset・月単位でそのままeventsへアップロードする。今回の結果が
+        空のpartitionは既存eventを削除し、古いprojectionが再利用されない
+        ようにする。
+        """
+        saved_keys: list[str] = []
+        saved_key_set: set[str] = set()
+        for dataset in _selected_datasets(selected_dataset_ids):
+            dataset_name = _dataset_name(dataset)
+            for (year, month), path in sorted(
+                event_files.get(dataset_name, {}).items()
+            ):
+                key = self._event_key(dataset, year, month, run_id)
+                self._put_validated_parquet_file(dataset, path, key)
+                saved_keys.append(key)
+                saved_key_set.add(key)
+            for year, month in _target_event_months(
+                dataset_name,
+                selected_data_types=selected_data_types,
+                date_from=date_from,
+                date_to=date_to,
+                timezone=self.timezone,
+            ):
+                event_key = self._event_key(dataset, year, month, run_id)
+                if event_key not in saved_key_set:
+                    self._delete_if_exists(event_key)
+        return saved_keys
+
     def compact_range(
         self,
         *,
@@ -270,6 +313,22 @@ class GoogleHealthWriter:
         except ClientError as exc:
             if exc.response["Error"]["Code"] not in {"NoSuchKey", "404"}:
                 raise
+
+    def _put_validated_parquet_file(
+        self,
+        dataset: DatasetDefinition,
+        path: Path,
+        key: str,
+    ) -> None:
+        """ローカルParquetをschema検証後にstreaming uploadする。"""
+        validate_parquet_file(dataset, path)
+        with path.open("rb") as body:
+            self.s3.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=body,
+                ContentType="application/octet-stream",
+            )
 
 
 def _retain_outside_target(
@@ -384,16 +443,13 @@ def _selected_datasets(
     ]
     if unknown:
         raise ValueError(
-            "invalid_dataset_id: unknown Google Health dataset: "
-            f"{', '.join(unknown)}"
+            f"invalid_dataset_id: unknown Google Health dataset: {', '.join(unknown)}"
         )
     if not normalized:
         raise ValueError("invalid_dataset_id: at least one dataset is required")
     selected = set(normalized)
     return tuple(
-        dataset
-        for dataset in GOOGLE_HEALTH_DATASETS
-        if dataset.dataset_id in selected
+        dataset for dataset in GOOGLE_HEALTH_DATASETS if dataset.dataset_id in selected
     )
 
 

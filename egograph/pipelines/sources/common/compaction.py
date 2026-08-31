@@ -43,13 +43,15 @@ def normalize_dataframe_for_dataset(
     df: pd.DataFrame,
     dataset: DatasetDefinition,
 ) -> pd.DataFrame:
-    """dataset catalog の timestamp 列に合わせて DataFrame を正規化する。
+    """dataset catalog のtimestamp・string列に合わせてDataFrameを正規化する。
 
     既存の source Parquet には日時が文字列で保存された世代があるため、
     ファイル間で型が混在していなくても catalog の timestamp 列は必ず UTC
     aware datetime へ変換する。``timestamp_columns`` には required schema
     以外の任意列も含められ、列が存在する場合だけ変換する。不正な日時は
-    ``errors='raise'`` で保存前に表面化させる。
+    ``errors='raise'`` で保存前に表面化させる。string列はnullableな
+    pandas string dtypeへ揃え、値がすべてnullの列もschema上のstring型を
+    維持する。
     """
     timestamp_columns = set(dataset.timestamp_columns)
     timestamp_columns.update(
@@ -66,6 +68,9 @@ def normalize_dataframe_for_dataset(
             utc=True,
             format="mixed",
         )
+    for column, canonical_type in dataset.column_types.items():
+        if canonical_type == "string" and column in df.columns:
+            df[column] = df[column].astype("string")
     return df
 
 

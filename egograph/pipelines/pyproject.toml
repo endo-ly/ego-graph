@@ -13,6 +13,7 @@ dependencies = [
     "cryptography>=45.0.0",
     "duckdb>=1.1.0",
     "fastapi>=0.115.0",
+    "ijson==3.5.1",
     "pandas>=2.0.0",
     "playwright>=1.48.0",
     "pyarrow>=14.0.0",
