@@ -73,10 +73,7 @@ class GoogleHealthDataType:
             names.append("daily_metrics")
         elif self.record_kind is RecordKind.SAMPLE:
             names.append("samples")
-            if (
-                has_daily_projection
-                or self.name == "respiratory-rate-sleep-summary"
-            ):
+            if has_daily_projection or self.name == "respiratory-rate-sleep-summary":
                 names.append("daily_metrics")
         elif self.record_kind is RecordKind.INTERVAL:
             names.append("intervals")
@@ -264,18 +261,6 @@ DATA_TYPES = (
         DataCategory.HEALTH_METRICS,
         RecordKind.SAMPLE,
         "breaths_per_minute",
-    ),
-    GoogleHealthDataType(
-        "respiratory-rate",
-        DataCategory.HEALTH_METRICS,
-        RecordKind.SAMPLE,
-        "breaths_per_minute",
-    ),
-    GoogleHealthDataType(
-        "skin-temperature",
-        DataCategory.HEALTH_METRICS,
-        RecordKind.SAMPLE,
-        "celsius",
     ),
     GoogleHealthDataType(
         "daily-respiratory-rate",

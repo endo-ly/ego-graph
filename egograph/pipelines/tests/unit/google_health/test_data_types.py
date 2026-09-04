@@ -8,7 +8,7 @@ from pipelines.sources.google_health.data_types import (
 
 
 def test_registry_matches_fitbit_air_target_data_types():
-    """計画で定義した30 data typeだけを取得対象にする。"""
+    """計画で定義した28 data typeだけを取得対象にする。"""
     # Arrange
     expected = {
         "steps",
@@ -36,8 +36,6 @@ def test_registry_matches_fitbit_air_target_data_types():
         "oxygen-saturation",
         "daily-oxygen-saturation",
         "respiratory-rate-sleep-summary",
-        "respiratory-rate",
-        "skin-temperature",
         "daily-respiratory-rate",
         "daily-sleep-temperature-derivations",
         "sleep",
@@ -45,6 +43,11 @@ def test_registry_matches_fitbit_air_target_data_types():
 
     # Act & Assert
     assert set(DATA_TYPE_BY_NAME) == expected
+    assert "respiratory-rate" not in DATA_TYPE_BY_NAME
+    assert "skin-temperature" not in DATA_TYPE_BY_NAME
+    assert "respiratory-rate-sleep-summary" in DATA_TYPE_BY_NAME
+    assert "daily-respiratory-rate" in DATA_TYPE_BY_NAME
+    assert "daily-sleep-temperature-derivations" in DATA_TYPE_BY_NAME
     assert DATA_TYPE_BY_NAME["steps"].record_kind is RecordKind.INTERVAL
     assert DATA_TYPE_BY_NAME["heart-rate"].record_kind is RecordKind.SAMPLE
     assert DATA_TYPE_BY_NAME["sleep"].record_kind is RecordKind.SESSION

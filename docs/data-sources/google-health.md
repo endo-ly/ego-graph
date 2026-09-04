@@ -127,10 +127,12 @@ reconcileのページサイズはこの制約とは別に管理する。
 | `oxygen-saturation` | sample |
 | `daily-oxygen-saturation` | daily |
 | `respiratory-rate-sleep-summary` | sample, daily |
-| `respiratory-rate` | sample |
-| `skin-temperature` | sample |
 | `daily-respiratory-rate` | daily |
 | `daily-sleep-temperature-derivations` | daily |
+
+Fitbit device compatibility資料上に存在するデータ型でも、現在のGoogle Health REST v4で
+直接取得可能とは限らない。EgoGraphのregistryは実際にREST v4から取得可能なdata typeを
+対象とする。
 
 #### Sleep
 
