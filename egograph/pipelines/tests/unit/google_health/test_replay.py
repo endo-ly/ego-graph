@@ -21,10 +21,16 @@ class MemoryS3:
         self.last_modified: dict[str, datetime] = {}
         self._write_count = 0
 
-    def put_object(self, *, Bucket, Key, Body, ContentType):  # noqa: N803
-        if hasattr(Body, "read"):
-            Body = Body.read()
-        self.objects[Key] = Body
+    def upload_fileobj(
+        self,
+        Fileobj,
+        Bucket,
+        Key,
+        *,
+        ExtraArgs,
+        Config,
+    ):  # noqa: N803
+        self.objects[Key] = Fileobj.read()
         self.last_modified[Key] = datetime(
             2026,
             6,

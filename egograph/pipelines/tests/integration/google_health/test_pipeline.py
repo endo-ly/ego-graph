@@ -32,8 +32,16 @@ class MemoryS3:
     def __init__(self):
         self.objects = {}
 
-    def put_object(self, *, Bucket, Key, Body, ContentType):  # noqa: N803
-        self.objects[Key] = Body
+    def upload_fileobj(
+        self,
+        Fileobj,
+        Bucket,
+        Key,
+        *,
+        ExtraArgs,
+        Config,
+    ):  # noqa: N803
+        self.objects[Key] = Fileobj.read()
 
     def get_object(self, *, Bucket, Key):  # noqa: N803
         if Key not in self.objects:
