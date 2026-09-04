@@ -21,10 +21,16 @@ class MemoryS3:
         self.last_modified: dict[str, datetime] = {}
         self._write_count = 0
 
-    def put_object(self, *, Bucket, Key, Body, ContentType):  # noqa: N803
-        if hasattr(Body, "read"):
-            Body = Body.read()
-        self.objects[Key] = Body
+    def upload_fileobj(
+        self,
+        Fileobj,
+        Bucket,
+        Key,
+        *,
+        ExtraArgs,
+        Config,
+    ):  # noqa: N803
+        self.objects[Key] = Fileobj.read()
         self.last_modified[Key] = datetime(
             2026,
             6,
@@ -205,6 +211,71 @@ def test_replay_rebuilds_new_datasets_and_is_idempotent():
     assert len(rows) == 1
     assert rows.iloc[0]["value"] == 72.0
     assert any("archive/google_health/" in key for key in memory_s3.objects)
+
+
+def test_replay_supports_historical_raw_for_ingest_disabled_data_types():
+    """新規ingest対象外の過去Rawもrecompactできる。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    payloads = {
+        "respiratory-rate": {
+            "reconcileResponses": [
+                {
+                    "dataPoints": [
+                        {
+                            "dataPointName": "respiratory-rate-1",
+                            "respiratoryRate": {
+                                "sampleTime": {"physicalTime": "2026-06-01T01:00:00Z"},
+                                "breathsPerMinute": 16,
+                            },
+                        }
+                    ]
+                }
+            ]
+        },
+        "skin-temperature": {
+            "reconcileResponses": [
+                {
+                    "dataPoints": [
+                        {
+                            "dataPointName": "skin-temperature-1",
+                            "skinTemperature": {
+                                "sampleTime": {"physicalTime": "2026-06-01T02:00:00Z"},
+                                "temperatureCelsius": 36.5,
+                            },
+                        }
+                    ]
+                }
+            ]
+        },
+    }
+    for data_type, payload in payloads.items():
+        writer.save_raw(
+            connection_id="connection-1",
+            data_type=data_type,
+            date_from=date(2026, 6, 1),
+            date_to=date(2026, 6, 2),
+            run_id=f"{data_type}-run",
+            payload=payload,
+        )
+
+    # Act
+    result = replay_google_health_raw(writer, reset_compacted=True)
+
+    # Assert
+    assert result["status"] == "succeeded"
+    assert result["raw_count"] == 2
+    samples_key = (
+        "compacted/events/google_health/samples/year=2026/month=06/data.parquet"
+    )
+    rows = pd.read_parquet(BytesIO(memory_s3.objects[samples_key])).to_dict(
+        orient="records"
+    )
+    assert {(row["data_type"], row["value"]) for row in rows} == {
+        ("respiratory-rate", 16.0),
+        ("skin-temperature", 36.5),
+    }
 
 
 def test_replay_streams_large_raw_in_bounded_chunks_without_second_raw_read(

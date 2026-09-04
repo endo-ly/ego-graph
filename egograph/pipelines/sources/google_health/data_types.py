@@ -38,7 +38,7 @@ class TimeseriesAggregation(StrEnum):
 
 @dataclass(frozen=True)
 class GoogleHealthDataType:
-    """取得対象data typeの定義。"""
+    """Google Health data typeの定義。"""
 
     name: str
     category: DataCategory
@@ -73,10 +73,7 @@ class GoogleHealthDataType:
             names.append("daily_metrics")
         elif self.record_kind is RecordKind.SAMPLE:
             names.append("samples")
-            if (
-                has_daily_projection
-                or self.name == "respiratory-rate-sleep-summary"
-            ):
+            if has_daily_projection or self.name == "respiratory-rate-sleep-summary":
                 names.append("daily_metrics")
         elif self.record_kind is RecordKind.INTERVAL:
             names.append("intervals")
@@ -266,18 +263,6 @@ DATA_TYPES = (
         "breaths_per_minute",
     ),
     GoogleHealthDataType(
-        "respiratory-rate",
-        DataCategory.HEALTH_METRICS,
-        RecordKind.SAMPLE,
-        "breaths_per_minute",
-    ),
-    GoogleHealthDataType(
-        "skin-temperature",
-        DataCategory.HEALTH_METRICS,
-        RecordKind.SAMPLE,
-        "celsius",
-    ),
-    GoogleHealthDataType(
         "daily-respiratory-rate",
         DataCategory.HEALTH_METRICS,
         RecordKind.DAILY,
@@ -298,5 +283,23 @@ DATA_TYPES = (
     ),
 )
 
-DATA_TYPE_BY_NAME = {item.name: item for item in DATA_TYPES}
+REPLAY_ONLY_DATA_TYPES = (
+    GoogleHealthDataType(
+        "respiratory-rate",
+        DataCategory.HEALTH_METRICS,
+        RecordKind.SAMPLE,
+        "breaths_per_minute",
+    ),
+    GoogleHealthDataType(
+        "skin-temperature",
+        DataCategory.HEALTH_METRICS,
+        RecordKind.SAMPLE,
+        "celsius",
+    ),
+)
+
+# DATA_TYPE_BY_NAMEは既存Rawをreplayするための全既知data typeを保持する。
+DATA_TYPE_BY_NAME = {item.name: item for item in (*DATA_TYPES, *REPLAY_ONLY_DATA_TYPES)}
+# 新規API取得で利用できるdata typeはDATA_TYPESだけに限定する。
+INGEST_DATA_TYPE_BY_NAME = {item.name: item for item in DATA_TYPES}
 SMOKE_TEST_DATA_TYPES = tuple(item.name for item in DATA_TYPES if item.smoke_test)

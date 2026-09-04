@@ -1,5 +1,6 @@
 """Google Health writerのテスト。"""
 
+import logging
 from datetime import UTC, date, datetime
 from io import BytesIO
 from unittest.mock import patch
@@ -8,7 +9,11 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import pytest
 from botocore.exceptions import ClientError
-from pipelines.sources.google_health.writer import GoogleHealthWriter
+from pipelines.sources.google_health.writer import (
+    MULTIPART_CHUNK_SIZE_BYTES,
+    MULTIPART_THRESHOLD_BYTES,
+    GoogleHealthWriter,
+)
 
 
 class MemoryS3:
@@ -16,9 +21,33 @@ class MemoryS3:
 
     def __init__(self):
         self.objects = {}
+        self.upload_calls = []
+        self.fail_upload_key = None
+        self.fail_after_upload_key = None
+        self.fail_delete_key = None
 
-    def put_object(self, *, Bucket, Key, Body, ContentType):  # noqa: N803
-        self.objects[Key] = Body
+    def upload_fileobj(
+        self,
+        Fileobj,
+        Bucket,
+        Key,
+        *,
+        ExtraArgs,
+        Config,
+    ):  # noqa: N803
+        self.upload_calls.append(
+            {
+                "key": Key,
+                "content_type": ExtraArgs["ContentType"],
+                "config": Config,
+            }
+        )
+        data = Fileobj.read()
+        if Key == self.fail_upload_key:
+            raise RuntimeError("upload failed")
+        self.objects[Key] = data
+        if Key == self.fail_after_upload_key:
+            raise RuntimeError("upload failed after save")
 
     def get_object(self, *, Bucket, Key):  # noqa: N803
         if Key not in self.objects:
@@ -26,6 +55,8 @@ class MemoryS3:
         return {"Body": BytesIO(self.objects[Key])}
 
     def delete_object(self, *, Bucket, Key):  # noqa: N803
+        if Key == self.fail_delete_key:
+            raise RuntimeError("delete failed")
         self.objects.pop(Key, None)
 
 
@@ -59,6 +90,42 @@ def _sample_row(**overrides) -> dict:
         "measured_at_utc": datetime(2026, 6, 1, tzinfo=UTC),
         "value": 75.0,
         "unit": "beats_per_minute",
+        "device_family": "fitbit_air",
+        "raw_ref": "raw/google_health/example.json",
+        "ingested_at_utc": datetime(2026, 6, 4, tzinfo=UTC),
+    }
+    row.update(overrides)
+    return row
+
+
+def _daily_metric_row(**overrides) -> dict:
+    """schema 契約を満たす google_health.daily_metrics 行。"""
+    row = {
+        "record_id": "rec-daily-1",
+        "connection_id": "google-health-primary",
+        "data_type": "daily-resting-heart-rate",
+        "date": date(2026, 6, 1),
+        "metric_name": "daily_resting_heart_rate",
+        "value": 60.0,
+        "unit": "beats_per_minute",
+        "device_family": "fitbit_air",
+        "raw_ref": "raw/google_health/example.json",
+        "ingested_at_utc": datetime(2026, 6, 4, tzinfo=UTC),
+    }
+    row.update(overrides)
+    return row
+
+
+def _record_row(**overrides) -> dict:
+    """schema 契約を満たす google_health.records 行。"""
+    row = {
+        "record_id": "rec-record-1",
+        "source_record_id": "source-record-1",
+        "connection_id": "google-health-primary",
+        "data_type": "heart-rate",
+        "record_kind": "sample",
+        "record_date": date(2026, 6, 1),
+        "payload_json": '{"heartRate":{"beatsPerMinute":75}}',
         "device_family": "fitbit_air",
         "raw_ref": "raw/google_health/example.json",
         "ingested_at_utc": datetime(2026, 6, 4, tzinfo=UTC),
@@ -107,6 +174,7 @@ def test_raw_key_contains_required_lineage_fields():
         "raw/google_health/connection_id=google-health-primary/"
         "data_type=steps/from=2026-06-01/to=2026-06-03/run_id=run-1.json"
     )
+    assert memory_s3.objects[key] == b'{"dataPoints":[]}'
 
 
 def test_save_events_adds_run_file_without_deleting_existing_files():
@@ -128,6 +196,51 @@ def test_save_events_adds_run_file_without_deleting_existing_files():
         "events/google_health/samples/year=2026/month=06/run-1.parquet"
     ]
     assert old_key in memory_s3.objects
+
+
+def test_transfer_config_uses_managed_multipart_settings():
+    """managed multipartのthreshold、part size、thread設定を固定する。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+
+    # Act
+    writer = _writer(memory_s3)
+
+    # Assert
+    assert writer._transfer_config.multipart_threshold == MULTIPART_THRESHOLD_BYTES
+    assert writer._transfer_config.multipart_chunksize == MULTIPART_CHUNK_SIZE_BYTES
+    assert writer._transfer_config.use_threads is False
+
+
+def test_upload_logs_key_size_and_multipart_decision(caplog):
+    """upload開始・完了ログに診断用metadataだけを記録する。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    caplog.set_level(
+        logging.INFO,
+        logger="pipelines.sources.google_health.writer",
+    )
+
+    # Act
+    writer._upload_bytes(
+        key="events/google_health/samples/example.parquet",
+        data=b"payload",
+        content_type="application/octet-stream",
+    )
+
+    # Assert
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "R2 upload started: key=events/google_health/samples/example.parquet "
+        "size_bytes=7 multipart=False" in message
+        for message in messages
+    )
+    assert any(
+        "R2 upload completed: key=events/google_health/samples/example.parquet "
+        "size_bytes=7 multipart=False duration_seconds=" in message
+        for message in messages
+    )
 
 
 def test_compact_range_replaces_only_selected_data_type():
@@ -180,6 +293,83 @@ def test_compact_range_replaces_only_selected_data_type():
         ("oxygen-saturation", 95.0),
     }
     assert event_key in memory_s3.objects
+
+
+def test_save_events_cleans_up_all_attempted_run_keys_on_upload_failure():
+    """eventsの途中upload失敗時はそのrunの全試行キーを削除する。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    previous_key = (
+        "events/google_health/samples/year=2026/month=06/previous-run.parquet"
+    )
+    failed_key = "events/google_health/samples/year=2026/month=06/run-1.parquet"
+    memory_s3.objects[previous_key] = b"previous"
+    memory_s3.fail_upload_key = failed_key
+    records = {
+        "records": [_record_row()],
+        "daily_metrics": [_daily_metric_row()],
+        "samples": [_sample_row()],
+    }
+
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="upload failed"):
+        writer.save_events(
+            run_id="run-1",
+            records=records,
+            selected_dataset_ids=(
+                "google_health.records",
+                "google_health.daily_metrics",
+                "google_health.samples",
+            ),
+        )
+
+    assert not any(key.endswith("/run-1.parquet") for key in memory_s3.objects)
+    assert previous_key in memory_s3.objects
+
+
+def test_save_events_cleans_up_key_when_upload_fails_after_object_is_saved():
+    """応答前に保存済みとなったfailed uploadもcleanup対象にする。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    key = "events/google_health/samples/year=2026/month=06/run-1.parquet"
+    memory_s3.fail_after_upload_key = key
+
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="upload failed after save"):
+        writer.save_events(
+            run_id="run-1",
+            records={"samples": [_sample_row()]},
+        )
+
+    assert key not in memory_s3.objects
+
+
+def test_save_events_preserves_upload_error_when_cleanup_fails(caplog):
+    """cleanup失敗時も元のupload errorをraiseし、cleanup errorを記録する。"""
+    # Arrange
+    memory_s3 = MemoryS3()
+    writer = _writer(memory_s3)
+    failed_key = "events/google_health/samples/year=2026/month=06/run-1.parquet"
+    memory_s3.fail_upload_key = failed_key
+    memory_s3.fail_delete_key = failed_key
+    caplog.set_level(
+        logging.ERROR,
+        logger="pipelines.sources.google_health.writer",
+    )
+
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="upload failed"):
+        writer.save_events(
+            run_id="run-1",
+            records={"samples": [_sample_row()]},
+        )
+
+    assert any(
+        record.getMessage() == "Google Health event cleanup failed: key=" + failed_key
+        for record in caplog.records
+    )
 
 
 def test_compact_range_removes_no_data_range_without_deleting_events():
@@ -315,8 +505,7 @@ def test_compact_range_uses_semantic_session_target_date(
     writer = _writer(memory_s3)
     month = started_at.month
     event_key = (
-        "events/google_health/sessions/year=2026/"
-        f"month={month:02d}/run-1.parquet"
+        f"events/google_health/sessions/year=2026/month={month:02d}/run-1.parquet"
     )
     compacted_key = (
         "compacted/events/google_health/sessions/year=2026/"
@@ -362,8 +551,9 @@ def test_compact_range_uses_semantic_session_target_date(
 
     # Assert
     rows = (
-        pd.read_parquet(BytesIO(memory_s3.objects[compacted_key]))
-        .to_dict(orient="records")
+        pd.read_parquet(BytesIO(memory_s3.objects[compacted_key])).to_dict(
+            orient="records"
+        )
         if compacted_key in memory_s3.objects
         else []
     )

@@ -2,13 +2,15 @@
 
 from pipelines.sources.google_health.data_types import (
     DATA_TYPE_BY_NAME,
+    INGEST_DATA_TYPE_BY_NAME,
+    REPLAY_ONLY_DATA_TYPES,
     FetchStrategy,
     RecordKind,
 )
 
 
 def test_registry_matches_fitbit_air_target_data_types():
-    """計画で定義した30 data typeだけを取得対象にする。"""
+    """計画で定義した28 data typeだけを新規取得対象にする。"""
     # Arrange
     expected = {
         "steps",
@@ -36,15 +38,26 @@ def test_registry_matches_fitbit_air_target_data_types():
         "oxygen-saturation",
         "daily-oxygen-saturation",
         "respiratory-rate-sleep-summary",
-        "respiratory-rate",
-        "skin-temperature",
         "daily-respiratory-rate",
         "daily-sleep-temperature-derivations",
         "sleep",
     }
 
     # Act & Assert
-    assert set(DATA_TYPE_BY_NAME) == expected
+    assert set(INGEST_DATA_TYPE_BY_NAME) == expected
+    assert set(DATA_TYPE_BY_NAME) == expected | {
+        "respiratory-rate",
+        "skin-temperature",
+    }
+    assert set(item.name for item in REPLAY_ONLY_DATA_TYPES) == {
+        "respiratory-rate",
+        "skin-temperature",
+    }
+    assert "respiratory-rate" not in INGEST_DATA_TYPE_BY_NAME
+    assert "skin-temperature" not in INGEST_DATA_TYPE_BY_NAME
+    assert "respiratory-rate-sleep-summary" in INGEST_DATA_TYPE_BY_NAME
+    assert "daily-respiratory-rate" in INGEST_DATA_TYPE_BY_NAME
+    assert "daily-sleep-temperature-derivations" in INGEST_DATA_TYPE_BY_NAME
     assert DATA_TYPE_BY_NAME["steps"].record_kind is RecordKind.INTERVAL
     assert DATA_TYPE_BY_NAME["heart-rate"].record_kind is RecordKind.SAMPLE
     assert DATA_TYPE_BY_NAME["sleep"].record_kind is RecordKind.SESSION

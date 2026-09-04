@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from time import monotonic
+from typing import Any, BinaryIO
 from zoneinfo import ZoneInfo
 
 import boto3
 import pandas as pd
+from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 from dataset_catalog import DatasetDefinition, datasets
 from dataset_catalog.validation import (
@@ -28,6 +31,11 @@ from pipelines.sources.google_health.timezone import (
     local_date_start_utc,
     projection_row_local_date,
 )
+
+logger = logging.getLogger(__name__)
+
+MULTIPART_THRESHOLD_BYTES = 64 * 1024 * 1024
+MULTIPART_CHUNK_SIZE_BYTES = 16 * 1024 * 1024
 
 GOOGLE_HEALTH_DATASETS = (
     datasets.GOOGLE_HEALTH_RECORDS,
@@ -61,6 +69,11 @@ class GoogleHealthWriter:
         self.events_path = _normalize_path(events_path)
         self.compacted_path = _normalize_path(compacted_path)
         self.timezone = timezone or ZoneInfo("UTC")
+        self._transfer_config = TransferConfig(
+            multipart_threshold=MULTIPART_THRESHOLD_BYTES,
+            multipart_chunksize=MULTIPART_CHUNK_SIZE_BYTES,
+            use_threads=False,
+        )
         self.s3 = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
@@ -86,15 +99,14 @@ class GoogleHealthWriter:
             f"from={date_from.isoformat()}/to={date_to.isoformat()}/"
             f"run_id={run_id}.json"
         )
-        self.s3.put_object(
-            Bucket=self.bucket_name,
-            Key=key,
-            Body=json.dumps(
+        self._upload_bytes(
+            key=key,
+            data=json.dumps(
                 payload,
                 ensure_ascii=False,
                 separators=(",", ":"),
             ).encode(),
-            ContentType="application/json",
+            content_type="application/json",
         )
         return key
 
@@ -106,28 +118,41 @@ class GoogleHealthWriter:
         selected_dataset_ids: tuple[str, ...] | None = None,
     ) -> list[str]:
         """今回runの正規化行をevents Parquetへ保存する。"""
+        attempted_keys: list[str] = []
         saved_keys: list[str] = []
-        for dataset in _selected_datasets(selected_dataset_ids):
-            dataset_name = _dataset_name(dataset)
-            date_column = _date_column(dataset)
-            rows_by_month: dict[tuple[int, int], list[dict[str, Any]]] = {}
-            for row in records.get(dataset_name, []):
-                month = _row_month(row, date_column)
-                rows_by_month.setdefault(month, []).append(row)
-            for (year, month), rows in sorted(rows_by_month.items()):
-                prefix = dataset.source_partition_prefix(
-                    self.events_path,
-                    year=year,
-                    month=month,
-                )
-                key = f"{prefix}{run_id}.parquet"
-                self.s3.put_object(
-                    Bucket=self.bucket_name,
-                    Key=key,
-                    Body=_validated_parquet_bytes(dataset, rows),
-                    ContentType="application/octet-stream",
-                )
-                saved_keys.append(key)
+        try:
+            for dataset in _selected_datasets(selected_dataset_ids):
+                dataset_name = _dataset_name(dataset)
+                date_column = _date_column(dataset)
+                rows_by_month: dict[tuple[int, int], list[dict[str, Any]]] = {}
+                for row in records.get(dataset_name, []):
+                    month = _row_month(row, date_column)
+                    rows_by_month.setdefault(month, []).append(row)
+                for (year, month), rows in sorted(rows_by_month.items()):
+                    prefix = dataset.source_partition_prefix(
+                        self.events_path,
+                        year=year,
+                        month=month,
+                    )
+                    key = f"{prefix}{run_id}.parquet"
+                    data = _validated_parquet_bytes(dataset, rows)
+                    attempted_keys.append(key)
+                    self._upload_bytes(
+                        key=key,
+                        data=data,
+                        content_type="application/octet-stream",
+                    )
+                    saved_keys.append(key)
+        except Exception:
+            for key in attempted_keys:
+                try:
+                    self._delete_if_exists(key)
+                except Exception:
+                    logger.exception(
+                        "Google Health event cleanup failed: key=%s",
+                        key,
+                    )
+            raise
         return saved_keys
 
     def replace_events(
@@ -244,11 +269,10 @@ class GoogleHealthWriter:
                 if not merged:
                     self._delete_if_exists(compacted_key)
                     continue
-                self.s3.put_object(
-                    Bucket=self.bucket_name,
-                    Key=compacted_key,
-                    Body=_validated_parquet_bytes(dataset, merged),
-                    ContentType="application/octet-stream",
+                self._upload_bytes(
+                    key=compacted_key,
+                    data=_validated_parquet_bytes(dataset, merged),
+                    content_type="application/octet-stream",
                 )
                 compacted_keys.append(compacted_key)
         return compacted_keys
@@ -322,12 +346,72 @@ class GoogleHealthWriter:
     ) -> None:
         """ローカルParquetをschema検証後にstreaming uploadする。"""
         validate_parquet_file(dataset, path)
+        size_bytes = path.stat().st_size
         with path.open("rb") as body:
-            self.s3.put_object(
-                Bucket=self.bucket_name,
-                Key=key,
-                Body=body,
-                ContentType="application/octet-stream",
+            self._upload(
+                key=key,
+                body=body,
+                size_bytes=size_bytes,
+                content_type="application/octet-stream",
+            )
+
+    def _upload(
+        self,
+        *,
+        key: str,
+        body: BinaryIO,
+        size_bytes: int,
+        content_type: str,
+    ) -> None:
+        """R2へオブジェクトをmanaged uploadする。"""
+        multipart = size_bytes >= MULTIPART_THRESHOLD_BYTES
+        logger.info(
+            "R2 upload started: key=%s size_bytes=%d multipart=%s",
+            key,
+            size_bytes,
+            multipart,
+        )
+        started_at = monotonic()
+        try:
+            self.s3.upload_fileobj(
+                body,
+                self.bucket_name,
+                key,
+                ExtraArgs={"ContentType": content_type},
+                Config=self._transfer_config,
+            )
+        except Exception as exc:
+            logger.error(
+                "R2 upload failed: key=%s size_bytes=%d multipart=%s error_type=%s",
+                key,
+                size_bytes,
+                multipart,
+                type(exc).__name__,
+            )
+            raise
+        logger.info(
+            "R2 upload completed: key=%s size_bytes=%d multipart=%s "
+            "duration_seconds=%.3f",
+            key,
+            size_bytes,
+            multipart,
+            monotonic() - started_at,
+        )
+
+    def _upload_bytes(
+        self,
+        *,
+        key: str,
+        data: bytes,
+        content_type: str,
+    ) -> None:
+        """bytesをR2へmanaged uploadする。"""
+        with BytesIO(data) as body:
+            self._upload(
+                key=key,
+                body=body,
+                size_bytes=len(data),
+                content_type=content_type,
             )
 
 

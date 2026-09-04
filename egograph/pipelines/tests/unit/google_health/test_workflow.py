@@ -333,7 +333,23 @@ def test_parse_repair_request_uses_scheduled_time_in_configured_timezone():
     # Assert
     assert request.date_from == date(2026, 5, 20)
     assert request.date_to == date(2026, 6, 3)
-    assert request.data_types
+    assert len(request.data_types) == 28
+    assert "respiratory-rate" not in request.data_types
+    assert "skin-temperature" not in request.data_types
+    assert "respiratory-rate-sleep-summary" in request.data_types
+    assert "daily-respiratory-rate" in request.data_types
+    assert "daily-sleep-temperature-derivations" in request.data_types
+
+
+@pytest.mark.parametrize("data_type", ["respiratory-rate", "skin-temperature"])
+def test_parse_request_rejects_replay_only_data_type(data_type):
+    """replay専用data typeをworkflowの新規ingest requestでも拒否する。"""
+    # Arrange
+    run = _run([data_type])
+
+    # Act / Assert
+    with pytest.raises(ValueError, match="invalid_data_types:"):
+        _parse_request(run)
 
 
 def test_inactive_connection_workflow_error_includes_status(monkeypatch):

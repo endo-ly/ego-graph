@@ -18,7 +18,10 @@ from pipelines.infrastructure.db.connection import connect
 from pipelines.infrastructure.db.schema import initialize_schema
 from pipelines.sources.common.settings import PipelinesSettings
 from pipelines.sources.google_health.client import GoogleHealthAPIClient
-from pipelines.sources.google_health.data_types import DATA_TYPE_BY_NAME, DATA_TYPES
+from pipelines.sources.google_health.data_types import (
+    DATA_TYPES,
+    INGEST_DATA_TYPE_BY_NAME,
+)
 from pipelines.sources.google_health.extractor import GoogleHealthExtractor
 from pipelines.sources.google_health.models import (
     ConnectionStatus,
@@ -85,7 +88,7 @@ def _execute_google_health_ingest(
     completed_data_types: list[str] = []
 
     for data_type_name in request.data_types:
-        data_type = DATA_TYPE_BY_NAME[data_type_name]
+        data_type = INGEST_DATA_TYPE_BY_NAME[data_type_name]
         started_at = time.monotonic()
         try:
             extracted = dependencies.extractor.extract(
@@ -364,7 +367,7 @@ def _parse_request(
     if requested_types:
         if not isinstance(requested_types, list):
             raise ValueError("invalid_data_types: list is required")
-        unknown = set(requested_types) - DATA_TYPE_BY_NAME.keys()
+        unknown = set(requested_types) - INGEST_DATA_TYPE_BY_NAME.keys()
         if unknown:
             raise ValueError(
                 f"invalid_data_types: unsupported values: {', '.join(sorted(unknown))}"
