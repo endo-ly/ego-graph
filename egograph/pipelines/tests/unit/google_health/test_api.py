@@ -369,3 +369,27 @@ def test_create_data_type_range_requires_data_types(tmp_path):
     # Assert
     assert response.status_code == 400
     assert response.json()["detail"].startswith("invalid_data_types:")
+
+
+@pytest.mark.parametrize("data_type", ["respiratory-rate", "skin-temperature"])
+def test_create_data_type_range_rejects_replay_only_data_type(tmp_path, data_type):
+    """replay専用data typeを新規ingest requestでは受け付けない。"""
+    # Arrange
+    app = create_app(_config(tmp_path))
+
+    # Act
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/sources/google-health/runs",
+            headers={"X-API-Key": "api-key"},
+            json={
+                "mode": "data_type_range",
+                "from": "2026-06-01",
+                "to": "2026-06-03",
+                "data_types": [data_type],
+            },
+        )
+
+    # Assert
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith("invalid_data_types:")

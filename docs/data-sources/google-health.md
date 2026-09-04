@@ -131,8 +131,10 @@ reconcileのページサイズはこの制約とは別に管理する。
 | `daily-sleep-temperature-derivations` | daily |
 
 Fitbit device compatibility資料上に存在するデータ型でも、現在のGoogle Health REST v4で
-直接取得可能とは限らない。EgoGraphのregistryは実際にREST v4から取得可能なdata typeを
-対象とする。
+直接取得可能とは限らない。EgoGraphの通常ingest registryは実際にREST v4から取得可能な
+data typeを対象とする。過去Rawのrecompact互換性のため、`respiratory-rate` と
+`skin-temperature` の型定義は内部に保持するが、通常ingest・repair・manual requestの対象には
+含めない。
 
 #### Sleep
 

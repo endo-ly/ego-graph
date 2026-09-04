@@ -10,7 +10,7 @@ from pipelines.api.dependencies import get_service, verify_api_key
 from pipelines.service import PipelineService
 from pipelines.sources.google_health.client import GoogleHealthAPIError
 from pipelines.sources.google_health.data_types import (
-    DATA_TYPE_BY_NAME,
+    INGEST_DATA_TYPE_BY_NAME,
     SMOKE_TEST_DATA_TYPES,
 )
 from pipelines.sources.google_health.models import GoogleHealthRunMode
@@ -31,7 +31,7 @@ class GoogleHealthRunRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_range(self) -> "GoogleHealthRunRequest":
-        unknown = set(self.data_types) - DATA_TYPE_BY_NAME.keys()
+        unknown = set(self.data_types) - INGEST_DATA_TYPE_BY_NAME.keys()
         if unknown:
             raise ValueError(
                 f"invalid_data_types: unsupported values: {', '.join(sorted(unknown))}"
